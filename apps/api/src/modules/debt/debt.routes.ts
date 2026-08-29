@@ -1,0 +1,23 @@
+import { Router } from "express";
+import { debtActionSchema, debtAgingQuerySchema, debtCancelSchema, debtPaymentDraftSchema, debtPaymentListSchema, debtPaymentUpdateSchema, numericIdParamsSchema } from "@challenge/contracts";
+import { asyncHandler } from "../../common/async-handler";
+import { authenticateV1, requirePermission } from "../../common/authenticate";
+import { validateBody, validateParams, validateQuery } from "../../common/validate";
+import { debtController } from "./debt.controller";
+
+export const debtRouter = Router();
+debtRouter.use(authenticateV1);
+debtRouter.get("/receivables", requirePermission("debt.view"), validateQuery(debtAgingQuerySchema), asyncHandler(debtController.receivables));
+debtRouter.get("/payables", requirePermission("debt.view"), validateQuery(debtAgingQuerySchema), asyncHandler(debtController.payables));
+debtRouter.get("/receipts", requirePermission("debt.view"), validateQuery(debtPaymentListSchema), asyncHandler(debtController.receiptList));
+debtRouter.get("/receipts/:id", requirePermission("debt.view"), validateParams(numericIdParamsSchema), asyncHandler(debtController.receiptGet));
+debtRouter.post("/receipts", requirePermission("debt.receive"), validateBody(debtPaymentDraftSchema), asyncHandler(debtController.receiptCreate));
+debtRouter.put("/receipts/:id", requirePermission("debt.receive"), validateParams(numericIdParamsSchema), validateBody(debtPaymentUpdateSchema), asyncHandler(debtController.receiptUpdate));
+debtRouter.post("/receipts/:id/post", requirePermission("debt.receive"), validateParams(numericIdParamsSchema), validateBody(debtActionSchema), asyncHandler(debtController.receiptPost));
+debtRouter.post("/receipts/:id/cancel", requirePermission("debt.cancel"), validateParams(numericIdParamsSchema), validateBody(debtCancelSchema), asyncHandler(debtController.receiptCancel));
+debtRouter.get("/vouchers", requirePermission("debt.view"), validateQuery(debtPaymentListSchema), asyncHandler(debtController.voucherList));
+debtRouter.get("/vouchers/:id", requirePermission("debt.view"), validateParams(numericIdParamsSchema), asyncHandler(debtController.voucherGet));
+debtRouter.post("/vouchers", requirePermission("debt.pay"), validateBody(debtPaymentDraftSchema), asyncHandler(debtController.voucherCreate));
+debtRouter.put("/vouchers/:id", requirePermission("debt.pay"), validateParams(numericIdParamsSchema), validateBody(debtPaymentUpdateSchema), asyncHandler(debtController.voucherUpdate));
+debtRouter.post("/vouchers/:id/post", requirePermission("debt.pay"), validateParams(numericIdParamsSchema), validateBody(debtActionSchema), asyncHandler(debtController.voucherPost));
+debtRouter.post("/vouchers/:id/cancel", requirePermission("debt.cancel"), validateParams(numericIdParamsSchema), validateBody(debtCancelSchema), asyncHandler(debtController.voucherCancel));

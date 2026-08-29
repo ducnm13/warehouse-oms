@@ -1,0 +1,6 @@
+{
+  "name": "Challenge Warehouse",
+  "description": "Hệ thống quản lý kho và sản xuất chuyên nghiệp với báo cáo tồn kho, quản lý lệnh sản xuất và phân quyền người dùng.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

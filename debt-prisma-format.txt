@@ -1,0 +1,2 @@
+Prisma schema loaded from packages\database\prisma\schema.prisma
+Formatted packages\database\prisma\schema.prisma in 33ms 🚀

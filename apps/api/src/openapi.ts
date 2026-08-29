@@ -1,0 +1,88 @@
+export const openApiDocument = {
+  openapi: "3.1.0",
+  info: { title: "Challenge ERP API", version: "1.0.0", description: "API versioned của Challenge ERP" },
+  servers: [{ url: "/api/v1" }],
+  tags: [{ name: "Auth" }, { name: "System" }, { name: "Purchasing" }, { name: "Sales" }, { name: "Inventory" }, { name: "Warehouse Transfers" }, { name: "Debt" }],
+  components: {
+    securitySchemes: { bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" } },
+    schemas: {
+      LoginInput: { type: "object", required: ["username", "password"], properties: { username: { type: "string" }, password: { type: "string", format: "password" } } },
+      RefreshInput: { type: "object", required: ["refreshToken"], properties: { refreshToken: { type: "string" } } },
+    },
+  },
+  paths: {
+    "/health": { get: { tags: ["System"], summary: "Health check", responses: { "200": { description: "OK" } } } },
+    "/system/admin-check": { get: { tags: ["System"], summary: "Kiểm tra policy quản trị", security: [{ bearerAuth: [] }], responses: { "200": { description: "Có quyền" }, "403": { description: "Không có quyền" } } } },
+    "/auth/login": { post: { tags: ["Auth"], summary: "Đăng nhập", requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/LoginInput" } } } }, responses: { "200": { description: "Đăng nhập thành công" }, "401": { description: "Sai thông tin" } } } },
+    "/auth/refresh": { post: { tags: ["Auth"], summary: "Xoay refresh token", requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/RefreshInput" } } } }, responses: { "200": { description: "Thành công" } } } },
+    "/auth/logout": { post: { tags: ["Auth"], summary: "Thu hồi refresh token", responses: { "200": { description: "Thành công" } } } },
+    "/auth/me": { get: { tags: ["Auth"], summary: "Thông tin user, role và permission", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" }, "401": { description: "Chưa đăng nhập" } } } },
+    "/purchase-documents": {
+      get: { tags: ["Purchasing"], summary: "Danh sách chứng từ mua hàng", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } },
+      post: { tags: ["Purchasing"], summary: "Tạo chứng từ nháp", security: [{ bearerAuth: [] }], responses: { "201": { description: "Đã tạo nháp" }, "422": { description: "Dữ liệu không hợp lệ" } } },
+    },
+    "/purchase-documents/{id}": {
+      get: { tags: ["Purchasing"], summary: "Chi tiết chứng từ", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }], responses: { "200": { description: "Thành công" } } },
+      put: { tags: ["Purchasing"], summary: "Sửa chứng từ nháp", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }], responses: { "200": { description: "Đã cập nhật" }, "409": { description: "Xung đột version/trạng thái" } } },
+    },
+    "/purchase-documents/{id}/post": { post: { tags: ["Purchasing"], summary: "Ghi sổ: nhập kho và ghi công nợ", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }], responses: { "200": { description: "Đã ghi sổ" }, "409": { description: "Xung đột trạng thái" } } } },
+    "/purchase-documents/{id}/cancel": { post: { tags: ["Purchasing"], summary: "Hủy và đảo kho/công nợ", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }], responses: { "200": { description: "Đã hủy" }, "409": { description: "Không thể đảo" } } } },
+    "/sales-documents": {
+      get: { tags: ["Sales"], summary: "Danh sách chứng từ bán hàng", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } },
+      post: { tags: ["Sales"], summary: "Tạo đơn bán hàng nháp", security: [{ bearerAuth: [] }], responses: { "201": { description: "Đã tạo nháp" }, "422": { description: "Dữ liệu không hợp lệ" } } },
+    },
+    "/sales-documents/{id}": {
+      get: { tags: ["Sales"], summary: "Chi tiết chứng từ bán hàng", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }], responses: { "200": { description: "Thành công" } } },
+      put: { tags: ["Sales"], summary: "Sửa đơn nháp hoặc bị từ chối", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }], responses: { "200": { description: "Đã cập nhật" }, "409": { description: "Xung đột version/trạng thái" } } },
+    },
+    "/sales-documents/{id}/submit": { post: { tags: ["Sales"], summary: "Gửi đơn chờ duyệt", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã gửi duyệt" } } } },
+    "/sales-documents/{id}/approve": { post: { tags: ["Sales"], summary: "Duyệt đơn bán hàng", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã duyệt" } } } },
+    "/sales-documents/{id}/reject": { post: { tags: ["Sales"], summary: "Từ chối đơn bán hàng", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã từ chối" } } } },
+    "/sales-documents/{id}/post": { post: { tags: ["Sales"], summary: "Ghi sổ, xuất kho và tạo phải thu", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã ghi sổ" }, "409": { description: "Không đủ tồn hoặc xung đột trạng thái" } } } },
+    "/sales-documents/{id}/payments": { post: { tags: ["Sales"], summary: "Thu tiền và phân bổ vào chứng từ", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã thu tiền" }, "409": { description: "Thu vượt công nợ" } } } },
+    "/sales-documents/{id}/cancel": { post: { tags: ["Sales"], summary: "Hủy và đảo kho, phải thu, thanh toán", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã hủy" }, "409": { description: "Không thể đảo" } } } },
+    "/inventory/documents": {
+      get: { tags: ["Inventory"], summary: "Danh sách phiếu nhập/xuất kho V1", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } },
+      post: { tags: ["Inventory"], summary: "Tạo phiếu kho nháp", security: [{ bearerAuth: [] }], responses: { "201": { description: "Đã tạo nháp" } } },
+    },
+    "/inventory/documents/{id}": {
+      get: { tags: ["Inventory"], summary: "Chi tiết phiếu kho", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } },
+      put: { tags: ["Inventory"], summary: "Sửa phiếu kho nháp", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã cập nhật" }, "409": { description: "Xung đột version" } } },
+    },
+    "/inventory/documents/{id}/post": { post: { tags: ["Inventory"], summary: "Ghi sổ phiếu kho", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã ghi sổ" }, "409": { description: "Không đủ tồn hoặc sai trạng thái" } } } },
+    "/inventory/documents/{id}/cancel": { post: { tags: ["Inventory"], summary: "Hủy và đảo phiếu kho", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã hủy" }, "409": { description: "Không thể đảo" } } } },
+    "/inventory/balances": { get: { tags: ["Inventory"], summary: "Số dư theo hàng và kho", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } } },
+    "/inventory/reconciliation": { get: { tags: ["Inventory"], summary: "Đối soát ledger với projection", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } } },
+    "/inventory/stocktakes": {
+      get: { tags: ["Inventory"], summary: "Danh sách kiểm kê theo kho", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } },
+      post: { tags: ["Inventory"], summary: "Tạo kiểm kê nháp theo kho", security: [{ bearerAuth: [] }], responses: { "201": { description: "Đã tạo nháp" } } },
+    },
+    "/inventory/stocktakes/{id}/complete": { post: { tags: ["Inventory"], summary: "Chốt kiểm kê và ghi adjustment ledger", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã chốt" }, "409": { description: "Tồn sổ đã thay đổi" } } } },
+    "/inventory/stocktakes/{id}/cancel": { post: { tags: ["Inventory"], summary: "Hủy và đảo kiểm kê", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã hủy" }, "409": { description: "Không thể đảo" } } } },
+    "/warehouse-transfers": {
+      get: { tags: ["Warehouse Transfers"], summary: "Danh sách chuyển kho hai bước", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } },
+      post: { tags: ["Warehouse Transfers"], summary: "Tạo phiếu chuyển kho nháp", security: [{ bearerAuth: [] }], responses: { "201": { description: "Đã tạo nháp" }, "422": { description: "Dữ liệu không hợp lệ" } } },
+    },
+    "/warehouse-transfers/{id}": {
+      get: { tags: ["Warehouse Transfers"], summary: "Chi tiết chuyển kho", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } },
+      put: { tags: ["Warehouse Transfers"], summary: "Sửa chuyển kho nháp", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã cập nhật" }, "409": { description: "Xung đột version/trạng thái" } } },
+    },
+    "/warehouse-transfers/{id}/ship": { post: { tags: ["Warehouse Transfers"], summary: "Xuất hàng khỏi kho nguồn", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đang vận chuyển" }, "409": { description: "Không đủ tồn hoặc sai trạng thái" } } } },
+    "/warehouse-transfers/{id}/receive": { post: { tags: ["Warehouse Transfers"], summary: "Nhận hàng vào kho đích", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã nhận" }, "409": { description: "Sai trạng thái" } } } },
+    "/warehouse-transfers/{id}/cancel": { post: { tags: ["Warehouse Transfers"], summary: "Hủy nháp hoặc hoàn kho hàng đang vận chuyển", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã hủy" }, "409": { description: "Không thể hủy" } } } },
+    "/debt/receivables": { get: { tags: ["Debt"], summary: "Công nợ phải thu và aging", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } } },
+    "/debt/payables": { get: { tags: ["Debt"], summary: "Công nợ phải trả và aging", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } } },
+    "/debt/receipts": {
+      get: { tags: ["Debt"], summary: "Danh sách phiếu thu V1", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } },
+      post: { tags: ["Debt"], summary: "Tạo phiếu thu nháp nhiều chứng từ", security: [{ bearerAuth: [] }], responses: { "201": { description: "Đã tạo nháp" } } },
+    },
+    "/debt/receipts/{id}/post": { post: { tags: ["Debt"], summary: "Ghi sổ phiếu thu", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã ghi sổ" }, "409": { description: "Phân bổ vượt dư nợ" } } } },
+    "/debt/receipts/{id}/cancel": { post: { tags: ["Debt"], summary: "Hủy và đảo phiếu thu", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã hủy" } } } },
+    "/debt/vouchers": {
+      get: { tags: ["Debt"], summary: "Danh sách phiếu chi V1", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } },
+      post: { tags: ["Debt"], summary: "Tạo phiếu chi nháp nhiều chứng từ", security: [{ bearerAuth: [] }], responses: { "201": { description: "Đã tạo nháp" } } },
+    },
+    "/debt/vouchers/{id}/post": { post: { tags: ["Debt"], summary: "Ghi sổ phiếu chi", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã ghi sổ" }, "409": { description: "Phân bổ vượt dư nợ" } } } },
+    "/debt/vouchers/{id}/cancel": { post: { tags: ["Debt"], summary: "Hủy và đảo phiếu chi", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã hủy" } } } },
+  },
+} as const;

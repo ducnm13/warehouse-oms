@@ -1,0 +1,22 @@
+{
+  "name": "Challenge Warehouse",
+  "short_name": "Challenge WMS",
+  "description": "Hệ thống quản lý kho vận Challenge WMS V2",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F4F7FE",
+  "theme_color": "#4f46e5",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/images/favicon_io/android-chrome-192x192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/images/favicon_io/android-chrome-512x512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ]
+}

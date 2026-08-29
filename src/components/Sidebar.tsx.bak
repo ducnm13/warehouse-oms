@@ -1,0 +1,272 @@
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  LayoutDashboard,
+  Package,
+  ArrowLeftRight,
+  Warehouse,
+  ClipboardList,
+  Settings,
+  Users,
+  LogOut,
+  ChevronDown,
+  Archive,
+  BarChart3,
+  History,
+  Sheet,
+  X,
+  Settings2
+} from 'lucide-react';
+import { cn } from '../lib/utils';
+
+interface SidebarProps {
+  sidebarOpen: boolean;
+  setSidebarOpen: (arg: boolean) => void;
+  role?: string;
+  onLogout: () => void;
+  activeItem: string;
+  setActiveItem: (item: string) => void;
+}
+
+const Sidebar = ({ sidebarOpen, setSidebarOpen, role, onLogout, activeItem, setActiveItem }: SidebarProps) => {
+  const [openSubMenus, setOpenSubMenus] = useState<string[]>(['inventory']);
+  const trigger = useRef<any>(null);
+  const sidebar = useRef<any>(null);
+
+  const toggleSubMenu = (menu: string) => {
+    setOpenSubMenus(prev =>
+      prev.includes(menu) ? prev.filter(m => m !== menu) : [...prev, menu]
+    );
+  };
+
+  const navItems = [
+    {
+      id: "dashboard",
+      label: "Dashboard",
+      icon: LayoutDashboard,
+      roles: ["ADMIN", "W_MANAGER", "P_MANAGER"],
+    },
+    {
+      id: "inventory",
+      label: "Thành Phẩm",
+      icon: Warehouse,
+      roles: ["ADMIN", "W_MANAGER", "S_SALES", "QD"],
+      children: [
+        {
+          id: "products",
+          label: "Danh sách sản phẩm",
+          icon: Package,
+          role: ["ADMIN", "W_MANAGER", "S_SALES", "QD"],
+        },
+        {
+          id: "transactions",
+          label: "Nhập xuất thành phẩm",
+          icon: ArrowLeftRight,
+          role: ["ADMIN", "W_MANAGER", "QD"],
+        },
+      ],
+    },
+    {
+      id: "material_warehouse",
+      label: "Bao Bì / Vật Tư",
+      icon: Archive,
+      roles: ["ADMIN", "W_MANAGER"],
+      children: [
+        { id: "materials", label: "Danh mục bao bì", icon: Package },
+        {
+          id: "material_transactions",
+          label: "Phiếu nhập xuất BB",
+          icon: ArrowLeftRight,
+        },
+      ],
+    },
+    {
+      id: "reports",
+      label: "Báo cáo",
+      icon: Sheet,
+      roles: ["ADMIN", "W_MANAGER"],
+      children: [
+        {
+          id: "inventory-report",
+          label: "Báo cáo tồn kho",
+          icon: BarChart3,
+          role: ["ADMIN", "W_MANAGER"],
+        },
+        {
+          id: "production-report",
+          label: "Báo cáo sản xuất",
+          icon: BarChart3,
+          role: ["ADMIN"],
+        },
+        {
+          id: "stock-take",
+          label: " Kiểm kê kho",
+          icon: BarChart3,
+          role: ["ADMIN"],
+        },
+      ],
+    },
+    {
+      id: "production",
+      label: "Lệnh sản xuất",
+      icon: ClipboardList,
+      roles: ["ADMIN", "P_MANAGER", "QD"],
+    },
+    {
+      id: "customers",
+      label: "Quản lý khách hàng",
+      icon: Users,
+      roles: ["ADMIN", "W_MANAGER"],
+    },
+    {
+      id: "managers",
+      label: "Quản lý",
+      icon: Settings2,
+      roles: ["ADMIN"],
+      children: [
+        { id: "users", label: "Nhân viên", icon: Settings },
+        { id: "archive", label: "Kho lưu trữ", icon: Archive },
+      ],
+    },
+    {
+      id: "audit-logs",
+      label: "Nhật ký hoạt động",
+      icon: History,
+      roles: ["ADMIN"],
+    },
+  ];
+
+  return (
+    <aside
+      ref={sidebar}
+      className={cn(
+        "absolute left-0 top-0 z-50 flex h-screen w-64 flex-col overflow-y-hidden bg-sidebar text-sidebar-text duration-300 ease-linear lg:static lg:translate-x-0 border-r border-slate-200",
+        sidebarOpen ? "translate-x-0" : "-translate-x-full",
+      )}
+    >
+      {/* Sidebar Header */}
+      <div className="p-6 flex items-center justify-between border-b border-slate-100">
+        <div className="flex-1 flex justify-center">
+          <img
+            src="/public/images/logo.png"
+            alt="Challenge"
+            className="h-12 w-auto object-contain"
+            referrerPolicy="no-referrer"
+          />
+        </div>
+
+        {/* --- THÊM NÚT ĐÓNG --- */}
+        <button
+          onClick={() => setSidebarOpen(false)}
+          className="p-2 text-slate-500 hover:text-slate-800 lg:hidden bg-slate-100 hover:bg-slate-200 rounded-full transition-colors absolute right-4"
+        >
+          <X size={20} />
+        </button>
+      </div>
+
+      <div className="no-scrollbar flex flex-col overflow-y-auto duration-300 ease-linear">
+        <nav className="mt-5 py-4 px-4 lg:px-4">
+          <div>
+            <h3 className="mb-4 ml-4 text-xs font-semibold uppercase text-slate-500">
+              MENU
+            </h3>
+            <ul className="mb-6 flex flex-col gap-1.5">
+              {navItems
+                // 1. LỌC MENU CHA: Phải có check "!item.roles" để không bị crash với các menu public
+                .filter(
+                  (item) => !item.roles || item.roles.includes(role || ""),
+                )
+                .map((item) => (
+                  <li key={item.id}>
+                    {item.children ? (
+                      <div>
+                        <button
+                          onClick={() => toggleSubMenu(item.id)}
+                          className={cn(
+                            "group relative flex w-full items-center gap-2.5 rounded py-2 px-4 font-bold transition-colors duration-300 ease-in-out hover:bg-sidebar-item",
+                            openSubMenus.includes(item.id) && "bg-sidebar-item",
+                          )}
+                        >
+                          <item.icon size={14} className="opacity-60" />
+                          {item.label}
+                          <ChevronDown
+                            size={16}
+                            className={cn(
+                              "ml-auto duration-200 opacity-60",
+                              openSubMenus.includes(item.id) && "rotate-180",
+                            )}
+                          />
+                        </button>
+
+                        <div
+                          className={cn(
+                            "overflow-hidden ml-4 mt-1 space-y-1",
+                            !openSubMenus.includes(item.id) && "hidden",
+                          )}
+                        >
+                          {item.children
+                            // 2. LỌC MENU CON: Chống lỗi viết nhầm "role" và "roles"
+                            .filter((child: any) => {
+                              const requiredRoles = child.roles || child.role;
+                              if (!requiredRoles) return true; // Không cấu hình quyền = Ai cũng thấy
+                              return requiredRoles.includes(role || ""); // Có cấu hình = Check quyền
+                            })
+                            .map((child) => (
+                              <button
+                                key={child.id}
+                                onClick={() => setActiveItem(child.id)}
+                                className={cn(
+                                  "flex w-full items-center gap-2.5 rounded px-4 py-2 text-sm transition-colors duration-300 ease-in-out hover:text-primary",
+                                  activeItem === child.id
+                                    ? "text-primary font-bold bg-slate-50"
+                                    : "text-slate-400",
+                                )}
+                              >
+                                {child.label}
+                              </button>
+                            ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setActiveItem(item.id)}
+                        className={cn(
+                          "group relative flex w-full items-center gap-2.5 rounded py-2.5 px-4 font-bold transition-colors duration-300 ease-in-out hover:bg-slate-50",
+                          activeItem === item.id &&
+                            "bg-slate-50 text-primary shadow-sm",
+                        )}
+                      >
+                        <item.icon
+                          size={18}
+                          className={cn(
+                            "opacity-60",
+                            activeItem === item.id &&
+                              "opacity-100 text-primary",
+                          )}
+                        />
+                        {item.label}
+                      </button>
+                    )}
+                  </li>
+                ))}
+            </ul>
+          </div>
+        </nav>
+      </div>
+
+      <div className="mt-auto px-4 py-4 border-t border-slate-100">
+        <button
+          onClick={onLogout}
+          className="flex w-full items-center gap-2.5 rounded py-2.5 px-4 font-bold transition-colors duration-300 ease-in-out hover:bg-red-50 hover:text-red-600 text-slate-500"
+        >
+          <LogOut size={18} />
+          ĐĂNG XUẤT
+        </button>
+        <p className="mt-4 text-[10px] opacity-30 text-center px-4 uppercase font-bold tracking-widest">
+          © 2026 Challenge Warehouse v1.0
+        </p>
+      </div>
+    </aside>
+  );
+};
+
+export default Sidebar;
