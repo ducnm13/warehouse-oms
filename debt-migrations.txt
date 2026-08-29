@@ -1,8 +1,0 @@
-001_auth_foundation
-002_rbac_foundation
-003_purchase_lifecycle
-004_purchase_constraints
-005_sales_lifecycle
-006_sales_posting
-007_inventory_lifecycle
-008_warehouse_transfer_lifecycle
