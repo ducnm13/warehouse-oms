@@ -1,0 +1,11 @@
+import { Router } from "express";
+import { inventorySummaryReportQuerySchema, itemLedgerReportQuerySchema, operationsReportQuerySchema, salesProfitReportQuerySchema } from "@challenge/contracts";
+import { asyncHandler } from "../../common/async-handler";
+import { authenticateV1, requirePermission } from "../../common/authenticate";
+import { validateQuery } from "../../common/validate";
+import { reportingController } from "./reporting.controller";
+export const reportingRouter = Router(); reportingRouter.use(authenticateV1, requirePermission("report.view"));
+reportingRouter.get("/inventory-summary", validateQuery(inventorySummaryReportQuerySchema), asyncHandler(reportingController.inventorySummary));
+reportingRouter.get("/item-ledger", validateQuery(itemLedgerReportQuerySchema), asyncHandler(reportingController.itemLedger));
+reportingRouter.get("/sales-profit", validateQuery(salesProfitReportQuerySchema), asyncHandler(reportingController.salesProfit));
+reportingRouter.get("/operations", validateQuery(operationsReportQuerySchema), asyncHandler(reportingController.operations));

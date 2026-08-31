@@ -2,7 +2,7 @@ export const openApiDocument = {
   openapi: "3.1.0",
   info: { title: "Challenge ERP API", version: "1.0.0", description: "API versioned của Challenge ERP" },
   servers: [{ url: "/api/v1" }],
-  tags: [{ name: "Auth" }, { name: "System" }, { name: "Purchasing" }, { name: "Sales" }, { name: "Inventory" }, { name: "Warehouse Transfers" }, { name: "Debt" }],
+  tags: [{ name: "Auth" }, { name: "System" }, { name: "Purchasing" }, { name: "Sales" }, { name: "Inventory" }, { name: "Warehouse Transfers" }, { name: "Debt" }, { name: "Production" }, { name: "Assembly" }, { name: "Reporting" }],
   components: {
     securitySchemes: { bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" } },
     schemas: {
@@ -84,5 +84,23 @@ export const openApiDocument = {
     },
     "/debt/vouchers/{id}/post": { post: { tags: ["Debt"], summary: "Ghi sổ phiếu chi", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã ghi sổ" }, "409": { description: "Phân bổ vượt dư nợ" } } } },
     "/debt/vouchers/{id}/cancel": { post: { tags: ["Debt"], summary: "Hủy và đảo phiếu chi", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã hủy" } } } },
+    "/production-orders": {
+      get: { tags: ["Production"], summary: "Danh sách lệnh sản xuất V1", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } },
+      post: { tags: ["Production"], summary: "Tạo lệnh nháp và snapshot BOM", security: [{ bearerAuth: [] }], responses: { "201": { description: "Đã tạo nháp" } } },
+    },
+    "/production-orders/{id}/start": { post: { tags: ["Production"], summary: "Bắt đầu sản xuất", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đang sản xuất" } } } },
+    "/production-orders/{id}/complete": { post: { tags: ["Production"], summary: "Xuất NVL, nhập output và hoàn thành", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã hoàn thành" }, "409": { description: "Không đủ NVL" } } } },
+    "/production-orders/{id}/cancel": { post: { tags: ["Production"], summary: "Hủy và đảo movement sản xuất", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã hủy" }, "409": { description: "Không đủ output để đảo" } } } },
+    "/assembly/boms": { get: { tags: ["Assembly"], summary: "Danh sách BOM lắp ráp", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } }, post: { tags: ["Assembly"], summary: "Tạo BOM lắp ráp", security: [{ bearerAuth: [] }], responses: { "201": { description: "Đã tạo" } } } },
+    "/assembly/orders": { get: { tags: ["Assembly"], summary: "Danh sách lệnh lắp ráp", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } }, post: { tags: ["Assembly"], summary: "Tạo lệnh và snapshot BOM", security: [{ bearerAuth: [] }], responses: { "201": { description: "Đã tạo" } } } },
+    "/assembly/orders/{id}/post": { post: { tags: ["Assembly"], summary: "Xuất linh kiện và nhập thành phẩm", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã ghi sổ" }, "409": { description: "Không đủ linh kiện" } } } },
+    "/assembly/orders/{id}/cancel": { post: { tags: ["Assembly"], summary: "Hủy và đảo lắp ráp", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã hủy" } } } },
+    "/assembly/disassembly-orders": { get: { tags: ["Assembly"], summary: "Danh sách lệnh tháo dỡ", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } }, post: { tags: ["Assembly"], summary: "Tạo lệnh tháo dỡ và snapshot BOM", security: [{ bearerAuth: [] }], responses: { "201": { description: "Đã tạo" } } } },
+    "/assembly/disassembly-orders/{id}/post": { post: { tags: ["Assembly"], summary: "Xuất nguồn và nhập hàng thu hồi", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã ghi sổ" } } } },
+    "/assembly/disassembly-orders/{id}/cancel": { post: { tags: ["Assembly"], summary: "Hủy và đảo tháo dỡ", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã hủy" } } } },
+    "/reports/inventory-summary": { get: { tags: ["Reporting"], summary: "Báo cáo tổng hợp tồn kho từ ledger", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } } },
+    "/reports/item-ledger": { get: { tags: ["Reporting"], summary: "Sổ chi tiết vật tư với số dư chạy", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } } },
+    "/reports/sales-profit": { get: { tags: ["Reporting"], summary: "Doanh thu, giá vốn và lợi nhuận gộp", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } } },
+    "/reports/operations": { get: { tags: ["Reporting"], summary: "Sản xuất, lắp ráp và tháo dỡ theo lệnh", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } } },
   },
 } as const;

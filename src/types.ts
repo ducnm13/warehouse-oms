@@ -166,6 +166,60 @@ export interface ProductionOrder {
   createdAt?: string;
 }
 
+export interface ProductionOrderV1 {
+  id: number; code: string; productId: number; productName?: string; warehouseId: number;
+  orderDate: string; mfgDate: string; expDate: string; batchNumber: string;
+  totalPowderKg: number; targetSachets: number; totalSachets: number; lossPercent: number;
+  status: 'DRAFT' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED'; version: number;
+  startedAt?: string; completedAt?: string; cancelledAt?: string; cancelReason?: string;
+  outputs: Array<{ id: number; packagingId: number; packagingName?: string; sku?: string; unit?: string; packCount?: number;
+    plannedQuantity: number; actualQuantity: number; allocationPercent: number; unitCost: number; totalValue: number; note?: string }>;
+  materials: Array<{ id: string; packagingId: number; productName?: string; packagingName?: string; sku?: string; unit?: string;
+    plannedQuantity: number; actualQuantity: number; unitCost: number; totalValue: number }>;
+  links: Array<{ id: string; linkType: string; linkedId: string; linkedCode?: string }>;
+}
+
+export interface AssemblyBomV1 {
+  id: number; code: string; packagingId: number; packagingName?: string; productName?: string; sku?: string; unit?: string;
+  version: number; outputQuantity: number; status: 'ACTIVE' | 'INACTIVE'; note?: string; updatedAt: string;
+  lines: Array<{ id: number; packagingId: number; packagingName?: string; productName?: string; sku?: string; unit?: string; quantity: number; allocationWeight: number; note?: string }>;
+}
+export interface AssemblyLineV1 {
+  id: number; packagingId: number; packagingName?: string; productName?: string; sku?: string; unit?: string;
+  plannedQuantity: number; actualQuantity: number; allocationWeight: number; unitCost: number; totalValue: number; lossQuantity: number; note?: string;
+}
+export interface AssemblyOrderV1 {
+  id: number; code: string; orderDate: string; output: { packagingId: number; packagingName?: string; productName?: string; sku?: string; unit?: string };
+  plannedQuantity: number; actualQuantity: number; componentWarehouseId: number; componentWarehouseName?: string; outputWarehouseId: number; outputWarehouseName?: string;
+  bomId: number; bomCode: string; bomVersion: number; assemblyCost: number; outputUnitCost: number; outputTotalValue: number;
+  status: 'DRAFT' | 'POSTED' | 'CANCELLED'; note?: string; version: number; postedAt?: string; cancelledAt?: string; cancelReason?: string;
+  lines: AssemblyLineV1[]; links: Array<{ id: string; linkType: string; linkedId: string; linkedCode?: string }>;
+}
+export interface DisassemblyOrderV1 {
+  id: number; code: string; orderDate: string; source: { packagingId: number; packagingName?: string; productName?: string; sku?: string; unit?: string };
+  plannedQuantity: number; actualQuantity: number; sourceWarehouseId: number; sourceWarehouseName?: string; recoveryWarehouseId: number; recoveryWarehouseName?: string;
+  bomId: number; bomCode: string; bomVersion: number; sourceUnitCost: number; sourceTotalValue: number; lossValue: number;
+  status: 'DRAFT' | 'POSTED' | 'CANCELLED'; note?: string; version: number; postedAt?: string; cancelledAt?: string; cancelReason?: string;
+  lines: AssemblyLineV1[]; links: Array<{ id: string; linkType: string; linkedId: string; linkedCode?: string }>;
+}
+
+export interface InventorySummaryReportV1 {
+  rows: Array<{ packagingId:number;warehouseId:number;sku?:string;packagingName:string;unit?:string;productName:string;category?:string;warehouseName:string;openingQuantity:number;inboundQuantity:number;outboundQuantity:number;closingQuantity:number;openingValue:number;inboundValue:number;outboundValue:number;closingValue:number;projectionQuantity:number;projectionDifference:number;valueCoverageComplete:boolean }>;
+  summary:{openingQuantity:number;inboundQuantity:number;outboundQuantity:number;closingQuantity:number;openingValue:number;inboundValue:number;outboundValue:number;closingValue:number;projectionDifference:number};valueCoverageComplete:boolean;
+}
+export interface ItemLedgerReportV1 {
+  packaging:{id:number;sku?:string;name:string;unit?:string;productName?:string};openingQuantity:number;openingValue:number;closingQuantity:number;closingValue:number;valueCoverageComplete:boolean;
+  rows:Array<{id:string;occurredAt:string;documentCode:string;sourceType:string;sourceId:number;direction:'IN'|'OUT';warehouseId:number;warehouseName:string;inboundQuantity:number;outboundQuantity:number;unitCost:number;inboundValue:number;outboundValue:number;runningQuantity:number;runningValue:number}>;
+}
+export interface SalesProfitReportV1 {
+  rows:Array<{id:number;code:string;orderDate:string;customerId:number;customerCode?:string;customerName:string;warehouseId:number;warehouseName:string;grossSales:number;discountAmount:number;netRevenue:number;taxAmount:number;cogs:number;grossProfit:number;grossMarginPercent:number}>;
+  summary:{grossSales:number;discountAmount:number;netRevenue:number;taxAmount:number;cogs:number;grossProfit:number};
+}
+export interface OperationsReportV1 {
+  rows:Array<{id:number;type:'PRODUCTION'|'ASSEMBLY'|'DISASSEMBLY';code:string;occurredAt:string;itemName?:string;plannedQuantity:number;actualQuantity:number;inputValue:number;outputValue:number;lossQuantity:number}>;
+  summary:{orders:number;plannedQuantity:number;actualQuantity:number;inputValue:number;outputValue:number;lossQuantity:number};
+}
+
 export interface ProductionDetail {
   id: number;
   orderId: number;

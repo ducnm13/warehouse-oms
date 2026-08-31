@@ -1,0 +1,11 @@
+import { Router } from "express";
+import { numericIdParamsSchema, productionActionSchema, productionCancelSchema, productionCompleteSchema, productionDraftSchema, productionListQuerySchema, productionUpdateSchema } from "@challenge/contracts";
+import { asyncHandler } from "../../common/async-handler"; import { authenticateV1, requirePermission } from "../../common/authenticate"; import { validateBody, validateParams, validateQuery } from "../../common/validate"; import { productionController } from "./production.controller";
+export const productionRouter=Router(); productionRouter.use(authenticateV1);
+productionRouter.get("/",requirePermission("production.view"),validateQuery(productionListQuerySchema),asyncHandler(productionController.list));
+productionRouter.get("/:id",requirePermission("production.view"),validateParams(numericIdParamsSchema),asyncHandler(productionController.get));
+productionRouter.post("/",requirePermission("production.manage"),validateBody(productionDraftSchema),asyncHandler(productionController.create));
+productionRouter.put("/:id",requirePermission("production.manage"),validateParams(numericIdParamsSchema),validateBody(productionUpdateSchema),asyncHandler(productionController.update));
+productionRouter.post("/:id/start",requirePermission("production.start"),validateParams(numericIdParamsSchema),validateBody(productionActionSchema),asyncHandler(productionController.start));
+productionRouter.post("/:id/complete",requirePermission("production.complete"),validateParams(numericIdParamsSchema),validateBody(productionCompleteSchema),asyncHandler(productionController.complete));
+productionRouter.post("/:id/cancel",requirePermission("production.cancel"),validateParams(numericIdParamsSchema),validateBody(productionCancelSchema),asyncHandler(productionController.cancel));

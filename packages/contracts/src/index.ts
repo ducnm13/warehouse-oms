@@ -5,3 +5,6 @@ export * from "./sales";
 export * from "./inventory";
 export * from "./transfer";
 export * from "./debt";
+export * from "./production";
+export * from "./assembly";
+export * from "./reporting";

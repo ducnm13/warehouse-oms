@@ -10,6 +10,7 @@ import Transactions from './pages/Transactions';
 import InventoryReport from './pages/InventoryReport';
 import Stocktake from "./pages/Stocktake";
 import Production from './pages/Production';
+import Assembly from './pages/Assembly';
 import ProductionReport from "./pages/ProductionReport";
 import Users from './pages/Users';
 import Customers from './pages/Customers';
@@ -22,6 +23,7 @@ import Suppliers from './pages/Suppliers';
 import PurchasesV1 from './pages/PurchasesV1';
 import FinancialDashboard from './pages/FinancialDashboard';
 import Debt from './pages/Debt';
+import Reporting from './pages/Reporting';
 
 import { User } from './types';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -113,13 +115,15 @@ export default function App() {
       case "material_transactions":
         return <MaterialTransactions />;
       case "inventory-report":
-        return <InventoryReport />;
+        return <Reporting />;
       case "archive":
         return <ProductList isArchive={true} />;
       case "production-report":
-        return <ProductionReport />;
+        return <Reporting />;
       case "production":
         return <Production user={user} />;
+      case "assembly":
+        return <Assembly user={user} />;
       case "customers":
         return <Customers />;
       case "users":

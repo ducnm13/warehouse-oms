@@ -125,6 +125,8 @@ model productiondetails {
   createdAt          String?            @db.Text
   updatedAt          String?            @db.Text
   note               String?            @db.Text
+  unitCost           Decimal            @default(0) @db.Decimal(18, 4)
+  totalValue         Decimal            @default(0) @db.Decimal(18, 2)
   productionorders   productionorders?  @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "productiondetails_ibfk_1")
   productpackagings  productpackagings? @relation(fields: [packagingId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "productiondetails_ibfk_2")
 
@@ -133,50 +135,101 @@ model productiondetails {
 }
 
 model productionorders {
-  id                Int                 @id @default(autoincrement())
-  code              String?             @unique(map: "code") @db.VarChar(255)
-  productId         Int?
-  total_powder_kg   Float?              @default(0)
-  total_sachets     Int?                @default(0)
-  mfg_date          String?             @db.Text
-  exp_date          String?             @db.Text
-  status            String?             @default("DRAFT") @db.VarChar(50)
-  loss_percent      Float?              @default(0)
-  createdAt         String?             @db.Text
-  updatedAt         String?             @db.Text
-  target_sachets    Int?                @default(0)
-  order_date        String?             @db.Text
-  batch_number      String?             @db.Text
-  productiondetails productiondetails[]
-  products          products?           @relation(fields: [productId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "productionorders_ibfk_1")
+  id                                 Int                                  @id @default(autoincrement())
+  code                               String?                              @unique(map: "code") @db.VarChar(255)
+  productId                          Int?
+  total_powder_kg                    Float?                               @default(0)
+  total_sachets                      Int?                                 @default(0)
+  mfg_date                           String?                              @db.Text
+  exp_date                           String?                              @db.Text
+  status                             String?                              @default("DRAFT") @db.VarChar(50)
+  loss_percent                       Float?                               @default(0)
+  createdAt                          String?                              @db.Text
+  updatedAt                          String?                              @db.Text
+  target_sachets                     Int?                                 @default(0)
+  order_date                         String?                              @db.Text
+  batch_number                       String?                              @db.Text
+  warehouseId                        Int?
+  version                            Int                                  @default(1)
+  sourceModule                       String?                              @db.VarChar(50)
+  createdBy                          Int?
+  startedAt                          DateTime?                            @db.DateTime(3)
+  startedBy                          Int?
+  completedAt                        DateTime?                            @db.DateTime(3)
+  completedBy                        Int?
+  cancelledAt                        DateTime?                            @db.DateTime(3)
+  cancelledBy                        Int?
+  cancelReason                       String?                              @db.VarChar(500)
+  productiondetails                  productiondetails[]
+  production_order_materials_v1      production_order_materials_v1[]
+  production_order_document_links_v1 production_order_document_links_v1[]
+  products                           products?                            @relation(fields: [productId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "productionorders_ibfk_1")
 
   @@index([productId], map: "productId")
+  @@index([warehouseId], map: "production_warehouse_idx")
+  @@index([sourceModule, status, completedAt])
+}
+
+model production_order_materials_v1 {
+  id                BigInt            @id @default(autoincrement())
+  orderId           Int
+  packagingId       Int
+  plannedQuantity   Decimal           @db.Decimal(18, 4)
+  actualQuantity    Decimal           @default(0) @db.Decimal(18, 4)
+  unitCost          Decimal           @default(0) @db.Decimal(18, 4)
+  totalValue        Decimal           @default(0) @db.Decimal(18, 2)
+  createdAt         DateTime          @default(now()) @db.DateTime(3)
+  productionorders  productionorders  @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  productpackagings productpackagings @relation(fields: [packagingId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([orderId, packagingId])
+  @@index([packagingId])
+}
+
+model production_order_document_links_v1 {
+  id               BigInt           @id @default(autoincrement())
+  orderId          Int
+  linkType         String           @db.VarChar(50)
+  linkedId         BigInt
+  linkedCode       String?          @db.VarChar(255)
+  createdAt        DateTime         @default(now()) @db.DateTime(3)
+  productionorders productionorders @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@unique([orderId, linkType, linkedId])
+  @@index([orderId, linkType])
 }
 
 model productpackagings {
-  id                                                               Int                           @id @default(autoincrement())
+  id                                                               Int                             @id @default(autoincrement())
   productId                                                        Int?
-  name                                                             String                        @db.Text
-  sku                                                              String?                       @db.VarChar(255)
-  unit                                                             String?                       @default("Gói") @db.VarChar(50)
-  packCount                                                        Int?                          @default(1)
-  defaultRatio                                                     Float?                        @default(0)
-  initial_stock                                                    Int?                          @default(0)
-  netWeight                                                        Float?                        @default(0)
-  shelfLifeMonths                                                  Int?                          @default(24)
-  createdAt                                                        String?                       @db.Text
-  updatedAt                                                        String?                       @db.Text
-  min_stock                                                        Int?                          @default(0)
+  name                                                             String                          @db.Text
+  sku                                                              String?                         @db.VarChar(255)
+  unit                                                             String?                         @default("Gói") @db.VarChar(50)
+  packCount                                                        Int?                            @default(1)
+  defaultRatio                                                     Float?                          @default(0)
+  initial_stock                                                    Int?                            @default(0)
+  netWeight                                                        Float?                          @default(0)
+  shelfLifeMonths                                                  Int?                            @default(24)
+  createdAt                                                        String?                         @db.Text
+  updatedAt                                                        String?                         @db.Text
+  min_stock                                                        Int?                            @default(0)
   inventorytransactiondetails                                      inventorytransactiondetails[]
-  product_boms_product_boms_productPackagingIdToproductpackagings  product_boms[]                @relation("product_boms_productPackagingIdToproductpackagings")
-  product_boms_product_boms_materialPackagingIdToproductpackagings product_boms[]                @relation("product_boms_materialPackagingIdToproductpackagings")
+  product_boms_product_boms_productPackagingIdToproductpackagings  product_boms[]                  @relation("product_boms_productPackagingIdToproductpackagings")
+  product_boms_product_boms_materialPackagingIdToproductpackagings product_boms[]                  @relation("product_boms_materialPackagingIdToproductpackagings")
   productiondetails                                                productiondetails[]
-  products                                                         products?                     @relation(fields: [productId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "productpackagings_ibfk_1")
+  products                                                         products?                       @relation(fields: [productId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "productpackagings_ibfk_1")
   productwarehouses                                                productwarehouses[]
   purchase_document_details                                        purchase_document_details[]
   sales_order_details                                              sales_order_details[]
   stocktake_details                                                stocktake_details[]
   warehouse_transfer_details                                       warehouse_transfer_details[]
+  production_order_materials_v1                                    production_order_materials_v1[]
+  assembly_bom_headers                                             assembly_bom_headers[]
+  assembly_bom_lines                                               assembly_bom_lines[]
+  assembly_orders                                                  assembly_orders[]
+  assembly_order_lines                                             assembly_order_lines[]
+  disassembly_orders                                               disassembly_orders[]
+  disassembly_order_lines                                          disassembly_order_lines[]
 
   @@index([productId], map: "productId")
 }
@@ -290,6 +343,7 @@ model inventory_ledger {
   @@index([packagingId, warehouseId, occurredAt])
   @@index([sourceType, sourceId])
   @@index([reversalOfId])
+  @@index([warehouseId, packagingId, occurredAt, direction])
 }
 
 model inventory_ledger_opening_balances {
@@ -479,6 +533,7 @@ model sales_orders {
   @@index([createdBy], map: "createdBy")
   @@index([customerId], map: "customerId")
   @@index([warehouseId], map: "warehouseId")
+  @@index([status, orderDate(length: 10), warehouseId])
 }
 
 model sales_document_links_v1 {
@@ -759,4 +814,180 @@ model warehouses {
   warehouse_transfers_warehouse_transfers_fromWarehouseIdTowarehouses warehouse_transfers[]       @relation("warehouse_transfers_fromWarehouseIdTowarehouses")
   warehouse_transfers_warehouse_transfers_toWarehouseIdTowarehouses   warehouse_transfers[]       @relation("warehouse_transfers_toWarehouseIdTowarehouses")
   stocktakes                                                          stocktakes[]
+  assembly_orders_components                                          assembly_orders[]           @relation("assembly_component_warehouse")
+  assembly_orders_outputs                                             assembly_orders[]           @relation("assembly_output_warehouse")
+  disassembly_orders_sources                                          disassembly_orders[]        @relation("disassembly_source_warehouse")
+  disassembly_orders_recoveries                                       disassembly_orders[]        @relation("disassembly_recovery_warehouse")
+}
+
+model assembly_bom_headers {
+  id                 Int                  @id @default(autoincrement())
+  code               String               @unique @db.VarChar(100)
+  outputPackagingId  Int
+  version            Int                  @default(1)
+  outputQuantity     Decimal              @default(1) @db.Decimal(18, 4)
+  status             String               @default("ACTIVE") @db.VarChar(30)
+  note               String?              @db.VarChar(500)
+  createdBy          Int
+  createdAt          DateTime             @default(now()) @db.DateTime(3)
+  updatedAt          DateTime             @db.DateTime(3)
+  output             productpackagings    @relation(fields: [outputPackagingId], references: [id], onDelete: Restrict)
+  lines              assembly_bom_lines[]
+  assembly_orders    assembly_orders[]
+  disassembly_orders disassembly_orders[]
+
+  @@index([outputPackagingId, status])
+}
+
+model assembly_bom_lines {
+  id                   Int                  @id @default(autoincrement())
+  bomId                Int
+  componentPackagingId Int
+  quantity             Decimal              @db.Decimal(18, 4)
+  allocationWeight     Decimal              @default(0) @db.Decimal(18, 4)
+  note                 String?              @db.VarChar(500)
+  bom                  assembly_bom_headers @relation(fields: [bomId], references: [id], onDelete: Cascade)
+  component            productpackagings    @relation(fields: [componentPackagingId], references: [id], onDelete: Restrict)
+
+  @@unique([bomId, componentPackagingId])
+  @@index([componentPackagingId])
+}
+
+model assembly_orders {
+  id                   Int                             @id @default(autoincrement())
+  code                 String                          @unique @db.VarChar(255)
+  orderDate            DateTime                        @db.Date
+  outputPackagingId    Int
+  plannedQuantity      Decimal                         @db.Decimal(18, 4)
+  actualQuantity       Decimal                         @default(0) @db.Decimal(18, 4)
+  componentWarehouseId Int
+  outputWarehouseId    Int
+  bomId                Int
+  bomCode              String                          @db.VarChar(100)
+  bomVersion           Int
+  assemblyCost         Decimal                         @default(0) @db.Decimal(18, 2)
+  outputUnitCost       Decimal                         @default(0) @db.Decimal(18, 4)
+  outputTotalValue     Decimal                         @default(0) @db.Decimal(18, 2)
+  status               String                          @default("DRAFT") @db.VarChar(30)
+  note                 String?                         @db.VarChar(500)
+  version              Int                             @default(1)
+  sourceModule         String                          @default("ASSEMBLY_V1") @db.VarChar(50)
+  createdBy            Int
+  createdAt            DateTime                        @default(now()) @db.DateTime(3)
+  updatedAt            DateTime                        @db.DateTime(3)
+  postedAt             DateTime?                       @db.DateTime(3)
+  postedBy             Int?
+  cancelledAt          DateTime?                       @db.DateTime(3)
+  cancelledBy          Int?
+  cancelReason         String?                         @db.VarChar(500)
+  output               productpackagings               @relation(fields: [outputPackagingId], references: [id], onDelete: Restrict)
+  componentWarehouse   warehouses                      @relation("assembly_component_warehouse", fields: [componentWarehouseId], references: [id], onDelete: Restrict)
+  outputWarehouse      warehouses                      @relation("assembly_output_warehouse", fields: [outputWarehouseId], references: [id], onDelete: Restrict)
+  bom                  assembly_bom_headers            @relation(fields: [bomId], references: [id], onDelete: Restrict)
+  lines                assembly_order_lines[]
+  links                assembly_order_document_links[]
+
+  @@index([orderDate, status])
+  @@index([outputPackagingId])
+  @@index([sourceModule, status, postedAt])
+}
+
+model assembly_order_lines {
+  id                   Int               @id @default(autoincrement())
+  orderId              Int
+  componentPackagingId Int
+  plannedQuantity      Decimal           @db.Decimal(18, 4)
+  actualQuantity       Decimal           @default(0) @db.Decimal(18, 4)
+  allocationWeight     Decimal           @default(0) @db.Decimal(18, 4)
+  unitCost             Decimal           @default(0) @db.Decimal(18, 4)
+  totalValue           Decimal           @default(0) @db.Decimal(18, 2)
+  note                 String?           @db.VarChar(500)
+  order                assembly_orders   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  component            productpackagings @relation(fields: [componentPackagingId], references: [id], onDelete: Restrict)
+
+  @@unique([orderId, componentPackagingId])
+  @@index([componentPackagingId])
+}
+
+model assembly_order_document_links {
+  id         BigInt          @id @default(autoincrement())
+  orderId    Int
+  linkType   String          @db.VarChar(50)
+  linkedId   BigInt
+  linkedCode String?         @db.VarChar(255)
+  createdAt  DateTime        @default(now()) @db.DateTime(3)
+  order      assembly_orders @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, linkType, linkedId])
+  @@index([orderId, linkType])
+}
+
+model disassembly_orders {
+  id                  Int                                @id @default(autoincrement())
+  code                String                             @unique @db.VarChar(255)
+  orderDate           DateTime                           @db.Date
+  sourcePackagingId   Int
+  plannedQuantity     Decimal                            @db.Decimal(18, 4)
+  actualQuantity      Decimal                            @default(0) @db.Decimal(18, 4)
+  sourceWarehouseId   Int
+  recoveryWarehouseId Int
+  bomId               Int
+  bomCode             String                             @db.VarChar(100)
+  bomVersion          Int
+  sourceUnitCost      Decimal                            @default(0) @db.Decimal(18, 4)
+  sourceTotalValue    Decimal                            @default(0) @db.Decimal(18, 2)
+  lossValue           Decimal                            @default(0) @db.Decimal(18, 2)
+  status              String                             @default("DRAFT") @db.VarChar(30)
+  note                String?                            @db.VarChar(500)
+  version             Int                                @default(1)
+  sourceModule        String                             @default("DISASSEMBLY_V1") @db.VarChar(50)
+  createdBy           Int
+  createdAt           DateTime                           @default(now()) @db.DateTime(3)
+  updatedAt           DateTime                           @db.DateTime(3)
+  postedAt            DateTime?                          @db.DateTime(3)
+  postedBy            Int?
+  cancelledAt         DateTime?                          @db.DateTime(3)
+  cancelledBy         Int?
+  cancelReason        String?                            @db.VarChar(500)
+  source              productpackagings                  @relation(fields: [sourcePackagingId], references: [id], onDelete: Restrict)
+  sourceWarehouse     warehouses                         @relation("disassembly_source_warehouse", fields: [sourceWarehouseId], references: [id], onDelete: Restrict)
+  recoveryWarehouse   warehouses                         @relation("disassembly_recovery_warehouse", fields: [recoveryWarehouseId], references: [id], onDelete: Restrict)
+  bom                 assembly_bom_headers               @relation(fields: [bomId], references: [id], onDelete: Restrict)
+  lines               disassembly_order_lines[]
+  links               disassembly_order_document_links[]
+
+  @@index([orderDate, status])
+  @@index([sourcePackagingId])
+  @@index([sourceModule, status, postedAt])
+}
+
+model disassembly_order_lines {
+  id                   Int                @id @default(autoincrement())
+  orderId              Int
+  componentPackagingId Int
+  plannedQuantity      Decimal            @db.Decimal(18, 4)
+  actualQuantity       Decimal            @default(0) @db.Decimal(18, 4)
+  allocationWeight     Decimal            @default(0) @db.Decimal(18, 4)
+  unitCost             Decimal            @default(0) @db.Decimal(18, 4)
+  totalValue           Decimal            @default(0) @db.Decimal(18, 2)
+  lossQuantity         Decimal            @default(0) @db.Decimal(18, 4)
+  note                 String?            @db.VarChar(500)
+  order                disassembly_orders @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  component            productpackagings  @relation(fields: [componentPackagingId], references: [id], onDelete: Restrict)
+
+  @@unique([orderId, componentPackagingId])
+  @@index([componentPackagingId])
+}
+
+model disassembly_order_document_links {
+  id         BigInt             @id @default(autoincrement())
+  orderId    Int
+  linkType   String             @db.VarChar(50)
+  linkedId   BigInt
+  linkedCode String?            @db.VarChar(255)
+  createdAt  DateTime           @default(now()) @db.DateTime(3)
+  order      disassembly_orders @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, linkType, linkedId])
+  @@index([orderId, linkType])
 }

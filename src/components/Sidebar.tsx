@@ -346,6 +346,16 @@ export default function Sidebar({
             </button>
           )}
 
+          {canAccess(["ADMIN", "P_MANAGER", "QD"]) && (
+            <button
+              onClick={() => handleNavClick("assembly")}
+              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-[14px] font-bold transition-all duration-200 ${activeItem === "assembly" ? "bg-indigo-50 text-indigo-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"}`}
+            >
+              <ArrowRightLeft size={20} className={activeItem === "assembly" ? "text-indigo-600" : "opacity-60"}/>
+              Lắp ráp & Tháo dỡ
+            </button>
+          )}
+
           {canAccess(["ADMIN", "W_MANAGER", "P_MANAGER"]) && (
             <div>
               <button
@@ -384,7 +394,7 @@ export default function Sidebar({
                     onClick={() => handleNavClick("inventory-report")}
                     className={`w-full text-left px-3 py-2.5 rounded-xl text-[13px] font-bold transition-colors ${activeItem === "inventory-report" ? "text-indigo-700 bg-indigo-50/50" : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"}`}
                   >
-                    Tồn Kho
+                    Báo cáo hợp nhất V1
                   </button>
                   {/* <button
                     onClick={() => handleNavClick("sales-report")}
@@ -392,12 +402,6 @@ export default function Sidebar({
                   >
                     Doanh số tài xế
                   </button> */}
-                  <button
-                    onClick={() => handleNavClick("production-report")}
-                    className={`w-full text-left px-3 py-2.5 rounded-xl text-[13px] font-bold transition-colors ${activeItem === "production-report" ? "text-indigo-700 bg-indigo-50/50" : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"}`}
-                  >
-                    Sản Xuất
-                  </button>
                 </div>
               </div>
             </div>
