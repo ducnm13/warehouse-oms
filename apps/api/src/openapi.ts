@@ -99,6 +99,7 @@ export const openApiDocument = {
     "/assembly/disassembly-orders/{id}/post": { post: { tags: ["Assembly"], summary: "Xuất nguồn và nhập hàng thu hồi", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã ghi sổ" } } } },
     "/assembly/disassembly-orders/{id}/cancel": { post: { tags: ["Assembly"], summary: "Hủy và đảo tháo dỡ", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã hủy" } } } },
     "/reports/inventory-summary": { get: { tags: ["Reporting"], summary: "Báo cáo tổng hợp tồn kho từ ledger", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } } },
+    "/reports/export-authorization": { get: { tags: ["Reporting"], summary: "Kiểm tra quyền xuất báo cáo phía client", security: [{ bearerAuth: [] }], responses: { "200": { description: "Có quyền report.export" }, "403": { description: "Không có quyền report.export" } } } },
     "/reports/item-ledger": { get: { tags: ["Reporting"], summary: "Sổ chi tiết vật tư với số dư chạy", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } } },
     "/reports/sales-profit": { get: { tags: ["Reporting"], summary: "Doanh thu, giá vốn và lợi nhuận gộp", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } } },
     "/reports/operations": { get: { tags: ["Reporting"], summary: "Sản xuất, lắp ráp và tháo dỡ theo lệnh", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } } },

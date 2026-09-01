@@ -53,6 +53,7 @@ Query sử dụng `from`, `to`, warehouse và các filter theo từng báo cáo.
 ## RBAC và UI
 
 - API yêu cầu `report.view`.
+- UI chỉ hiển thị export khi probe `GET /api/v1/reports/export-authorization` được `report.export` cho phép.
 - UI dùng TanStack Query và thay thế hai entry báo cáo legacy bằng trang Báo cáo hợp nhất V1.
 - Export Excel dùng đúng rows sau filter hiện tại và các thư viện `exceljs/file-saver` đã có trong dự án.
 
@@ -60,9 +61,9 @@ Query sử dụng `from`, `to`, warehouse và các filter theo từng báo cáo.
 
 `014_reporting_consolidation` bổ sung reporting indexes cho inventory ledger, sales, production, assembly và disassembly. Không tạo projection table mới. Migration đã applied.
 
-## Integration verification ngày 31/08/2026
+## Integration verification ngày 01/09/2026
 
-Đã chạy 13 assertions qua HTTP API và MariaDB thật:
+Đã chạy 15 assertions qua HTTP API và MariaDB thật:
 
 - Endpoint yêu cầu authentication.
 - Date range lấy inclusive movement trong ngày.
@@ -71,6 +72,8 @@ Query sử dụng `from`, `to`, warehouse và các filter theo từng báo cáo.
 - Projection difference bằng 0.
 - Value coverage cảnh báo đúng khi có legacy opening quantity.
 - Item ledger có hai movement và running quantity 15 → 13.
+- Item opening và closing đúng ở cả hai nhánh có/không có warehouse filter.
+- Export authorization probe cho phép role có `report.export`.
 - Sales gross 200, discount 20, net revenue 180.
 - COGS 120, gross profit 60, margin 33,33%.
 - Operations filter trả đúng Production completed và input/output value 50.
