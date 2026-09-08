@@ -49,8 +49,13 @@ model customers {
   createdAt         String?             @db.Text
   updatedAt         String?             @db.Text
   code              String?             @unique(map: "code") @db.VarChar(100)
+  groupId           Int?
   customer_payments customer_payments[]
   sales_orders      sales_orders[]
+  sales_returns     sales_returns[]
+  customerGroup     customer_groups?    @relation(fields: [groupId], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "customers_group_fk")
+
+  @@index([groupId], map: "customers_group_idx")
 }
 
 model inventorytransactiondetails {
@@ -63,11 +68,17 @@ model inventorytransactiondetails {
   note                  String?                @db.Text
   unitCost              Decimal                @default(0) @db.Decimal(18, 4)
   totalValue            Decimal                @default(0) @db.Decimal(18, 2)
+  batchNumber           String?                @db.VarChar(100)
+  expiryDate            String?                @db.Text
+  productionOrderId     Int?
+  outputProductId       Int?
   inventorytransactions inventorytransactions? @relation(fields: [transactionId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "inventorytransactiondetails_ibfk_1")
   productpackagings     productpackagings?     @relation(fields: [packagingId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "inventorytransactiondetails_ibfk_2")
 
   @@index([packagingId], map: "packagingId")
   @@index([transactionId], map: "transactionId")
+  @@index([packagingId, batchNumber, expiryDate(length: 10)], map: "inventory_detail_batch_expiry_idx")
+  @@index([productionOrderId], map: "inventory_detail_production_idx")
 }
 
 model inventorytransactions {
@@ -98,6 +109,8 @@ model inventorytransactions {
   warehouses                  warehouses?                   @relation(fields: [warehouseId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "inventorytransactions_ibfk_1")
   users                       users?                        @relation(fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "inventorytransactions_ibfk_2")
   purchase_inventory_links    purchase_inventory_links[]
+  inventoryLinksFrom          inventory_document_links_v1[] @relation("inventory_link_source")
+  inventoryLinksTo            inventory_document_links_v1[] @relation("inventory_link_target")
 
   @@index([createdBy], map: "createdBy")
   @@index([warehouseId], map: "warehouseId")
@@ -164,6 +177,7 @@ model productionorders {
   production_order_materials_v1      production_order_materials_v1[]
   production_order_document_links_v1 production_order_document_links_v1[]
   products                           products?                            @relation(fields: [productId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "productionorders_ibfk_1")
+  inventoryLotBalances               inventory_lot_balances[]
 
   @@index([productId], map: "productId")
   @@index([warehouseId], map: "production_warehouse_idx")
@@ -213,6 +227,10 @@ model productpackagings {
   createdAt                                                        String?                         @db.Text
   updatedAt                                                        String?                         @db.Text
   min_stock                                                        Int?                            @default(0)
+  warehouseId                                                      Int?
+  barcode                                                          String?                         @db.VarChar(100)
+  isActive                                                         Int                             @default(1)
+  deletedAt                                                        String?                         @db.Text
   inventorytransactiondetails                                      inventorytransactiondetails[]
   product_boms_product_boms_productPackagingIdToproductpackagings  product_boms[]                  @relation("product_boms_productPackagingIdToproductpackagings")
   product_boms_product_boms_materialPackagingIdToproductpackagings product_boms[]                  @relation("product_boms_materialPackagingIdToproductpackagings")
@@ -230,22 +248,47 @@ model productpackagings {
   assembly_order_lines                                             assembly_order_lines[]
   disassembly_orders                                               disassembly_orders[]
   disassembly_order_lines                                          disassembly_order_lines[]
+  promotion_conditions                                             promotion_conditions[]
+  promotion_rewards                                                promotion_rewards[]
+  promotion_usage_logs                                             promotion_usage_logs[]
+  sales_return_lines                                               sales_return_lines[]
+  warehouse                                                        warehouses?                     @relation(fields: [warehouseId], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "productpackagings_ibfk_3")
+  prices                                                           product_prices[]
+  barcodes                                                         item_barcodes[]
+  openingInventoryLines                                            opening_inventory_lines[]
+  inventoryLotBalances                                             inventory_lot_balances[]
 
   @@index([productId], map: "productId")
+  @@index([warehouseId], map: "product_packaging_warehouse_idx")
+  @@index([productId, isActive], map: "product_packaging_active_idx")
 }
 
 model products {
-  id                Int                 @id @default(autoincrement())
-  sku               String?             @db.VarChar(255)
-  name              String              @db.Text
-  netWeight         Float?              @default(0)
-  shelfLifeMonths   Int?                @default(24)
-  isActive          Int?                @default(1)
-  createdAt         String?             @db.Text
-  updatedAt         String?             @db.Text
-  category          String?             @default("PRODUCT") @db.VarChar(50)
-  productionorders  productionorders[]
-  productpackagings productpackagings[]
+  id                  Int                      @id @default(autoincrement())
+  sku                 String?                  @db.VarChar(255)
+  name                String                   @db.Text
+  netWeight           Float?                   @default(0)
+  shelfLifeMonths     Int?                     @default(24)
+  isActive            Int?                     @default(1)
+  createdAt           String?                  @db.Text
+  updatedAt           String?                  @db.Text
+  category            String?                  @default("PRODUCT") @db.VarChar(50)
+  description         String?                  @db.Text
+  primaryUnit         String                   @default("Cái") @db.VarChar(50)
+  defaultWarehouseId  Int?
+  vatRate             Decimal                  @default(0) @db.Decimal(5, 2)
+  canManageInventory  Int                      @default(1)
+  canBePurchased      Int                      @default(1)
+  canBeSold           Int                      @default(1)
+  canBeProduced       Int                      @default(0)
+  canBeBomComponent   Int                      @default(1)
+  productionorders    productionorders[]
+  productpackagings   productpackagings[]
+  defaultWarehouse    warehouses?              @relation("product_default_warehouse", fields: [defaultWarehouseId], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "products_default_warehouse_fk")
+  inventoryLotOutputs inventory_lot_balances[]
+
+  @@index([category, isActive], map: "products_category_active_idx")
+  @@index([defaultWarehouseId], map: "products_default_warehouse_idx")
 }
 
 model productwarehouses {
@@ -471,21 +514,29 @@ model purchase_inventory_links {
 }
 
 model sales_order_details {
-  id                Int               @id @default(autoincrement())
-  orderId           Int
-  packagingId       Int
-  quantity          Float
-  unitPrice         Float?            @default(0)
-  discountRate      Float?            @default(0)
-  unitCost          Decimal           @default(0) @db.Decimal(18, 4)
-  costAmount        Decimal           @default(0) @db.Decimal(18, 2)
-  lineTotal         Float?            @default(0)
-  note              String?           @db.Text
-  sales_orders      sales_orders      @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "sales_order_details_ibfk_1")
-  productpackagings productpackagings @relation(fields: [packagingId], references: [id], onUpdate: Restrict, map: "sales_order_details_ibfk_2")
+  id                   Int                    @id @default(autoincrement())
+  orderId              Int
+  packagingId          Int
+  quantity             Float
+  unitPrice            Float?                 @default(0)
+  discountRate         Float?                 @default(0)
+  unitCost             Decimal                @default(0) @db.Decimal(18, 4)
+  costAmount           Decimal                @default(0) @db.Decimal(18, 2)
+  lineTotal            Float?                 @default(0)
+  note                 String?                @db.Text
+  lineType             String                 @default("SALE") @db.VarChar(30)
+  promotionProgramId   Int?
+  promotionCode        String?                @db.VarChar(100)
+  promotionName        String?                @db.VarChar(255)
+  sales_orders         sales_orders           @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "sales_order_details_ibfk_1")
+  productpackagings    productpackagings      @relation(fields: [packagingId], references: [id], onUpdate: Restrict, map: "sales_order_details_ibfk_2")
+  promotion_programs   promotion_programs?    @relation(fields: [promotionProgramId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "sales_line_promotion_fk")
+  promotion_usage_logs promotion_usage_logs[]
+  sales_return_lines   sales_return_lines[]
 
   @@index([orderId], map: "orderId")
   @@index([packagingId], map: "packagingId")
+  @@index([promotionProgramId, lineType], map: "sales_line_promotion_idx")
 }
 
 model sales_orders {
@@ -524,6 +575,8 @@ model sales_orders {
   customer_payments                    customer_payments[]
   sales_order_details                  sales_order_details[]
   sales_document_links_v1              sales_document_links_v1[]
+  promotion_usage_logs                 promotion_usage_logs[]
+  sales_returns                        sales_returns[]
   customers                            customers                 @relation(fields: [customerId], references: [id], onUpdate: Restrict, map: "sales_orders_ibfk_1")
   warehouses                           warehouses                @relation(fields: [warehouseId], references: [id], onUpdate: Restrict, map: "sales_orders_ibfk_2")
   users_sales_orders_createdByTousers  users                     @relation("sales_orders_createdByTousers", fields: [createdBy], references: [id], onUpdate: Restrict, map: "sales_orders_ibfk_3")
@@ -534,6 +587,78 @@ model sales_orders {
   @@index([customerId], map: "customerId")
   @@index([warehouseId], map: "warehouseId")
   @@index([status, orderDate(length: 10), warehouseId])
+}
+
+model promotion_programs {
+  id                  Int                    @id @default(autoincrement())
+  code                String                 @unique @db.VarChar(100)
+  name                String                 @db.VarChar(255)
+  startDate           DateTime               @db.Date
+  endDate             DateTime               @db.Date
+  customerScope       String                 @default("ALL") @db.VarChar(30)
+  customerGroup       String?                @db.VarChar(255)
+  priority            Int                    @default(0)
+  status              String                 @default("DRAFT") @db.VarChar(30)
+  version             Int                    @default(1)
+  note                String?                @db.VarChar(500)
+  createdBy           Int
+  createdAt           DateTime               @default(now()) @db.DateTime(3)
+  updatedAt           DateTime               @default(now()) @db.DateTime(3)
+  deletedAt           DateTime?              @db.DateTime(3)
+  users               users                  @relation(fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "promotion_program_creator_fk")
+  conditions          promotion_conditions[]
+  rewards             promotion_rewards[]
+  sales_order_details sales_order_details[]
+  usageLogs           promotion_usage_logs[]
+
+  @@index([status, startDate, endDate, priority], map: "promotion_effective_idx")
+}
+
+model promotion_conditions {
+  id              Int                @id @default(autoincrement())
+  programId       Int
+  conditionType   String             @default("BUY_QUANTITY") @db.VarChar(30)
+  packagingId     Int
+  minimumQuantity Decimal            @db.Decimal(18, 4)
+  program         promotion_programs @relation(fields: [programId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "promotion_condition_program_fk")
+  packaging       productpackagings  @relation(fields: [packagingId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "promotion_condition_item_fk")
+
+  @@index([programId], map: "promotion_condition_program_idx")
+  @@index([packagingId], map: "promotion_condition_item_idx")
+}
+
+model promotion_rewards {
+  id             Int                @id @default(autoincrement())
+  programId      Int
+  rewardType     String             @default("FREE_ITEM") @db.VarChar(30)
+  packagingId    Int
+  rewardQuantity Decimal            @db.Decimal(18, 4)
+  warehouseId    Int?
+  program        promotion_programs @relation(fields: [programId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "promotion_reward_program_fk")
+  packaging      productpackagings  @relation(fields: [packagingId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "promotion_reward_item_fk")
+  warehouse      warehouses?        @relation(fields: [warehouseId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "promotion_reward_warehouse_fk")
+
+  @@index([programId], map: "promotion_reward_program_idx")
+  @@index([packagingId], map: "promotion_reward_item_idx")
+}
+
+model promotion_usage_logs {
+  id                BigInt              @id @default(autoincrement())
+  programId         Int
+  salesOrderId      Int
+  salesOrderLineId  Int
+  rewardPackagingId Int
+  rewardQuantity    Decimal             @db.Decimal(18, 4)
+  programCode       String              @db.VarChar(100)
+  programName       String              @db.VarChar(255)
+  createdAt         DateTime            @default(now()) @db.DateTime(3)
+  program           promotion_programs  @relation(fields: [programId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "promotion_usage_program_fk")
+  salesOrder        sales_orders        @relation(fields: [salesOrderId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "promotion_usage_order_fk")
+  salesOrderLine    sales_order_details @relation(fields: [salesOrderLineId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "promotion_usage_line_fk")
+  rewardPackaging   productpackagings   @relation(fields: [rewardPackagingId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "promotion_usage_reward_item_fk")
+
+  @@unique([salesOrderId, salesOrderLineId], map: "promotion_usage_line_unique")
+  @@index([programId, createdAt], map: "promotion_usage_program_idx")
 }
 
 model sales_document_links_v1 {
@@ -567,6 +692,76 @@ model receivable_transactions {
   @@index([customerId, occurredAt])
   @@index([sourceType, sourceId])
   @@index([reversalOfId])
+}
+
+model sales_returns {
+  id                   Int                           @id @default(autoincrement())
+  code                 String                        @unique @db.VarChar(255)
+  originalSalesOrderId Int
+  customerId           Int
+  warehouseId          Int
+  returnDate           DateTime                      @db.Date
+  status               String                        @default("DRAFT") @db.VarChar(30)
+  reason               String                        @db.VarChar(500)
+  settlementType       String                        @default("REDUCE_DEBT") @db.VarChar(30)
+  subtotal             Decimal                       @default(0) @db.Decimal(18, 2)
+  taxAmount            Decimal                       @default(0) @db.Decimal(18, 2)
+  totalAmount          Decimal                       @default(0) @db.Decimal(18, 2)
+  costAmount           Decimal                       @default(0) @db.Decimal(18, 2)
+  version              Int                           @default(1)
+  sourceModule         String                        @default("SALES_RETURN_V1") @db.VarChar(50)
+  createdBy            Int
+  createdAt            DateTime                      @default(now()) @db.DateTime(3)
+  updatedAt            DateTime                      @default(now()) @db.DateTime(3)
+  postedAt             DateTime?                     @db.DateTime(3)
+  postedBy             Int?
+  cancelledAt          DateTime?                     @db.DateTime(3)
+  cancelledBy          Int?
+  cancelReason         String?                       @db.VarChar(500)
+  originalSalesOrder   sales_orders                  @relation(fields: [originalSalesOrderId], references: [id], onDelete: Restrict, map: "sales_return_order_fk")
+  customer             customers                     @relation(fields: [customerId], references: [id], onDelete: Restrict, map: "sales_return_customer_fk")
+  warehouse            warehouses                    @relation(fields: [warehouseId], references: [id], onDelete: Restrict, map: "sales_return_warehouse_fk")
+  creator              users                         @relation(fields: [createdBy], references: [id], onDelete: Restrict, map: "sales_return_creator_fk")
+  lines                sales_return_lines[]
+  links                sales_return_document_links[]
+
+  @@index([originalSalesOrderId, status], map: "sales_return_order_status_idx")
+  @@index([returnDate, warehouseId, status], map: "sales_return_date_warehouse_idx")
+}
+
+model sales_return_lines {
+  id                       Int                 @id @default(autoincrement())
+  salesReturnId            Int
+  originalSalesOrderLineId Int
+  packagingId              Int
+  lineType                 String              @default("SALE") @db.VarChar(30)
+  quantity                 Decimal             @db.Decimal(18, 4)
+  unitPrice                Decimal             @default(0) @db.Decimal(18, 4)
+  lineTotal                Decimal             @default(0) @db.Decimal(18, 2)
+  taxAmount                Decimal             @default(0) @db.Decimal(18, 2)
+  unitCost                 Decimal             @default(0) @db.Decimal(18, 4)
+  costAmount               Decimal             @default(0) @db.Decimal(18, 2)
+  note                     String?             @db.VarChar(500)
+  salesReturn              sales_returns       @relation(fields: [salesReturnId], references: [id], onDelete: Cascade, map: "sales_return_line_header_fk")
+  originalSalesOrderLine   sales_order_details @relation(fields: [originalSalesOrderLineId], references: [id], onDelete: Restrict, map: "sales_return_line_original_fk")
+  packaging                productpackagings   @relation(fields: [packagingId], references: [id], onDelete: Restrict, map: "sales_return_line_item_fk")
+
+  @@unique([salesReturnId, originalSalesOrderLineId], map: "sales_return_line_original_unique")
+  @@index([originalSalesOrderLineId], map: "sales_return_line_original_idx")
+  @@index([packagingId], map: "sales_return_line_item_idx")
+}
+
+model sales_return_document_links {
+  id            BigInt        @id @default(autoincrement())
+  salesReturnId Int
+  linkType      String        @db.VarChar(50)
+  linkedId      BigInt
+  linkedCode    String?       @db.VarChar(255)
+  createdAt     DateTime      @default(now()) @db.DateTime(3)
+  salesReturn   sales_returns @relation(fields: [salesReturnId], references: [id], onDelete: Cascade, map: "sales_return_link_header_fk")
+
+  @@unique([salesReturnId, linkType, linkedId], map: "sales_return_link_unique")
+  @@index([salesReturnId, linkType], map: "sales_return_link_type_idx")
 }
 
 model stocktake_details {
@@ -658,22 +853,28 @@ model suppliers {
 }
 
 model users {
-  id                                          Int                     @id @default(autoincrement())
-  username                                    String?                 @unique(map: "username") @db.VarChar(255)
-  password                                    String?                 @db.Text
-  role                                        String?                 @db.Text
-  fullName                                    String?                 @db.Text
+  id                                          Int                           @id @default(autoincrement())
+  username                                    String?                       @unique(map: "username") @db.VarChar(255)
+  password                                    String?                       @db.Text
+  role                                        String?                       @db.Text
+  fullName                                    String?                       @db.Text
   audit_logs                                  audit_logs[]
   customer_payments                           customer_payments[]
   inventorytransactions                       inventorytransactions[]
   purchase_documents                          purchase_documents[]
-  sales_orders_sales_orders_createdByTousers  sales_orders[]          @relation("sales_orders_createdByTousers")
-  sales_orders_sales_orders_approvedByTousers sales_orders[]          @relation("sales_orders_approvedByTousers")
+  sales_orders_sales_orders_createdByTousers  sales_orders[]                @relation("sales_orders_createdByTousers")
+  sales_orders_sales_orders_approvedByTousers sales_orders[]                @relation("sales_orders_approvedByTousers")
   stocktakes                                  stocktakes[]
   supplier_payments                           supplier_payments[]
   warehouse_transfers                         warehouse_transfers[]
   refresh_tokens                              refresh_tokens[]
   user_roles                                  user_roles[]
+  promotion_programs                          promotion_programs[]
+  sales_returns                               sales_returns[]
+  companyProfilesUpdated                      company_profiles[]            @relation("company_profile_updater")
+  companyPrintSettingsUpdated                 company_print_settings[]      @relation("company_print_updater")
+  employees                                   employees[]
+  openingInventoryDocuments                   opening_inventory_documents[]
 }
 
 model refresh_tokens {
@@ -800,24 +1001,193 @@ model warehouse_transfer_document_links_v1 {
 }
 
 model warehouses {
-  id                                                                  Int                         @id @default(autoincrement())
-  name                                                                String                      @db.Text
-  type                                                                String?                     @default("MAIN") @db.VarChar(50)
-  location                                                            String?                     @db.Text
-  createdAt                                                           String?                     @db.Text
-  updatedAt                                                           String?                     @db.Text
+  id                                                                  Int                           @id @default(autoincrement())
+  name                                                                String                        @db.Text
+  type                                                                String?                       @default("MAIN") @db.VarChar(50)
+  location                                                            String?                       @db.Text
+  createdAt                                                           String?                       @db.Text
+  updatedAt                                                           String?                       @db.Text
   inventorytransactions                                               inventorytransactions[]
   productwarehouses                                                   productwarehouses[]
   purchase_document_details                                           purchase_document_details[]
   purchase_inventory_links                                            purchase_inventory_links[]
   sales_orders                                                        sales_orders[]
-  warehouse_transfers_warehouse_transfers_fromWarehouseIdTowarehouses warehouse_transfers[]       @relation("warehouse_transfers_fromWarehouseIdTowarehouses")
-  warehouse_transfers_warehouse_transfers_toWarehouseIdTowarehouses   warehouse_transfers[]       @relation("warehouse_transfers_toWarehouseIdTowarehouses")
+  warehouse_transfers_warehouse_transfers_fromWarehouseIdTowarehouses warehouse_transfers[]         @relation("warehouse_transfers_fromWarehouseIdTowarehouses")
+  warehouse_transfers_warehouse_transfers_toWarehouseIdTowarehouses   warehouse_transfers[]         @relation("warehouse_transfers_toWarehouseIdTowarehouses")
   stocktakes                                                          stocktakes[]
-  assembly_orders_components                                          assembly_orders[]           @relation("assembly_component_warehouse")
-  assembly_orders_outputs                                             assembly_orders[]           @relation("assembly_output_warehouse")
-  disassembly_orders_sources                                          disassembly_orders[]        @relation("disassembly_source_warehouse")
-  disassembly_orders_recoveries                                       disassembly_orders[]        @relation("disassembly_recovery_warehouse")
+  assembly_orders_components                                          assembly_orders[]             @relation("assembly_component_warehouse")
+  assembly_orders_outputs                                             assembly_orders[]             @relation("assembly_output_warehouse")
+  disassembly_orders_sources                                          disassembly_orders[]          @relation("disassembly_source_warehouse")
+  disassembly_orders_recoveries                                       disassembly_orders[]          @relation("disassembly_recovery_warehouse")
+  promotion_rewards                                                   promotion_rewards[]
+  sales_returns                                                       sales_returns[]
+  defaultProducts                                                     products[]                    @relation("product_default_warehouse")
+  defaultPackagings                                                   productpackagings[]
+  openingInventoryDocuments                                           opening_inventory_documents[]
+  inventoryLotBalances                                                inventory_lot_balances[]
+}
+
+model product_prices {
+  id          Int               @id @default(autoincrement())
+  packagingId Int
+  priceType   String            @db.VarChar(20)
+  price       Decimal           @default(0) @db.Decimal(18, 4)
+  currency    String            @default("VND") @db.VarChar(10)
+  validFrom   String?           @db.Text
+  validTo     String?           @db.Text
+  isActive    Int               @default(1)
+  packaging   productpackagings @relation(fields: [packagingId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@unique([packagingId, priceType], map: "product_price_type_unique")
+}
+
+model item_barcodes {
+  id          Int               @id @default(autoincrement())
+  packagingId Int
+  barcode     String            @unique @db.VarChar(100)
+  isPrimary   Int               @default(0)
+  packaging   productpackagings @relation(fields: [packagingId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+}
+
+model company_profiles {
+  id        Int      @id @default(1)
+  logoUrl   String?  @db.LongText
+  name      String   @default("") @db.VarChar(255)
+  address   String?  @db.VarChar(1000)
+  taxCode   String?  @db.VarChar(100)
+  phone     String?  @db.VarChar(100)
+  email     String?  @db.VarChar(255)
+  website   String?  @db.VarChar(255)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+  updatedBy Int?
+  updater   users?   @relation("company_profile_updater", fields: [updatedBy], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "company_profile_updater_fk")
+}
+
+model company_signatures {
+  id            Int      @id @default(autoincrement())
+  code          String   @unique @db.VarChar(50)
+  positionTitle String   @db.VarChar(255)
+  signerTitle   String   @db.VarChar(255)
+  signerName    String?  @db.VarChar(255)
+  displayOrder  Int      @default(0)
+  isActive      Int      @default(1)
+  updatedAt     DateTime @updatedAt @db.DateTime(3)
+}
+
+model company_print_settings {
+  id                       Int      @id @default(1)
+  printSignerNames         Boolean  @default(false)
+  preparerFromLoggedInUser Boolean  @default(true)
+  updatedAt                DateTime @updatedAt @db.DateTime(3)
+  updatedBy                Int?
+  updater                  users?   @relation("company_print_updater", fields: [updatedBy], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "company_print_updater_fk")
+}
+
+model employees {
+  id        Int       @id @default(autoincrement())
+  code      String    @unique @db.VarChar(100)
+  fullName  String    @db.VarChar(255)
+  jobTitle  String?   @db.VarChar(255)
+  status    String    @default("ACTIVE") @db.VarChar(30)
+  workUnit  String?   @db.VarChar(255)
+  userId    Int?      @unique
+  createdAt DateTime  @default(now()) @db.DateTime(3)
+  updatedAt DateTime  @updatedAt @db.DateTime(3)
+  deletedAt DateTime? @db.DateTime(3)
+  user      users?    @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "employee_user_fk")
+
+  @@index([status, workUnit], map: "employees_status_unit_idx")
+}
+
+model customer_groups {
+  id           Int               @id @default(autoincrement())
+  code         String            @unique @db.VarChar(100)
+  name         String            @db.VarChar(255)
+  parentId     Int?
+  isActive     Int               @default(1)
+  displayOrder Int               @default(0)
+  createdAt    DateTime          @default(now()) @db.DateTime(3)
+  updatedAt    DateTime          @updatedAt @db.DateTime(3)
+  parent       customer_groups?  @relation("customer_group_tree", fields: [parentId], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "customer_group_parent_fk")
+  children     customer_groups[] @relation("customer_group_tree")
+  customers    customers[]
+
+  @@index([parentId], map: "customer_group_parent_idx")
+}
+
+model opening_inventory_documents {
+  id           Int                       @id @default(autoincrement())
+  code         String                    @unique @db.VarChar(255)
+  documentDate DateTime                  @db.Date
+  warehouseId  Int
+  status       String                    @default("DRAFT") @db.VarChar(30)
+  note         String?                   @db.VarChar(500)
+  version      Int                       @default(1)
+  createdBy    Int
+  createdAt    DateTime                  @default(now()) @db.DateTime(3)
+  updatedAt    DateTime                  @db.DateTime(3)
+  postedAt     DateTime?                 @db.DateTime(3)
+  postedBy     Int?
+  cancelledAt  DateTime?                 @db.DateTime(3)
+  cancelledBy  Int?
+  cancelReason String?                   @db.VarChar(500)
+  warehouse    warehouses                @relation(fields: [warehouseId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "opening_inventory_warehouse_fk")
+  creator      users                     @relation(fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "opening_inventory_creator_fk")
+  lines        opening_inventory_lines[]
+
+  @@index([documentDate, warehouseId, status], map: "opening_inventory_date_warehouse_idx")
+}
+
+model opening_inventory_lines {
+  id          BigInt                      @id @default(autoincrement())
+  documentId  Int
+  packagingId Int
+  quantity    Decimal                     @db.Decimal(18, 4)
+  unitCost    Decimal                     @default(0) @db.Decimal(18, 4)
+  totalValue  Decimal                     @default(0) @db.Decimal(18, 2)
+  batchNumber String?                     @db.VarChar(100)
+  expiryDate  DateTime?                   @db.Date
+  note        String?                     @db.VarChar(500)
+  document    opening_inventory_documents @relation(fields: [documentId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "opening_inventory_line_document_fk")
+  packaging   productpackagings           @relation(fields: [packagingId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "opening_inventory_line_item_fk")
+
+  @@unique([documentId, packagingId, batchNumber], map: "opening_inventory_item_batch_unique")
+  @@index([packagingId], map: "opening_inventory_item_idx")
+}
+
+model inventory_lot_balances {
+  id                BigInt            @id @default(autoincrement())
+  packagingId       Int
+  warehouseId       Int
+  batchNumber       String            @db.VarChar(100)
+  expiryDate        DateTime?         @db.Date
+  productionOrderId Int?
+  outputProductId   Int?
+  quantity          Decimal           @default(0) @db.Decimal(18, 4)
+  unitCost          Decimal           @default(0) @db.Decimal(18, 4)
+  totalValue        Decimal           @default(0) @db.Decimal(18, 2)
+  updatedAt         DateTime          @updatedAt @db.DateTime(3)
+  packaging         productpackagings @relation(fields: [packagingId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "inventory_lot_item_fk")
+  warehouse         warehouses        @relation(fields: [warehouseId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "inventory_lot_warehouse_fk")
+  productionOrder   productionorders? @relation(fields: [productionOrderId], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "inventory_lot_production_fk")
+  outputProduct     products?         @relation(fields: [outputProductId], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "inventory_lot_output_product_fk")
+
+  @@unique([packagingId, warehouseId, batchNumber], map: "inventory_lot_unique")
+  @@index([expiryDate, warehouseId], map: "inventory_lot_expiry_idx")
+  @@index([productionOrderId], map: "inventory_lot_production_idx")
+}
+
+model inventory_document_links_v1 {
+  id                  BigInt                @id @default(autoincrement())
+  sourceTransactionId Int
+  targetTransactionId Int
+  linkType            String                @db.VarChar(50)
+  createdAt           DateTime              @default(now()) @db.DateTime(3)
+  sourceTransaction   inventorytransactions @relation("inventory_link_source", fields: [sourceTransactionId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "inventory_document_link_source_fk")
+  targetTransaction   inventorytransactions @relation("inventory_link_target", fields: [targetTransactionId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "inventory_document_link_target_fk")
+
+  @@unique([sourceTransactionId, targetTransactionId, linkType], map: "inventory_document_link_unique")
+  @@index([targetTransactionId, linkType], map: "inventory_document_link_target_idx")
 }
 
 model assembly_bom_headers {

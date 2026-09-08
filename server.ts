@@ -60,17 +60,19 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: "10mb" }));
+  app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
   // Cấu hình thư mục chứa file static
   app.use("/public", express.static(path.join(process.cwd(), "public")));
 
   // Database setup - Kết nối MySQL
   const pool = mysql.createPool({
-    host: process.env.HOST,
-    user: process.env.DB_USER, // Thay bằng user MySQL của bạn
-    password: process.env.DB_PASS, // Thay bằng mật khẩu MySQL của bạn
-    database: process.env.DB_NAME, // Tên database MySQL của bạn
+    host: process.env.HOST || 'localhost',
+    port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 3306,
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASS || '',
+    database: process.env.DB_NAME || 'warehouse_oms_v2',
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
@@ -99,80 +101,251 @@ async function startServer() {
     },
   };
 
-  // Initialize Tables based on user schema - Cập nhật cú pháp chuẩn MySQL
+  // Kiểm tra và tạo schema database
+  const dbName = process.env.DB_NAME || 'warehouse_oms_v2';
+  const dbExists = await db.get("SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = ?", [dbName]);
+
+  if (!dbExists) {
+    console.log(`Tạo database ${dbName}...`);
+    await db.exec(`CREATE DATABASE ${dbName}`);
+    await db.exec(`USE ${dbName}`);
+  } else {
+    await db.exec(`USE ${dbName}`);
+  }
+
+  // Initialize Tables based on user schema - Sử dụng schema đơn giản
   await db.exec(`
     CREATE TABLE IF NOT EXISTS users (
-      id INT AUTO_INCREMENT PRIMARY KEY,
+      id INT PRIMARY KEY AUTO_INCREMENT,
       username VARCHAR(255) UNIQUE,
       password TEXT,
-      role TEXT, -- 'ADMIN', 'W_MANAGER' (User1), 'P_MANAGER' (User2)
-      fullName TEXT
+      role VARCHAR(50),
+      fullName VARCHAR(255)
     );
 
-    CREATE TABLE IF NOT EXISTS products (
+    CREATE TABLE IF NOT EXISTS roles (
       id INT AUTO_INCREMENT PRIMARY KEY,
-      sku TEXT,
-      name TEXT NOT NULL,
-      netWeight DOUBLE DEFAULT 0,
-      shelfLifeMonths INT DEFAULT 24,
-      isActive INT DEFAULT 1,
+      code VARCHAR(100) NOT NULL UNIQUE,
+      name VARCHAR(255) NOT NULL,
+      description TEXT,
+      isSystem BOOLEAN NOT NULL DEFAULT TRUE,
+      createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+      updatedAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
+    );
+
+    CREATE TABLE IF NOT EXISTS permissions (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      code VARCHAR(150) UNIQUE NOT NULL,
+      name VARCHAR(255) NOT NULL,
+      resource VARCHAR(100) NOT NULL,
+      action VARCHAR(100) NOT NULL,
+      createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+      INDEX permissions_resource_action_idx (resource, action)
+    );
+
+    CREATE TABLE IF NOT EXISTS user_roles (
+      userId INT NOT NULL,
+      roleId INT NOT NULL,
+      assignedAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+      PRIMARY KEY (userId, roleId),
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (roleId) REFERENCES roles(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS role_permissions (
+      roleId INT NOT NULL,
+      permissionId INT NOT NULL,
+      PRIMARY KEY (roleId, permissionId),
+      FOREIGN KEY (roleId) REFERENCES roles(id) ON DELETE CASCADE,
+      FOREIGN KEY (permissionId) REFERENCES permissions(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      action TEXT NOT NULL,
+      details TEXT,
+      userId INT,
+      userName TEXT,
+      ipAddress VARCHAR(50),
+      userAgent TEXT,
       createdAt TEXT,
+      FOREIGN KEY (userId) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS system_settings (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      \`key\` VARCHAR(100) UNIQUE NOT NULL,
+      value TEXT,
+      description TEXT,
       updatedAt TEXT
     );
 
-    CREATE TABLE IF NOT EXISTS productpackagings (
+    -- DANH MỤC SẢN PHẨM
+    CREATE TABLE IF NOT EXISTS products (
       id INT AUTO_INCREMENT PRIMARY KEY,
-      productId INT,
-      name TEXT NOT NULL,
-      sku TEXT,
-      unit VARCHAR(50) DEFAULT 'Gói',
-      packCount INT DEFAULT 1,
-      defaultRatio DOUBLE DEFAULT 0,
-      initial_stock INT DEFAULT 0,
+      sku VARCHAR(100) UNIQUE NOT NULL,
+      name VARCHAR(255) NOT NULL,
+      category VARCHAR(50) DEFAULT 'PRODUCT', -- 'PRODUCT', 'MATERIAL', 'PACKAGING', 'SERVICE'
       netWeight DOUBLE DEFAULT 0,
       shelfLifeMonths INT DEFAULT 24,
+      isActive INT DEFAULT 1, -- 1: active, 0: inactive
+      canManageInventory INT DEFAULT 1, -- 1: có quản lý tồn kho, 0: không
+      canBePurchased INT DEFAULT 1, -- 1: có thể mua, 0: không
+      canBeSold INT DEFAULT 1, -- 1: có thể bán, 0: không
+      canBeProduced INT DEFAULT 0, -- 1: có thể sản xuất, 0: không
+      canBeBomComponent INT DEFAULT 1, -- 1: có thể dùng làm thành phần định mức, 0: không
       createdAt TEXT,
       updatedAt TEXT,
-      FOREIGN KEY (productId) REFERENCES products (id) ON DELETE CASCADE
+      deletedAt TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS product_categories (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(100) UNIQUE NOT NULL,
+      description TEXT,
+      parentId INT,
+      FOREIGN KEY (parentId) REFERENCES product_categories(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS units (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(50) UNIQUE NOT NULL,
+      symbol VARCHAR(20),
+      description TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS unit_conversions (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      fromUnitId INT NOT NULL,
+      toUnitId INT NOT NULL,
+      ratio DOUBLE NOT NULL,
+      FOREIGN KEY (fromUnitId) REFERENCES units(id) ON DELETE CASCADE,
+      FOREIGN KEY (toUnitId) REFERENCES units(id) ON DELETE CASCADE,
+      UNIQUE KEY (fromUnitId, toUnitId)
     );
 
     CREATE TABLE IF NOT EXISTS warehouses (
       id INT AUTO_INCREMENT PRIMARY KEY,
-      name TEXT NOT NULL,
-      type VARCHAR(50) DEFAULT 'MAIN',
+      code VARCHAR(50) UNIQUE NOT NULL,
+      name VARCHAR(255) NOT NULL,
+      type VARCHAR(50) DEFAULT 'MAIN', -- 'MAIN', 'SUB', 'RECEIVING', 'SHIPPING'
       location TEXT,
+      address TEXT,
+      isActive INT DEFAULT 1,
       createdAt TEXT,
-      updatedAt TEXT
+      updatedAt TEXT,
+      deletedAt TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS productpackagings (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      productId INT NOT NULL,
+      name VARCHAR(255) NOT NULL,
+      sku VARCHAR(100) UNIQUE,
+      unitId INT,
+      packCount INT DEFAULT 1, -- Số lượng trong 1 đơn vị đóng gói
+      defaultRatio DOUBLE DEFAULT 1, -- Tỷ lệ quy đổi
+      initial_stock DOUBLE DEFAULT 0, -- Tồn đầu kỳ
+      min_stock DOUBLE DEFAULT 0, -- Tồn tối thiểu
+      netWeight DOUBLE DEFAULT 0,
+      shelfLifeMonths INT DEFAULT 24,
+      barcode VARCHAR(100),
+      warehouseId INT, -- Kho ngầm định
+      isActive INT DEFAULT 1,
+      createdAt TEXT,
+      updatedAt TEXT,
+      deletedAt TEXT,
+      FOREIGN KEY (productId) REFERENCES products(id) ON DELETE CASCADE,
+      FOREIGN KEY (unitId) REFERENCES units(id) ON DELETE SET NULL,
+      FOREIGN KEY (warehouseId) REFERENCES warehouses(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS product_prices (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      packagingId INT NOT NULL,
+      priceType VARCHAR(20) NOT NULL, -- 'SALE_1', 'SALE_2', 'SALE_3', 'COST'
+      price DOUBLE NOT NULL,
+      currency VARCHAR(10) DEFAULT 'VND',
+      validFrom TEXT,
+      validTo TEXT,
+      isActive INT DEFAULT 1,
+      FOREIGN KEY (packagingId) REFERENCES productpackagings(id) ON DELETE CASCADE,
+      UNIQUE KEY (packagingId, priceType)
+    );
+
+    CREATE TABLE IF NOT EXISTS item_barcodes (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      packagingId INT NOT NULL,
+      barcode VARCHAR(100) UNIQUE NOT NULL,
+      isPrimary INT DEFAULT 0,
+      FOREIGN KEY (packagingId) REFERENCES productpackagings(id) ON DELETE CASCADE
+    );
+
+    -- KHO
+    CREATE TABLE IF NOT EXISTS warehouse_zones (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      warehouseId INT NOT NULL,
+      name VARCHAR(100) NOT NULL,
+      description TEXT,
+      isActive INT DEFAULT 1,
+      FOREIGN KEY (warehouseId) REFERENCES warehouses(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS inventorytransactions (
       id INT AUTO_INCREMENT PRIMARY KEY,
-      code VARCHAR(255) UNIQUE,
-      type TEXT NOT NULL, -- 'IMPORT', 'EXPORT', 'CONVERT'
+      code VARCHAR(100) UNIQUE NOT NULL,
+      type VARCHAR(20) NOT NULL, -- 'IMPORT', 'EXPORT', 'ADJUSTMENT', 'TRANSFER'
       transaction_date TEXT NOT NULL,
       entry_date TEXT,
       exit_date TEXT,
-      warehouseId INT,
+      warehouseId INT NOT NULL,
+      zoneId INT,
       note TEXT,
       reason TEXT,
       recipient TEXT,
+      sourceModule VARCHAR(50), -- 'PURCHASE', 'SALES', 'PRODUCTION', 'ASSEMBLY', 'DISASSEMBLY'
+      documentId INT, -- ID chứng từ nguồn (purchase_documents.id, sales_orders.id, etc.)
+      documentCode VARCHAR(100),
+      documentType VARCHAR(50),
+      status VARCHAR(20) DEFAULT 'POSTED', -- 'DRAFT', 'POSTED', 'CANCELLED'
       createdBy INT,
       createdAt TEXT,
       updatedAt TEXT,
-      customerId INT,
-      FOREIGN KEY (warehouseId) REFERENCES warehouses (id),
-      FOREIGN KEY (createdBy) REFERENCES users (id)
+      cancelledAt TEXT,
+      cancelReason TEXT,
+      FOREIGN KEY (warehouseId) REFERENCES warehouses(id) ON DELETE CASCADE,
+      FOREIGN KEY (zoneId) REFERENCES warehouse_zones(id) ON DELETE SET NULL,
+      FOREIGN KEY (createdBy) REFERENCES users(id) ON DELETE SET NULL
     );
 
     CREATE TABLE IF NOT EXISTS inventorytransactiondetails (
       id INT AUTO_INCREMENT PRIMARY KEY,
-      transactionId INT,
-      packagingId INT,
-      quantity INT NOT NULL,
+      transactionId INT NOT NULL,
+      packagingId INT NOT NULL,
+      quantity DOUBLE NOT NULL,
+      unitCost DOUBLE DEFAULT 0,
+      totalValue DOUBLE DEFAULT 0,
+      note TEXT,
+      batchNumber VARCHAR(100),
+      expiryDate TEXT,
       createdAt TEXT,
       updatedAt TEXT,
-      FOREIGN KEY (transactionId) REFERENCES inventorytransactions (id) ON DELETE CASCADE,
-      FOREIGN KEY (packagingId) REFERENCES productpackagings (id)
+      FOREIGN KEY (transactionId) REFERENCES inventorytransactions(id) ON DELETE CASCADE,
+      FOREIGN KEY (packagingId) REFERENCES productpackagings(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS inventory_balances (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      packagingId INT NOT NULL,
+      warehouseId INT NOT NULL,
+      quantity DOUBLE DEFAULT 0,
+      unitCost DOUBLE DEFAULT 0,
+      totalValue DOUBLE DEFAULT 0,
+      lastTransactionId INT,
+      updatedAt TEXT,
+      FOREIGN KEY (packagingId) REFERENCES productpackagings(id) ON DELETE CASCADE,
+      FOREIGN KEY (warehouseId) REFERENCES warehouses(id) ON DELETE CASCADE,
+      UNIQUE KEY (packagingId, warehouseId)
     );
 
     CREATE TABLE IF NOT EXISTS productionorders (
@@ -475,6 +648,37 @@ async function startServer() {
       "ALTER TABLE products ADD COLUMN category VARCHAR(50) DEFAULT 'PRODUCT'",
     );
   } catch (e) {}
+  // Bring legacy RBAC bootstrap tables up to the versioned API contract before
+  // migration 002 seeds records by role code/resource/action.
+  const roleColumns = await db.all("SHOW COLUMNS FROM roles");
+  if (!roleColumns.find((col: any) => col.Field === "code")) {
+    await db.exec("ALTER TABLE roles ADD COLUMN code VARCHAR(100) NULL");
+    await db.exec("UPDATE roles SET code = name WHERE code IS NULL OR code = ''");
+    await db.exec("ALTER TABLE roles MODIFY code VARCHAR(100) NOT NULL, ADD UNIQUE INDEX roles_code_key (code)");
+  }
+  if (!roleColumns.find((col: any) => col.Field === "isSystem")) {
+    await db.exec("ALTER TABLE roles ADD COLUMN isSystem BOOLEAN NOT NULL DEFAULT TRUE");
+  }
+  if (!roleColumns.find((col: any) => col.Field === "createdAt")) {
+    await db.exec("ALTER TABLE roles ADD COLUMN createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)");
+  }
+  if (!roleColumns.find((col: any) => col.Field === "updatedAt")) {
+    await db.exec("ALTER TABLE roles ADD COLUMN updatedAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)");
+  }
+  const permissionColumns = await db.all("SHOW COLUMNS FROM permissions");
+  if (!permissionColumns.find((col: any) => col.Field === "resource")) {
+    await db.exec("ALTER TABLE permissions ADD COLUMN resource VARCHAR(100) NOT NULL DEFAULT 'legacy'");
+  }
+  if (!permissionColumns.find((col: any) => col.Field === "action")) {
+    await db.exec("ALTER TABLE permissions ADD COLUMN action VARCHAR(100) NOT NULL DEFAULT 'legacy'");
+  }
+  if (!permissionColumns.find((col: any) => col.Field === "createdAt")) {
+    await db.exec("ALTER TABLE permissions ADD COLUMN createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)");
+  }
+  const userRoleColumns = await db.all("SHOW COLUMNS FROM user_roles");
+  if (!userRoleColumns.find((col: any) => col.Field === "assignedAt")) {
+    await db.exec("ALTER TABLE user_roles ADD COLUMN assignedAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)");
+  }
   try {
     await db.exec(`
       CREATE TABLE IF NOT EXISTS product_boms (
@@ -603,16 +807,27 @@ async function startServer() {
     );
   }
 
-  // Seed initial warehouses if empty
-  const whCount = await db.get("SELECT count(*) as count FROM warehouses");
-  if (whCount?.count === 0) {
-    const now = new Date().toISOString();
+  const now = new Date().toISOString();
+  try {
     await db.run(
-      "INSERT INTO warehouses (name, type, location, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)",
+      "UPDATE warehouses SET code = ? WHERE (code IS NULL OR code = '') AND name = ? LIMIT 1",
+      ["KHO001", "Kho Chính"],
+    );
+    await db.run(
+      "INSERT IGNORE INTO warehouses (code, name, type, location, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)",
+      ["KHO001", "Kho Chính", "MAIN", "Tầng 1", now, now],
+    );
+    await db.run(
+      "INSERT IGNORE INTO warehouses (code, name, type, location, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)",
+      ["KHO002", "Kho Phụ", "SUB", "Tầng 2", now, now],
+    );
+  } catch (e) {
+    await db.run(
+      "INSERT IGNORE INTO warehouses (name, type, location, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)",
       ["Kho Chính", "MAIN", "Tầng 1", now, now],
     );
     await db.run(
-      "INSERT INTO warehouses (name, type, location, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)",
+      "INSERT IGNORE INTO warehouses (name, type, location, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)",
       ["Kho Phụ", "SUB", "Tầng 2", now, now],
     );
   }

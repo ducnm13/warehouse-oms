@@ -2,7 +2,7 @@ export const openApiDocument = {
   openapi: "3.1.0",
   info: { title: "Challenge ERP API", version: "1.0.0", description: "API versioned của Challenge ERP" },
   servers: [{ url: "/api/v1" }],
-  tags: [{ name: "Auth" }, { name: "System" }, { name: "Purchasing" }, { name: "Sales" }, { name: "Inventory" }, { name: "Warehouse Transfers" }, { name: "Debt" }, { name: "Production" }, { name: "Assembly" }, { name: "Reporting" }],
+  tags: [{ name: "Auth" }, { name: "System" }, { name: "Purchasing" }, { name: "Sales" }, { name: "Sales Returns" }, { name: "Promotions" }, { name: "Inventory" }, { name: "Warehouse Transfers" }, { name: "Debt" }, { name: "Production" }, { name: "Assembly" }, { name: "Reporting" }],
   components: {
     securitySchemes: { bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" } },
     schemas: {
@@ -103,5 +103,13 @@ export const openApiDocument = {
     "/reports/item-ledger": { get: { tags: ["Reporting"], summary: "Sổ chi tiết vật tư với số dư chạy", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } } },
     "/reports/sales-profit": { get: { tags: ["Reporting"], summary: "Doanh thu, giá vốn và lợi nhuận gộp", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } } },
     "/reports/operations": { get: { tags: ["Reporting"], summary: "Sản xuất, lắp ráp và tháo dỡ theo lệnh", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } } },
+    "/reports/production-variance": { get: { tags: ["Reporting"], summary: "So sánh định mức và thực tế sản xuất", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" }, "422": { description: "Khoảng ngày không hợp lệ" } } } },
+    "/promotions": { get: { tags: ["Promotions"], summary: "Danh sách chương trình khuyến mãi", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } }, post: { tags: ["Promotions"], summary: "Tạo chương trình nháp", security: [{ bearerAuth: [] }], responses: { "201": { description: "Đã tạo" } } } },
+    "/promotions/preview": { post: { tags: ["Promotions"], summary: "Tính hàng tặng theo dòng bán", security: [{ bearerAuth: [] }], responses: { "200": { description: "Danh sách hàng tặng" } } } },
+    "/promotions/{id}/activate": { post: { tags: ["Promotions"], summary: "Kích hoạt chương trình", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã kích hoạt" } } } },
+    "/promotions/{id}/deactivate": { post: { tags: ["Promotions"], summary: "Ngừng chương trình", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã ngừng" } } } },
+    "/sales-returns": { get: { tags: ["Sales Returns"], summary: "Danh sách phiếu trả hàng bán", security: [{ bearerAuth: [] }], responses: { "200": { description: "Thành công" } } }, post: { tags: ["Sales Returns"], summary: "Tạo phiếu trả hàng nháp", security: [{ bearerAuth: [] }], responses: { "201": { description: "Đã tạo" } } } },
+    "/sales-returns/{id}/post": { post: { tags: ["Sales Returns"], summary: "Nhập hàng trả và ghi credit công nợ", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã ghi sổ" }, "409": { description: "Vượt số lượng hoặc dư nợ" } } } },
+    "/sales-returns/{id}/cancel": { post: { tags: ["Sales Returns"], summary: "Hủy và đảo trả hàng", security: [{ bearerAuth: [] }], responses: { "200": { description: "Đã hủy" } } } },
   },
 } as const;

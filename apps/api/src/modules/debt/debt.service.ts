@@ -156,11 +156,14 @@ export const debtService = {
           const document = rows[0];
           if (!document || document.status !== "FULFILLED") throw new HttpError(409, "DOCUMENT_NOT_POSTED", "Đơn bán chưa ghi sổ");
           if (Number(document.customerId) !== payment.customerId) throw new HttpError(409, "PARTNER_MISMATCH", "Đơn bán không thuộc khách hàng của phiếu thu");
-          const amount = Number(allocation.amount), remaining = Number(document.totalAmount) - Number(document.paidAmount || 0);
+          const outstandingRows = await tx.$queryRawUnsafe<any[]>("SELECT COALESCE(SUM(amount),0) outstanding FROM receivable_transactions WHERE sourceId=? AND customerId=?", document.id, document.customerId);
+          const amount = Number(allocation.amount), remaining = Number(outstandingRows[0]?.outstanding || 0);
           if (amount > remaining + 0.005) throw new HttpError(409, "ALLOCATION_EXCEEDS_DEBT", `Phân bổ vượt dư nợ ${document.code}`);
-          const paid = Number(document.paidAmount || 0) + amount;
-          await tx.sales_orders.update({ where: { id: document.id }, data: { paidAmount: paid, paymentStatus: paymentStatus(paid, Number(document.totalAmount)), version: { increment: 1 }, updatedAt: now } });
           await tx.receivable_transactions.create({ data: { customerId: payment.customerId, sourceType: "DEBT_RECEIPT", sourceId: document.id, sourceCode: document.code, entryType: "PAYMENT", amount: money(-amount), paymentDocumentId: payment.id, occurredAt, createdBy: userId } });
+          const paid = Number(document.paidAmount || 0) + amount;
+          const remainingAfterRows = await tx.$queryRawUnsafe<any[]>("SELECT COALESCE(SUM(amount),0) outstanding FROM receivable_transactions WHERE sourceId=? AND customerId=?", document.id, document.customerId);
+          const remainingAfter = Number(remainingAfterRows[0]?.outstanding || 0);
+          await tx.sales_orders.update({ where: { id: document.id }, data: { paidAmount: paid, paymentStatus: remainingAfter <= 0.005 ? "PAID" : paid > 0.005 ? "PARTIAL" : "UNPAID", version: { increment: 1 }, updatedAt: now } });
           await tx.customer_payments.create({ data: { customerId: payment.customerId, salesOrderId: document.id, paymentDate: payment.receiptDate.toISOString().slice(0, 10), amount, method: payment.method, note: payment.note, createdBy: userId, createdAt: now } });
         } else {
           const rows = await tx.$queryRawUnsafe<any[]>("SELECT id,code,supplierId,documentStatus,totalAmount,paidAmount FROM purchase_documents WHERE id=? FOR UPDATE", allocation.purchaseDocumentId);
@@ -199,10 +202,12 @@ export const debtService = {
         for (const allocation of allocations) {
           const rows = await tx.$queryRawUnsafe<any[]>("SELECT id,code,customerId,totalAmount,paidAmount FROM sales_orders WHERE id=? FOR UPDATE", allocation.salesOrderId); const document = rows[0];
           const amount = Number(allocation.amount), paid = Math.max(0, Number(document.paidAmount || 0) - amount);
-          await tx.sales_orders.update({ where: { id: document.id }, data: { paidAmount: paid, paymentStatus: paymentStatus(paid, Number(document.totalAmount)), version: { increment: 1 }, updatedAt: now } });
           const original = await tx.receivable_transactions.findFirst({ where: { sourceType: "DEBT_RECEIPT", sourceId: document.id, paymentDocumentId: payment.id, entryType: "PAYMENT" } });
           if (!original) throw new HttpError(409, "PAYMENT_LEDGER_NOT_FOUND", `Không tìm thấy ledger phiếu thu cho ${document.code}`);
           await tx.receivable_transactions.create({ data: { customerId: payment.customerId, sourceType: "DEBT_RECEIPT_CANCEL", sourceId: document.id, sourceCode: document.code, entryType: "PAYMENT_REVERSAL", amount: money(amount), paymentDocumentId: reversal.id, reversalOfId: original.id, occurredAt: cancelledAt, createdBy: userId } });
+          const remainingAfterRows = await tx.$queryRawUnsafe<any[]>("SELECT COALESCE(SUM(amount),0) outstanding FROM receivable_transactions WHERE sourceId=? AND customerId=?", document.id, document.customerId);
+          const remainingAfter = Number(remainingAfterRows[0]?.outstanding || 0);
+          await tx.sales_orders.update({ where: { id: document.id }, data: { paidAmount: paid, paymentStatus: remainingAfter <= 0.005 ? "PAID" : paid > 0.005 ? "PARTIAL" : "UNPAID", version: { increment: 1 }, updatedAt: now } });
           await tx.customer_payments.create({ data: { customerId: payment.customerId, salesOrderId: document.id, paymentDate: now.slice(0, 10), amount: -amount, method: payment.method, note: `Đảo ${payment.code}`, createdBy: userId, createdAt: now } });
         }
         await tx.payment_receipts.update({ where: { id }, data: { status: "CANCELLED", cancelledAt, cancelledBy: userId, cancelReason: input.reason, reversalReceiptId: reversal.id, version: { increment: 1 } } });

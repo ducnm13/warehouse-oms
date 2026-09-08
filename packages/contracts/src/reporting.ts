@@ -28,7 +28,13 @@ export const operationsReportQuerySchema = dateRange.safeExtend({
   search: z.string().trim().max(255).optional(),
 });
 
+export const productionVarianceReportQuerySchema = dateRange.safeExtend({
+  warehouseId: z.coerce.number().int().positive().optional(),
+  search: z.string().trim().max(255).optional(),
+});
+
 export type InventorySummaryReportQuery = z.infer<typeof inventorySummaryReportQuerySchema>;
 export type ItemLedgerReportQuery = z.infer<typeof itemLedgerReportQuerySchema>;
 export type SalesProfitReportQuery = z.infer<typeof salesProfitReportQuerySchema>;
 export type OperationsReportQuery = z.infer<typeof operationsReportQuerySchema>;
+export type ProductionVarianceReportQuery = z.infer<typeof productionVarianceReportQuerySchema>;

@@ -1,502 +1,397 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
-  LayoutDashboard,
-  Package,
-  ArrowLeftRight,
-  Warehouse,
-  ClipboardList,
-  Users,
-  LogOut,
-  Settings2,
-  ShieldAlert,
-  History,
-  Archive,
-  HelpCircle,
-  ShoppingCart,
-  ArrowRightLeft,
-  ShoppingBag,
-  Building2,
-  Landmark
+	LayoutDashboard,
+	ArrowRightLeft,
+	ClipboardList,
+	Users,
+	LogOut,
+	Settings2,
+	History,
+	Archive,
+	ShoppingCart,
+	ShoppingBag,
+	Building2,
+	Landmark,
+	Gift,
+	PackagePlus,
+	UserCog,
+	DatabaseZap,
+	BookOpen,
+	Settings,
+	ChevronDown,
+	Package,
+	BarChart3,
+	Boxes,
+	Warehouse,
 } from "lucide-react";
 
 interface SidebarProps {
-  sidebarOpen: boolean;
-  setSidebarOpen: (arg: boolean) => void;
-  role?: string;
-  onLogout: () => void;
-  activeItem: string;
-  setActiveItem: (item: string) => void;
+	sidebarOpen: boolean;
+	setSidebarOpen: (arg: boolean) => void;
+	role?: string;
+	onLogout: () => void;
+	activeItem: string;
+	setActiveItem: (item: string) => void;
 }
 
+const NavItem = ({
+	icon: Icon,
+	label,
+	id,
+	activeItem,
+	onClick,
+	indent = false,
+}: {
+	icon: React.FC<any>;
+	label: string;
+	id: string;
+	activeItem: string;
+	onClick: (id: string) => void;
+	indent?: boolean;
+}) => {
+	const active = activeItem === id;
+	return (
+		<button
+			onClick={() => onClick(id)}
+			className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all duration-150
+        ${indent ? "ml-3 pl-2 w-[calc(100%-12px)]" : ""}
+        ${
+					active
+						? "bg-teal-500/15 text-teal-300 font-semibold"
+						: "text-slate-400 hover:bg-white/6 hover:text-slate-200"
+				}`}
+		>
+			<Icon
+				size={indent ? 15 : 17}
+				className={active ? "text-teal-400" : "opacity-70"}
+			/>
+			{label}
+		</button>
+	);
+};
+
+const SectionLabel = ({ children }: { children: React.ReactNode }) => (
+	<p className="px-3 text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500 mb-1 mt-5">
+		{children}
+	</p>
+);
+
+const SubMenu = ({
+	icon: Icon,
+	label,
+	id,
+	activeItem,
+	children,
+	defaultOpen = false,
+}: {
+	icon: React.FC<any>;
+	label: string;
+	id: string;
+	activeItem: string;
+	children: React.ReactNode;
+	defaultOpen?: boolean;
+}) => {
+	const childActive =
+		typeof activeItem === "string" && activeItem.startsWith(id);
+	const [open, setOpen] = useState(defaultOpen || childActive);
+	return (
+		<div>
+			<button
+				onClick={() => setOpen(o => !o)}
+				className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all duration-150
+          ${childActive ? "text-slate-200" : "text-slate-400 hover:bg-white/6 hover:text-slate-200"}`}
+			>
+				<Icon size={17} className={childActive ? "opacity-90" : "opacity-60"} />
+				<span className="flex-1 text-left">{label}</span>
+				<ChevronDown
+					size={14}
+					className={`transition-transform duration-200 opacity-60 ${open ? "rotate-180" : ""}`}
+				/>
+			</button>
+			<div
+				className={`overflow-hidden transition-all duration-250 ${open ? "max-h-96 opacity-100" : "max-h-0 opacity-0"}`}
+			>
+				<div className="mt-0.5 ml-4 pl-3 border-l border-slate-700 space-y-0.5 py-1">
+					{children}
+				</div>
+			</div>
+		</div>
+	);
+};
+
 export default function Sidebar({
-  sidebarOpen,
-  setSidebarOpen,
-  role,
-  onLogout,
-  activeItem,
-  setActiveItem,
+	sidebarOpen,
+	setSidebarOpen,
+	role,
+	onLogout,
+	activeItem,
+	setActiveItem,
 }: SidebarProps) {
-  // Mặc định mở menu báo cáo
-  const [openSubMenus, setOpenSubMenus] = useState<string[]>(["inventory"]);
-  const sidebarRef = useRef<HTMLDivElement>(null);
+	const sidebarRef = useRef<HTMLDivElement>(null);
 
-  // LOGIC: Đóng sidebar khi click ra ngoài (Chỉ áp dụng khi sidebar đang mở)
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        sidebarOpen &&
-        sidebarRef.current &&
-        !sidebarRef.current.contains(event.target as Node)
-      ) {
-        setSidebarOpen(false);
-      }
-    };
+	useEffect(() => {
+		const handle = (e: MouseEvent) => {
+			if (
+				sidebarOpen &&
+				sidebarRef.current &&
+				!sidebarRef.current.contains(e.target as Node)
+			)
+				setSidebarOpen(false);
+		};
+		if (sidebarOpen) document.addEventListener("mousedown", handle);
+		return () => document.removeEventListener("mousedown", handle);
+	}, [sidebarOpen, setSidebarOpen]);
 
-    if (sidebarOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [sidebarOpen, setSidebarOpen]);
+	const click = (id: string) => {
+		setActiveItem(id);
+		setSidebarOpen(false);
+	};
+	const can = (roles: string[]) => !role || roles.includes(role);
 
-  const toggleSubMenu = (id: string) => {
-    setOpenSubMenus((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
-    );
-  };
+	return (
+		<>
+			{/* Overlay mobile */}
+			{sidebarOpen && (
+				<div
+					className="fixed inset-0 bg-black/50 z-40 md:hidden backdrop-blur-sm"
+					onClick={() => setSidebarOpen(false)}
+				/>
+			)}
 
-  const handleNavClick = (id: string) => {
-    setActiveItem(id);
-    setSidebarOpen(false); // Đóng menu sau khi click chọn
-  };
-
-  // HÀM PHÂN QUYỀN: Nếu chưa có role thì cho hiện tất cả để test, nếu có thì check
-  const canAccess = (allowedRoles: string[]) => {
-    if (!role) return true;
-    return allowedRoles.includes(role);
-  };
-
-  return (
-    <>
-      {/* 1. LỚP PHỦ MỜ (OVERLAY) CHO MOBILE */}
-      {/* Click vào lớp này cũng sẽ đóng menu */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-slate-900/40 z-40 md:hidden backdrop-blur-sm transition-opacity"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      {/* 2. KHUNG SIDEBAR CHÍNH */}
-      <aside
-        ref={sidebarRef}
-        className={`
+			<aside
+				ref={sidebarRef}
+				className={`
           fixed md:relative inset-y-0 left-0 z-50
-          w-[280px] h-full bg-white flex flex-col shadow-[4px_0_24px_rgba(0,0,0,0.02)] flex-shrink-0
-          transform transition-transform duration-300 ease-in-out border-r border-slate-100
+          w-[240px] h-full flex flex-col flex-shrink-0
+          transform transition-transform duration-300 ease-in-out
           ${sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
         `}
-      >
-        {/* LOGO AREA */}
-        <div className="h-[80px] flex items-center px-6 flex-shrink-0 justify-center">
-          <div className="flex items-center justify-between gap-3 ">
-            <div>
-              <img
-                src="/public/images/logo.png"
-                alt="Challenge"
-                className="h-10 w-auto object-contain"
-                referrerPolicy="no-referrer"
-              />
-            </div>
-          </div>
-        </div>
+				style={{ background: "#0f172a", borderRight: "1px solid #1e293b" }}
+			>
+				{/* Logo */}
+				<div
+					className="h-[60px] flex items-center px-5 flex-shrink-0"
+					style={{ background: "#0c1526", borderBottom: "1px solid #1e293b" }}
+				>
+					<div className="flex items-center justify-center">
+						<div className="w-full rounded-lg flex items-center justify-center">
+							<Boxes size={18} className="text-white" />
+						</div>
+						<div>
+							<p className="text-white font-bold text-[14px] leading-tight">
+								Challenge ERP
+							</p>
+							<p className="text-slate-500 text-[10px]">v1.2</p>
+						</div>
+					</div>
+				</div>
 
-        {/* NAVIGATION MENU */}
-        <nav className="flex-1 overflow-y-auto py-4 px-4 space-y-1.5 custom-scrollbar">
-          <p className="px-4 text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-3 mt-2">
-            Menu
-          </p>
+				{/* Nav */}
+				<nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5 custom-scrollbar">
+					{can(["ADMIN", "W_MANAGER", "P_MANAGER"]) && (
+						<NavItem
+							icon={LayoutDashboard}
+							label="Tổng quan"
+							id="dashboard"
+							activeItem={activeItem}
+							onClick={click}
+						/>
+					)}
 
-          {canAccess(["ADMIN", "S_SALES", "W_MANAGER"]) && (
-            <div className="space-y-1">
-              {canAccess(["ADMIN", "S_SALES"]) && (
-                <button
-                  onClick={() => handleNavClick("sales-orders")}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-[14px] font-semibold transition-all ${activeItem === "sales-orders" ? "bg-emerald-600 text-white" : "text-slate-300 hover:bg-white/10 hover:text-white"}`}
-                >
-                  <ShoppingCart size={19} /> Đơn đặt hàng
-                </button>
-              )}
-              {canAccess(["ADMIN", "W_MANAGER"]) && (
-                <button
-                  onClick={() => handleNavClick("warehouse-transfers")}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-[14px] font-semibold transition-all ${activeItem === "warehouse-transfers" ? "bg-emerald-600 text-white" : "text-slate-300 hover:bg-white/10 hover:text-white"}`}
-                >
-                  <ArrowRightLeft size={19} /> Chuyển kho
-                </button>
-              )}
-            </div>
-          )}
+					{/* Bán hàng */}
+					{can(["ADMIN", "S_SALES", "W_MANAGER"]) && (
+						<>
+							<SectionLabel>Bán hàng</SectionLabel>
+							<NavItem
+								icon={ShoppingCart}
+								label="Đơn bán hàng"
+								id="sales-orders"
+								activeItem={activeItem}
+								onClick={click}
+							/>
+							<NavItem
+								icon={Gift}
+								label="Khuyến mãi"
+								id="promotions"
+								activeItem={activeItem}
+								onClick={click}
+							/>
+							<NavItem
+								icon={PackagePlus}
+								label="Trả hàng bán"
+								id="sales-returns"
+								activeItem={activeItem}
+								onClick={click}
+							/>
+							<NavItem
+								icon={Users}
+								label="Khách hàng"
+								id="customers"
+								activeItem={activeItem}
+								onClick={click}
+							/>
+							<NavItem
+								icon={Landmark}
+								label="Công nợ"
+								id="debt"
+								activeItem={activeItem}
+								onClick={click}
+							/>
+						</>
+					)}
 
-          {canAccess(["ADMIN", "W_MANAGER", "QD"]) && (
-            <div className="space-y-1">
-              <button
-                onClick={() => handleNavClick("purchases")}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-[14px] font-semibold transition-all ${activeItem === "purchases" ? "bg-emerald-600 text-white" : "text-slate-300 hover:bg-white/10 hover:text-white"}`}
-              >
-                <ShoppingBag size={19} /> Mua hàng
-              </button>
-              <button
-                onClick={() => handleNavClick("suppliers")}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-[14px] font-semibold transition-all ${activeItem === "suppliers" ? "bg-emerald-600 text-white" : "text-slate-300 hover:bg-white/10 hover:text-white"}`}
-              >
-                <Building2 size={19} /> Nhà cung cấp
-              </button>
-            </div>
-          )}
+					{/* Mua hàng */}
+					{can(["ADMIN", "W_MANAGER", "QD"]) && (
+						<>
+							<SectionLabel>Mua hàng</SectionLabel>
+							<NavItem
+								icon={ShoppingBag}
+								label="Chứng từ mua hàng"
+								id="purchases"
+								activeItem={activeItem}
+								onClick={click}
+							/>
+							<NavItem
+								icon={Building2}
+								label="Nhà cung cấp"
+								id="suppliers"
+								activeItem={activeItem}
+								onClick={click}
+							/>
+						</>
+					)}
 
-          {canAccess(["ADMIN", "W_MANAGER", "S_SALES", "QD"]) && (
-            <button
-              onClick={() => handleNavClick("debt")}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-[14px] font-bold transition-all duration-200 ${activeItem === "debt" ? "bg-indigo-50 text-indigo-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"}`}
-            >
-              <Landmark size={20} className={activeItem === "debt" ? "text-indigo-600" : "opacity-60"}/>
-              Công nợ
-            </button>
-          )}
+					{/* Kho */}
+					{can(["ADMIN", "W_MANAGER", "P_MANAGER", "QD"]) && (
+						<>
+							<SectionLabel>Kho</SectionLabel>
+							<NavItem
+								icon={Warehouse}
+								label="Danh sách kho"
+								id="warehouses"
+								activeItem={activeItem}
+								onClick={click}
+							/>
+							<NavItem
+								icon={ArrowRightLeft}
+								label="Chuyển kho"
+								id="warehouse-transfers"
+								activeItem={activeItem}
+								onClick={click}
+							/>
+							<NavItem
+								icon={ClipboardList}
+								label="Kiểm kê"
+								id="stock-take"
+								activeItem={activeItem}
+								onClick={click}
+							/>
+							<NavItem
+								icon={BookOpen}
+								label="Danh mục hàng hóa"
+								id="products"
+								activeItem={activeItem}
+								onClick={click}
+							/>
+							<NavItem
+								icon={DatabaseZap}
+								label="Tồn kho đầu kỳ"
+								id="opening-inventory"
+								activeItem={activeItem}
+								onClick={click}
+							/>
+						</>
+					)}
 
-          {canAccess(["ADMIN", "W_MANAGER", "P_MANAGER"]) && (
-            <button
-              onClick={() => handleNavClick("dashboard")}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-[14px] font-bold transition-all duration-200 ${activeItem === "dashboard" ? "bg-indigo-50 text-indigo-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"}`}
-            >
-              <LayoutDashboard
-                size={20}
-                className={
-                  activeItem === "dashboard" ? "text-indigo-600" : "opacity-60"
-                }
-              />{" "}
-              Tổng quan
-            </button>
-          )}
+					{/* Sản xuất */}
+					{can(["ADMIN", "P_MANAGER", "QD"]) && (
+						<>
+							<SectionLabel>Sản xuất</SectionLabel>
+							<NavItem
+								icon={Settings2}
+								label="Lệnh sản xuất"
+								id="production"
+								activeItem={activeItem}
+								onClick={click}
+							/>
+							<NavItem
+								icon={ArrowRightLeft}
+								label="Lắp ráp & Tháo dỡ"
+								id="assembly"
+								activeItem={activeItem}
+								onClick={click}
+							/>
+						</>
+					)}
 
+					{/* Báo cáo */}
+					{can(["ADMIN", "W_MANAGER", "P_MANAGER", "S_SALES", "QD"]) && (
+						<>
+							<SectionLabel>Báo cáo</SectionLabel>
+							<NavItem
+								icon={BarChart3}
+								label="Báo cáo tổng hợp"
+								id="inventory-report"
+								activeItem={activeItem}
+								onClick={click}
+							/>
+						</>
+					)}
+
+					{/* Quản lý */}
+					{can(["ADMIN"]) && (
+						<>
+							<SectionLabel>Quản lý hệ thống</SectionLabel>
+							<NavItem
+								icon={Users}
+								label="Tài khoản"
+								id="users"
+								activeItem={activeItem}
+								onClick={click}
+							/>
+							<NavItem
+								icon={UserCog}
+								label="Nhân viên"
+								id="employees"
+								activeItem={activeItem}
+								onClick={click}
+							/>
+							<NavItem
+								icon={History}
+								label="Nhật ký hoạt động"
+								id="audit-logs"
+								activeItem={activeItem}
+								onClick={click}
+							/>
+							<NavItem
+								icon={Settings}
+								label="Cấu hình doanh nghiệp"
+								id="company-settings"
+								activeItem={activeItem}
+								onClick={click}
+							/>
+						</>
+					)}
+				</nav>
+
+				{/* Footer */}
+				{/* <div
+          className="p-4 flex-shrink-0 flex items-center justify-between"
+          style={{ background: "#0c1526", borderTop: "1px solid #1e293b" }}
+        >
           <div>
-            {canAccess([
-              "ADMIN",
-              "W_MANAGER",
-              "P_MANAGER",
-              "S_SALES",
-              "QD",
-            ]) && (
-              <button
-                onClick={() => toggleSubMenu("products")}
-                className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-[14px] font-bold transition-all duration-200 ${openSubMenus.includes("reports") ? "text-slate-800" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"}`}
-              >
-                <Warehouse
-                  size={20}
-                  className={
-                    openSubMenus.includes("products")
-                      ? "text-indigo-500"
-                      : "opacity-60"
-                  }
-                />{" "}
-                Thành phẩm
-                <svg
-                  className={`ml-auto w-4 h-4 transition-transform duration-200 ${openSubMenus.includes("products") ? "rotate-180" : ""}`}
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2.5}
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
-              </button>
-            )}
-            <div
-              className={`overflow-hidden transition-all duration-300 ${openSubMenus.includes("products") ? "max-h-40 opacity-100 mt-1" : "max-h-0 opacity-0"}`}
-            >
-              <div className="ml-7 pl-4 border-l-2 border-slate-100 flex flex-col gap-1 py-1">
-                {canAccess([
-                  "ADMIN",
-                  "W_MANAGER",
-                  "P_MANAGER",
-                  "S_SALES",
-                  "QD",
-                ]) && (
-                  <button
-                    onClick={() => handleNavClick("products")}
-                    className={`w-full text-left px-3 py-2.5 rounded-xl text-[13px] font-bold transition-colors ${activeItem === "products" ? "text-indigo-700 bg-indigo-50/50" : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"}`}
-                  >
-                    Danh sách
-                  </button>
-                )}
-                {canAccess(["ADMIN", "W_MANAGER", "P_MANAGER", "QD"]) && (
-                  <button
-                    onClick={() => handleNavClick("transactions")}
-                    className={`w-full text-left px-3 py-2.5 rounded-xl text-[13px] font-bold transition-colors ${activeItem === "transactions" ? "text-indigo-700 bg-indigo-50/50" : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"}`}
-                  >
-                    Nhập xuất TP
-                  </button>
-                )}
-              </div>
-            </div>
+            <p className="text-slate-300 text-xs font-semibold">Challenge ERP</p>
+            <p className="text-slate-500 text-[10px] mt-0.5">Phiên bản v1.2</p>
           </div>
-
-          {canAccess(["ADMIN", "W_MANAGER", "P_MANAGER"]) && (
-            <div>
-              <button
-                onClick={() => toggleSubMenu("materials")}
-                className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-[14px] font-bold transition-all duration-200 ${openSubMenus.includes("reports") ? "text-slate-800" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"}`}
-              >
-                <Package
-                  size={20}
-                  className={
-                    openSubMenus.includes("materials")
-                      ? "text-indigo-500"
-                      : "opacity-60"
-                  }
-                />{" "}
-                Vật tư - Bao bì
-                <svg
-                  className={`ml-auto w-4 h-4 transition-transform duration-200 ${openSubMenus.includes("materials") ? "rotate-180" : ""}`}
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2.5}
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
-              </button>
-
-              <div
-                className={`overflow-hidden transition-all duration-300 ${openSubMenus.includes("materials") ? "max-h-40 opacity-100 mt-1" : "max-h-0 opacity-0"}`}
-              >
-                <div className="ml-7 pl-4 border-l-2 border-slate-100 flex flex-col gap-1 py-1">
-                  <button
-                    onClick={() => handleNavClick("materials")}
-                    className={`w-full text-left px-3 py-2.5 rounded-xl text-[13px] font-bold transition-colors ${activeItem === "materials" ? "text-indigo-700 bg-indigo-50/50" : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"}`}
-                  >
-                    Danh sách
-                  </button>
-                  <button
-                    onClick={() => handleNavClick("material_transactions")}
-                    className={`w-full text-left px-3 py-2.5 rounded-xl text-[13px] font-bold transition-colors ${activeItem === "material_transactions" ? "text-indigo-700 bg-indigo-50/50" : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"}`}
-                  >
-                    Nhập xuất BB
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {canAccess(["ADMIN", "W_MANAGER", "P_MANAGER", "QD"]) && (
-            <button
-              onClick={() => handleNavClick("customers")}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-[14px] font-bold transition-all duration-200 ${activeItem === "customers" ? "bg-indigo-50 text-indigo-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"}`}
-            >
-              <Users
-                size={20}
-                className={
-                  activeItem === "customers" ? "text-indigo-600" : "opacity-60"
-                }
-              />{" "}
-              Khách hàng
-            </button>
-          )}
-
-          {canAccess(["ADMIN", "P_MANAGER"]) && (
-            <button
-              onClick={() => handleNavClick("stock-take")}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-[14px] font-bold transition-all duration-200 ${activeItem === "stock-take" ? "bg-indigo-50 text-indigo-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"}`}
-            >
-              <ClipboardList
-                size={20}
-                className={
-                  activeItem === "stock-take" ? "text-indigo-600" : "opacity-60"
-                }
-              />{" "}
-              Kiểm kê
-            </button>
-          )}
-          {canAccess(["ADMIN", "W_MANAGER", "P_MANAGER", "QD"]) && (
-            <p className="px-4 text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-3 mt-6">
-              Sản xuất & Báo cáo
-            </p>
-          )}
-
-          {canAccess(["ADMIN", "P_MANAGER", "QD"]) && (
-            <button
-              onClick={() => handleNavClick("production")}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-[14px] font-bold transition-all duration-200 ${activeItem === "production" ? "bg-indigo-50 text-indigo-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"}`}
-            >
-              <Settings2
-                size={20}
-                className={
-                  activeItem === "production" ? "text-indigo-600" : "opacity-60"
-                }
-              />{" "}
-              Lệnh Sản Xuất
-            </button>
-          )}
-
-          {canAccess(["ADMIN", "P_MANAGER", "QD"]) && (
-            <button
-              onClick={() => handleNavClick("assembly")}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-[14px] font-bold transition-all duration-200 ${activeItem === "assembly" ? "bg-indigo-50 text-indigo-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"}`}
-            >
-              <ArrowRightLeft size={20} className={activeItem === "assembly" ? "text-indigo-600" : "opacity-60"}/>
-              Lắp ráp & Tháo dỡ
-            </button>
-          )}
-
-          {canAccess(["ADMIN", "W_MANAGER", "P_MANAGER"]) && (
-            <div>
-              <button
-                onClick={() => toggleSubMenu("reports")}
-                className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-[14px] font-bold transition-all duration-200 ${openSubMenus.includes("reports") ? "text-slate-800" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"}`}
-              >
-                <History
-                  size={20}
-                  className={
-                    openSubMenus.includes("reports")
-                      ? "text-indigo-500"
-                      : "opacity-60"
-                  }
-                />{" "}
-                Báo cáo
-                <svg
-                  className={`ml-auto w-4 h-4 transition-transform duration-200 ${openSubMenus.includes("reports") ? "rotate-180" : ""}`}
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2.5}
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
-              </button>
-
-              <div
-                className={`overflow-hidden transition-all duration-300 ${openSubMenus.includes("reports") ? "max-h-40 opacity-100 mt-1" : "max-h-0 opacity-0"}`}
-              >
-                <div className="ml-7 pl-4 border-l-2 border-slate-100 flex flex-col gap-1 py-1">
-                  <button
-                    onClick={() => handleNavClick("inventory-report")}
-                    className={`w-full text-left px-3 py-2.5 rounded-xl text-[13px] font-bold transition-colors ${activeItem === "inventory-report" ? "text-indigo-700 bg-indigo-50/50" : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"}`}
-                  >
-                    Báo cáo hợp nhất V1
-                  </button>
-                  {/* <button
-                    onClick={() => handleNavClick("sales-report")}
-                    className={`w-full text-left px-3 py-2.5 rounded-xl text-[13px] font-bold transition-colors ${activeItem === "inventory-report" ? "text-indigo-700 bg-indigo-50/50" : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"}`}
-                  >
-                    Doanh số tài xế
-                  </button> */}
-                </div>
-              </div>
-            </div>
-          )}
-          {canAccess(["ADMIN"]) && (
-            <p className="px-4 text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-3 mt-6">
-              QUẢN LÝ
-            </p>
-          )}
-          {canAccess(["ADMIN"]) && (
-            <button
-              onClick={() => handleNavClick("users")}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-[14px] font-bold transition-all duration-200 ${activeItem === "users" ? "bg-indigo-50 text-indigo-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"}`}
-            >
-              <Users
-                size={20}
-                className={
-                  activeItem === "customers" ? "text-indigo-600" : "opacity-60"
-                }
-              />{" "}
-              Tài khoản
-            </button>
-          )}
-          {canAccess(["ADMIN"]) && (
-            <button
-              onClick={() => handleNavClick("archive")}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-[14px] font-bold transition-all duration-200 ${activeItem === "archive" ? "bg-indigo-50 text-indigo-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"}`}
-            >
-              <Archive
-                size={20}
-                className={
-                  activeItem === "archive" ? "text-indigo-600" : "opacity-60"
-                }
-              />{" "}
-              Sản phẩm đã ẩn
-            </button>
-          )}
-          {canAccess(["ADMIN"]) && (
-            <button
-              onClick={() => handleNavClick("audit-logs")}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-[14px] font-bold transition-all duration-200 ${activeItem === "audit-logs" ? "bg-indigo-50 text-indigo-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"}`}
-            >
-              <History
-                size={20}
-                className={
-                  activeItem === "audit-logs" ? "text-indigo-600" : "opacity-60"
-                }
-              />{" "}
-              Nhật ký hoạt động
-            </button>
-          )}
-          {/* <button
-              onClick={() => handleNavClick("user-guide")}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-[14px] font-bold transition-all duration-200 ${activeItem === "audit-logs" ? "bg-indigo-50 text-indigo-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"}`}
-            >
-              <HelpCircle
-                size={20}
-                className={
-                  activeItem === "user-guide" ? "text-indigo-600" : "opacity-60"
-                }
-              />{" "}
-              Hướng dẫn sử dụng
-            </button> */}
-        </nav>
-
-        {/* USER PROFILE VIBRANT STYLE */}
-        <div className="mt-auto p-4 flex-shrink-0 border-t border-slate-100 bg-slate-50/50">
-          {/* <div className="flex items-center gap-3 px-2 py-1">
-            <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center font-extrabold text-lg">
-              {role ? role.charAt(0).toUpperCase() : "U"}
-            </div>
-            <div className="flex-1 overflow-hidden">
-              <p className="text-[13px] font-bold text-slate-800 truncate">
-                {role ? `Tài khoản ${role}` : "Nhân viên"}
-              </p>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 truncate">
-                {role || "USER"}
-              </p>
-            </div>
-            <button
-              onClick={onLogout}
-              className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
-              title="Đăng xuất"
-            >
-              <LogOut size={18} />
-            </button>
-          </div> */}
-          <div className="text-center text-sm">
-            <h6 className="font-semibold">
-            CHALLENGE TO CHANCE
-            </h6>
-            <p>Version: v1.2</p>
-          </div>
-        </div>
-      </aside>
-    </>
-  );
+          <button
+            onClick={onLogout}
+            className="p-2 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all"
+            title="Đăng xuất"
+          >
+            <LogOut size={17} />
+          </button>
+        </div> */}
+			</aside>
+		</>
+	);
 }

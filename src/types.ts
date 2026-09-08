@@ -219,6 +219,10 @@ export interface OperationsReportV1 {
   rows:Array<{id:number;type:'PRODUCTION'|'ASSEMBLY'|'DISASSEMBLY';code:string;occurredAt:string;itemName?:string;plannedQuantity:number;actualQuantity:number;inputValue:number;outputValue:number;lossQuantity:number}>;
   summary:{orders:number;plannedQuantity:number;actualQuantity:number;inputValue:number;outputValue:number;lossQuantity:number};
 }
+export interface ProductionVarianceReportV1 {
+  rows:Array<{orderId:number;code:string;completedAt:string;warehouseId:number;warehouseName:string;productId:number;productName:string;plannedOutput:number;actualOutput:number;outputVariance:number;outputVariancePercent:number;materialId:string;packagingId:number;sku?:string;packagingName:string;unit?:string;materialName:string;plannedMaterialQuantity:number;actualMaterialQuantity:number;materialQuantityVariance:number;materialVariancePercent:number;unitCost:number;plannedMaterialValue:number;actualMaterialValue:number;materialValueVariance:number}>;
+  summary:{orders:number;plannedOutput:number;actualOutput:number;outputVariance:number;plannedMaterialValue:number;actualMaterialValue:number;materialValueVariance:number;materialLines:number;overConsumedLines:number;underConsumedLines:number};
+}
 
 export interface ProductionDetail {
   id: number;
@@ -265,11 +269,22 @@ export interface SalesOrderDetail {
   unitCost?: number;
   costAmount?: number;
   note?: string;
+  lineType?: 'SALE' | 'PROMOTION';
+  promotionProgramId?: number;
+  promotionCode?: string;
+  promotionName?: string;
   packagingName?: string;
   productName?: string;
   sku?: string;
   unit?: string;
 }
+
+export interface PromotionProgramV1 {
+  id:number;code:string;name:string;startDate:string;endDate:string;customerScope:'ALL'|'GROUP';customerGroup?:string;priority:number;status:'DRAFT'|'ACTIVE'|'INACTIVE';version:number;note?:string;
+  condition:{id:number;packagingId:number;minimumQuantity:number;packagingName?:string;productName?:string;sku?:string;unit?:string};
+  reward:{id:number;packagingId:number;rewardQuantity:number;warehouseId?:number;warehouseName?:string;packagingName?:string;productName?:string;sku?:string;unit?:string};
+}
+export interface SalesReturnV1 {id:number;code:string;originalSalesOrderId:number;originalSalesOrderCode?:string;customerId:number;customerCode?:string;customerName?:string;warehouseId:number;warehouseName?:string;returnDate:string;status:'DRAFT'|'POSTED'|'CANCELLED';reason:string;settlementType:'REDUCE_DEBT';subtotal:number;taxAmount:number;totalAmount:number;costAmount:number;version:number;postedAt?:string;cancelledAt?:string;cancelReason?:string;lines:Array<{id:number;originalSalesOrderLineId:number;packagingId:number;lineType:'SALE'|'PROMOTION';quantity:number;soldQuantity:number;unitPrice:number;lineTotal:number;taxAmount:number;unitCost:number;costAmount:number;note?:string;sku?:string;unit?:string;packagingName?:string;productName?:string}>;links:Array<{id:string;linkType:string;linkedId:string;linkedCode?:string}>}
 
 export interface SalesOrder {
   id: number;

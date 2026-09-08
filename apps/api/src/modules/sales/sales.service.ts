@@ -3,13 +3,15 @@ import type { SalesCancelInput, SalesDraftInput, SalesPaymentInput, SalesRejectI
 import { HttpError } from "../../common/http-error";
 import { mapSalesDocument } from "./sales.mapper";
 import { prisma, salesInclude, salesRepository } from "./sales.repository";
+import { evaluatePromotions } from "../promotions/promotion.engine";
 
 const decimal = (value: number) => new Prisma.Decimal(value.toFixed(4));
 const money = (value: number) => new Prisma.Decimal(value.toFixed(2));
 const dateAtNoon = (date: string) => new Date(`${date}T12:00:00.000Z`);
 const nowIso = () => new Date().toISOString();
 
-function calculate(input: SalesDraftInput) {
+type CalculatedInput = Omit<SalesDraftInput, "details"> & { details: Array<SalesDraftInput["details"][number] & { lineType?: "SALE" | "PROMOTION"; promotionProgramId?: number; promotionCode?: string; promotionName?: string }> };
+function calculate(input: CalculatedInput) {
   const details = input.details.map(line => {
     const gross = line.quantity * line.unitPrice;
     const lineTotal = gross * (1 - line.discountRate / 100);
@@ -43,7 +45,16 @@ const lineData = (line: ReturnType<typeof calculate>["details"][number]) => ({
   discountRate: line.discountRate,
   lineTotal: line.lineTotal,
   note: line.note || "",
+  lineType: line.lineType || "SALE",
+  promotionProgramId: line.promotionProgramId || null,
+  promotionCode: line.promotionCode || null,
+  promotionName: line.promotionName || null,
 });
+
+async function withPromotions(input: SalesDraftInput) {
+  const gifts = await evaluatePromotions({ orderDate: input.orderDate, customerId: input.customerId, warehouseId: input.warehouseId, details: input.details.map(line => ({ packagingId: line.packagingId, quantity: line.quantity })) });
+  return { ...input, details: [...input.details.map(line => ({ ...line, lineType: "SALE" as const })), ...gifts] };
+}
 
 async function lockOrder(tx: any, id: number) {
   const rows = await tx.$queryRawUnsafe("SELECT id,status,version FROM sales_orders WHERE id=? FOR UPDATE", id) as any[];
@@ -91,7 +102,7 @@ export const salesService = {
 
   async createDraft(input: SalesDraftInput, userId: number) {
     await validateMasterData(input);
-    const totals = calculate(input);
+    const totals = calculate(await withPromotions(input));
     const code = `BH-${input.orderDate.replaceAll("-", "")}-${Date.now().toString().slice(-6)}`;
     const now = nowIso();
     const row = await prisma.sales_orders.create({
@@ -110,7 +121,7 @@ export const salesService = {
 
   async updateDraft(id: number, input: SalesUpdateInput, userId: number) {
     await validateMasterData(input);
-    const totals = calculate(input);
+    const totals = calculate(await withPromotions(input));
     return prisma.$transaction(async tx => {
       const current = await lockOrder(tx, id);
       if (!["DRAFT", "REJECTED"].includes(current.status)) throw new HttpError(409, "SALES_NOT_EDITABLE", "Chỉ được sửa đơn nháp hoặc bị từ chối");
@@ -175,13 +186,16 @@ export const salesService = {
       const now = nowIso();
       const postedAt = new Date();
 
-      for (const line of document.sales_order_details) {
+      const requiredByPackaging = new Map<number, number>();
+      for (const line of document.sales_order_details) requiredByPackaging.set(line.packagingId, (requiredByPackaging.get(line.packagingId) || 0) + Number(line.quantity));
+      for (const [packagingId, requiredQuantity] of [...requiredByPackaging.entries()].sort((a, b) => a[0] - b[0])) {
         const balances = await tx.$queryRawUnsafe<any[]>(
           "SELECT stock_quantity FROM productwarehouses WHERE packagingId=? AND warehouseId=? FOR UPDATE",
-          line.packagingId, document.warehouseId,
+          packagingId, document.warehouseId,
         );
-        if (Number(balances[0]?.stock_quantity || 0) < Number(line.quantity)) {
-          throw new HttpError(409, "INSUFFICIENT_STOCK", `Không đủ tồn kho cho ${line.productpackagings?.name || line.packagingId}`);
+        if (Number(balances[0]?.stock_quantity || 0) < requiredQuantity) {
+          const item = document.sales_order_details.find(line => line.packagingId === packagingId);
+          throw new HttpError(409, "INSUFFICIENT_STOCK", `Không đủ tồn kho cho ${item?.productpackagings?.name || packagingId}`);
         }
       }
 
@@ -210,6 +224,7 @@ export const salesService = {
           unitCost: decimal(unitCost), totalValue: money(-costAmount), occurredAt: postedAt, createdBy: userId,
         } });
         await tx.sales_order_details.update({ where: { id: line.id }, data: { unitCost: decimal(unitCost), costAmount: money(costAmount) } });
+        if (line.lineType === "PROMOTION" && line.promotionProgramId) await tx.promotion_usage_logs.create({ data: { programId: line.promotionProgramId, salesOrderId: document.id, salesOrderLineId: line.id, rewardPackagingId: line.packagingId, rewardQuantity: decimal(quantity), programCode: line.promotionCode || "", programName: line.promotionName || "" } });
       }
 
       const charge = await tx.receivable_transactions.create({ data: {
@@ -263,7 +278,8 @@ export const salesService = {
       assertVersion(current, input.version);
       const document = await tx.sales_orders.findUnique({ where: { id }, include: salesInclude });
       if (!document) throw new HttpError(404, "SALES_NOT_FOUND", "Không tìm thấy chứng từ bán hàng");
-      const remaining = Number(document.totalAmount || 0) - Number(document.paidAmount || 0);
+      const outstandingRows = await tx.$queryRawUnsafe<any[]>("SELECT COALESCE(SUM(amount),0) outstanding FROM receivable_transactions WHERE sourceId=? AND customerId=?", id, document.customerId);
+      const remaining = Number(outstandingRows[0]?.outstanding || 0);
       if (input.amount > remaining + 0.001) throw new HttpError(409, "PAYMENT_EXCEEDS_DEBT", "Số tiền thu vượt quá công nợ còn lại");
       await this.createPaymentInTransaction(tx, document, input.amount, input.paymentDate, input.method, input.note || `Thu tiền ${document.code}`, userId);
       const paidAmount = Number(document.paidAmount || 0) + input.amount;
@@ -281,6 +297,7 @@ export const salesService = {
       assertVersion(current, input.version);
       const document = await tx.sales_orders.findUnique({ where: { id }, include: salesInclude });
       if (!document) throw new HttpError(404, "SALES_NOT_FOUND", "Không tìm thấy chứng từ bán hàng");
+      if (await tx.sales_returns.count({ where: { originalSalesOrderId: id, status: "POSTED" } })) throw new HttpError(409, "POSTED_RETURN_EXISTS", "Hãy hủy phiếu trả hàng đã ghi sổ trước khi hủy đơn bán");
       const debtPayments = await tx.$queryRawUnsafe<any[]>(`SELECT COUNT(*) count
         FROM payment_receipt_allocations a JOIN payment_receipts r ON r.id=a.paymentReceiptId
         WHERE a.salesOrderId=? AND r.sourceModule='DEBT_V1' AND r.status='POSTED'`, id);

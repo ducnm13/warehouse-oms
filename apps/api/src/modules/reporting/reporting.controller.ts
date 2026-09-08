@@ -5,4 +5,5 @@ export const reportingController = {
   async itemLedger(req: Request, res: Response) { res.json({ success: true, message: "Lấy sổ chi tiết vật tư thành công", data: await reportingService.itemLedger(req.query as any) }); },
   async salesProfit(req: Request, res: Response) { res.json({ success: true, message: "Lấy báo cáo doanh thu và lợi nhuận thành công", data: await reportingService.salesProfit(req.query as any) }); },
   async operations(req: Request, res: Response) { res.json({ success: true, message: "Lấy báo cáo sản xuất và lắp ráp thành công", data: await reportingService.operations(req.query as any) }); },
+  async productionVariance(req: Request, res: Response) { res.json({ success: true, message: "Lấy báo cáo chênh lệch sản xuất thành công", data: await reportingService.productionVariance(req.query as any) }); },
 };

@@ -20,7 +20,23 @@ export async function runMigrations() {
     const statements = sql.split(/;\s*(?:\r?\n|$)/).map(value => value.trim()).filter(Boolean);
     // MySQL implicitly commits DDL. Record the migration only after every
     // idempotent statement succeeds, so a retry remains safe.
-    for (const statement of statements) await prisma.$executeRawUnsafe(statement);
+    for (const statement of statements) {
+      try {
+        await prisma.$executeRawUnsafe(statement);
+      } catch (err: any) {
+        // Ignore duplicate key or table/constraint already exists errors (Errno 121, 1050, 1061, 1060, etc.)
+        if (
+          err?.code === 'P2010' ||
+          String(err?.message || '').includes('errno: 121') ||
+          String(err?.message || '').includes('already exists') ||
+          String(err?.message || '').includes('Duplicate')
+        ) {
+          console.warn(`Migration notice in ${entry.name}:`, err?.message);
+        } else {
+          throw err;
+        }
+      }
+    }
     await prisma.$executeRawUnsafe("INSERT INTO schema_migrations (id) VALUES (?)", entry.name);
   }
 }

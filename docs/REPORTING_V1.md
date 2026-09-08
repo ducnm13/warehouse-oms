@@ -8,6 +8,7 @@ Reporting V1 hợp nhất dữ liệu từ các ledger và snapshot đã ghi s�
 - Sổ chi tiết vật tư hàng hóa.
 - Doanh thu, chiết khấu, giá vốn và lợi nhuận gộp.
 - Báo cáo Production, Assembly và Disassembly theo lệnh.
+- So sánh định mức và thực tế sản xuất theo snapshot lệnh.
 
 ## Inventory summary
 
@@ -29,9 +30,11 @@ Reporting V1 hợp nhất dữ liệu từ các ledger và snapshot đã ghi s�
 - Chỉ lấy sales document có database status `FULFILLED`, tương ứng `POSTED` tại API.
 - Gross sales = quantity × unit price.
 - Discount = gross sales - line total.
-- Net revenue = tổng line total, chưa gồm VAT.
-- COGS dùng `costAmount` snapshot khi sales posting.
+- Net revenue = tổng line total trừ subtotal của Sales Return `POSTED`, chưa gồm VAT.
+- VAT được net theo tax snapshot của Sales Return `POSTED`.
+- COGS dùng `costAmount` snapshot khi sales posting và trừ COGS hoàn lại của Sales Return `POSTED`.
 - Gross profit = net revenue - COGS.
+- Sales Return `CANCELLED` không được net vì reversal đã khôi phục trạng thái kinh tế của đơn gốc.
 
 ## Operations
 
@@ -41,12 +44,27 @@ Reporting V1 hợp nhất dữ liệu từ các ledger và snapshot đã ghi s�
 - Báo cáo hiển thị planned/actual quantity, input/output value và physical loss quantity.
 - Cancelled orders không được tính là hoạt động hoàn tất trong kỳ.
 
+## Production variance
+
+- Chỉ lấy lệnh `PRODUCTION_V1/COMPLETED` theo `completedAt`; lệnh đã cancel bị loại.
+- Sản lượng kế hoạch dùng `target_sachets` của lệnh. Với dữ liệu legacy không có target, hệ thống quy đổi `planned packaging quantity × packCount`.
+- Sản lượng thực tế quy đổi bằng `actual packaging quantity × packCount`, đơn vị hiển thị là gói quy đổi.
+- Chênh lệch sản lượng = thực tế - kế hoạch; số âm là thiếu sản lượng.
+- Định mức nguyên vật liệu lấy từ `production_order_materials_v1.plannedQuantity`, được snapshot từ BOM khi tạo lệnh.
+- Tiêu hao thực tế, đơn giá và giá trị thực tế lấy từ snapshot khi hoàn thành lệnh.
+- Chênh lệch tiêu hao = actual quantity - planned quantity; số dương là vượt định mức.
+- Giá trị kế hoạch = planned quantity × actual unit cost snapshot. Cách này cô lập variance do lượng tại cùng một đơn giá thực tế.
+- Chênh lệch giá trị = actual total value - planned value.
+- Không cộng quantity của các nguyên vật liệu khác đơn vị trong summary. Summary chỉ cộng giá trị tiền và đếm dòng vượt/tiết kiệm định mức.
+- V1 chưa có standard cost riêng, vì vậy chưa tách price variance và usage variance.
+
 ## API
 
 - `GET /api/v1/reports/inventory-summary`
 - `GET /api/v1/reports/item-ledger`
 - `GET /api/v1/reports/sales-profit`
 - `GET /api/v1/reports/operations`
+- `GET /api/v1/reports/production-variance`
 
 Query sử dụng `from`, `to`, warehouse và các filter theo từng báo cáo. Khoảng ngày là inclusive.
 
@@ -55,6 +73,8 @@ Query sử dụng `from`, `to`, warehouse và các filter theo từng báo cáo.
 - API yêu cầu `report.view`.
 - UI chỉ hiển thị export khi probe `GET /api/v1/reports/export-authorization` được `report.export` cho phép.
 - UI dùng TanStack Query và thay thế hai entry báo cáo legacy bằng trang Báo cáo hợp nhất V1.
+- Menu hiển thị cho toàn bộ legacy role đã được cấp `report.view`, bao gồm Sales và QD; API vẫn là lớp kiểm quyền quyết định.
+- Loading và API error được hiển thị riêng, không dùng số 0 làm dữ liệu giả trong lúc request chưa hoàn tất.
 - Export Excel dùng đúng rows sau filter hiện tại và các thư viện `exceljs/file-saver` đã có trong dự án.
 
 ## Migration
@@ -79,3 +99,19 @@ Query sử dụng `from`, `to`, warehouse và các filter theo từng báo cáo.
 - Operations filter trả đúng Production completed và input/output value 50.
 - Date range đảo ngược trả `422`.
 - Fixture user/role, warehouse, product, opening, ledger, sales và production đã cleanup.
+- Cleanup được scope theo prefix riêng của từng lần chạy để các integration run song song không xóa dữ liệu của nhau.
+
+## Production variance verification ngày 03/09/2026
+
+Script `scripts/production-variance-v1.integration.ts` đã pass 15 assertions qua HTTP và MariaDB thật:
+
+- Authentication và RBAC.
+- Chỉ tính `PRODUCTION_V1/COMPLETED`, loại lệnh `CANCELLED`.
+- Filter ngày, kho và từ khóa.
+- Quy đổi output theo `packCount` và target sachets.
+- Một dòng vượt định mức và một dòng tiết kiệm định mức.
+- Planned/actual quantity, percentage và value variance đúng.
+- Summary chỉ đếm output mỗi lệnh một lần.
+- Summary không cộng quantity khác đơn vị.
+- Date range đảo ngược trả `422`.
+- Cleanup residue bằng `0`.

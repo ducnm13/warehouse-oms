@@ -3,18 +3,13 @@ import { Toaster } from 'react-hot-toast';
 import Layout from './components/Layout';
 import Profile from './components/Profile';
 import Login from './pages/Login';
-import ProductList from './pages/ProductList';
-import Materials from "./pages/Materials";
-import MaterialTransactions from "./pages/MaterialTransactions";
 import Transactions from './pages/Transactions';
 import Stocktake from "./pages/Stocktake";
 import Production from './pages/Production';
 import Assembly from './pages/Assembly';
 import Users from './pages/Users';
 import Customers from './pages/Customers';
-import SalesReport from "./pages/SalesReport";
 import AuditLogs from './pages/AuditLogs';
-import UserGuide from './pages/UserGuide';
 import SalesOrders from './pages/SalesOrdersV1';
 import WarehouseTransfers from './pages/WarehouseTransfers';
 import Suppliers from './pages/Suppliers';
@@ -22,7 +17,13 @@ import PurchasesV1 from './pages/PurchasesV1';
 import FinancialDashboard from './pages/FinancialDashboard';
 import Debt from './pages/Debt';
 import Reporting from './pages/Reporting';
-
+import Promotions from './pages/Promotions';
+import SalesReturns from './pages/SalesReturns';
+import CompanySettings from './pages/CompanySettings';
+import Employees from './pages/Employees';
+import OpeningInventory from './pages/OpeningInventory';
+import CatalogProducts from './pages/CatalogProducts';
+import WarehousesManager from './pages/WarehousesManager';
 import { User } from './types';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -67,19 +68,27 @@ export default function App() {
     setUser(null);
   };
 
+  // Đồng bộ activeItem với URL path hoặc localStorage khi reload
   useEffect(() => {
-    const routeToItem: Record<string, string> = { '/purchases': 'purchases' };
-    const item = routeToItem[location.pathname];
-    if (item && item !== activeItem) setActiveItem(item);
-  }, [location.pathname]);
+    const savedTab = localStorage.getItem('activeTab');
+    if (savedTab) setActiveItem(savedTab);
+  }, []);
 
   const handleActiveItem = (item: string) => {
     setActiveItem(item);
+    localStorage.setItem('activeTab', item);
     if (item === 'purchases') navigate('/purchases');
     else if (location.pathname !== '/') navigate('/');
   };
 
-  if (loading) return <div className="flex h-screen items-center justify-center">Đang tải...</div>;
+  if (loading) return (
+    <div className="flex h-screen items-center justify-center bg-body">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-8 h-8 rounded-full border-2 border-teal-500 border-t-transparent animate-spin" />
+        <p className="text-slate-500 text-sm">Đang tải...</p>
+      </div>
+    </div>
+  );
 
   if (!token || !user) {
     return (
@@ -92,58 +101,35 @@ export default function App() {
 
   const renderContent = () => {
     switch (activeItem) {
-      case "dashboard":
-        return <FinancialDashboard />;
-      case "products":
-        return <ProductList />;
-      case "transactions":
-        return <Transactions />;
-      case "sales-orders":
-        return <SalesOrders />;
-      case "warehouse-transfers":
-        return <WarehouseTransfers />;
-      case "purchases":
-        return <PurchasesV1 />;
-      case "suppliers":
-        return <Suppliers />;
-      case "debt":
-        return <Debt />;
-      case "materials":
-        return <Materials />;
-      case "material_transactions":
-        return <MaterialTransactions />;
-      case "inventory-report":
-        return <Reporting />;
-      case "archive":
-        return <ProductList isArchive={true} />;
-      case "production-report":
-        return <Reporting />;
-      case "production":
-        return <Production user={user} />;
-      case "assembly":
-        return <Assembly user={user} />;
-      case "customers":
-        return <Customers />;
-      case "users":
-        return <Users />;
-      case "profile":
-        return <Profile />;
-      case "sales-report":
-        return <SalesReport />;
-      case "audit-logs":
-        return <AuditLogs />;
-      case "user-guide":
-        return <UserGuide />;
-      case "stock-take":
-        return <Stocktake />;
-      default:
-        return <div className="text-2xl font-bold">Dashboard</div>;
+      case "dashboard":        return <FinancialDashboard />;
+      case "sales-orders":     return <SalesOrders />;
+      case "promotions":       return <Promotions />;
+      case "sales-returns":    return <SalesReturns />;
+      case "customers":        return <Customers />;
+      case "debt":             return <Debt />;
+      case "warehouse-transfers": return <WarehouseTransfers />;
+      case "purchases":        return <PurchasesV1 />;
+      case "suppliers":        return <Suppliers />;
+      case "transactions":     return <Transactions />;
+      case "inventory-report": return <Reporting />;
+      case "production":       return <Production user={user} />;
+      case "assembly":         return <Assembly user={user} />;
+      case "stock-take":       return <Stocktake />;
+      case "products":          return <CatalogProducts />;
+      case "warehouses":        return <WarehousesManager />;
+      case "opening-inventory": return <OpeningInventory />;
+      case "users":            return <Users />;
+      case "employees":        return <Employees />;
+      case "company-settings": return <CompanySettings />;
+      case "audit-logs":       return <AuditLogs />;
+      case "profile":          return <Profile />;
+      default:                 return <FinancialDashboard />;
     }
   };
 
   return (
     <>
-      <Toaster position="top-right" />
+      <Toaster position="top-right" toastOptions={{ style: { fontSize: "13px", borderRadius: "8px" } }} />
       <Layout
         user={user}
         onLogout={handleLogout}

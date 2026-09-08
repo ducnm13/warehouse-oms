@@ -1,4 +1,4 @@
-import type { InventorySummaryReportQuery, ItemLedgerReportQuery, OperationsReportQuery, SalesProfitReportQuery } from "@challenge/contracts";
+import type { InventorySummaryReportQuery, ItemLedgerReportQuery, OperationsReportQuery, ProductionVarianceReportQuery, SalesProfitReportQuery } from "@challenge/contracts";
 import { HttpError } from "../../common/http-error";
 import { reportingRepository } from "./reporting.repository";
 
@@ -36,5 +36,35 @@ export const reportingService = {
       ...disassembly.map(row => ({ id: row.id, type: "DISASSEMBLY" as const, code: row.code, occurredAt: row.postedAt, itemName: `${row.source.products?.name} - ${row.source.name}`, plannedQuantity: n(row.plannedQuantity), actualQuantity: n(row.actualQuantity), inputValue: n(row.sourceTotalValue), outputValue: round(row.lines.reduce((sum, line) => sum + n(line.totalValue), 0)), lossQuantity: row.lines.reduce((sum, line) => sum + n(line.lossQuantity), 0) })),
     ].sort((a, b) => new Date(a.occurredAt || 0).getTime() - new Date(b.occurredAt || 0).getTime());
     return { rows, summary: rows.reduce((sum, row) => ({ orders: sum.orders + 1, plannedQuantity: sum.plannedQuantity + row.plannedQuantity, actualQuantity: sum.actualQuantity + row.actualQuantity, inputValue: sum.inputValue + row.inputValue, outputValue: sum.outputValue + row.outputValue, lossQuantity: sum.lossQuantity + row.lossQuantity }), { orders: 0, plannedQuantity: 0, actualQuantity: 0, inputValue: 0, outputValue: 0, lossQuantity: 0 }) };
+  },
+  async productionVariance(query: ProductionVarianceReportQuery) {
+    const raw = await reportingRepository.productionVariance({ ...range(query.from, query.to), warehouseId: query.warehouseId, search: query.search });
+    const rows = raw.map(row => {
+      const plannedOutput = n(row.plannedOutput), actualOutput = n(row.actualOutput), plannedMaterialQuantity = n(row.plannedQuantity), actualMaterialQuantity = n(row.actualQuantity), unitCost = n(row.unitCost);
+      const plannedMaterialValue = round(plannedMaterialQuantity * unitCost), actualMaterialValue = round(n(row.totalValue));
+      return {
+        orderId: row.orderId, code: row.code, completedAt: row.completedAt, warehouseId: row.warehouseId, warehouseName: row.warehouseName,
+        productId: row.productId, productName: row.productName, plannedOutput, actualOutput,
+        outputVariance: round(actualOutput - plannedOutput), outputVariancePercent: plannedOutput ? round((actualOutput - plannedOutput) / plannedOutput * 100) : 0,
+        materialId: String(row.materialId), packagingId: row.packagingId, sku: row.sku, packagingName: row.packagingName, unit: row.unit, materialName: row.materialName,
+        plannedMaterialQuantity, actualMaterialQuantity, materialQuantityVariance: round(actualMaterialQuantity - plannedMaterialQuantity),
+        materialVariancePercent: plannedMaterialQuantity ? round((actualMaterialQuantity - plannedMaterialQuantity) / plannedMaterialQuantity * 100) : 0,
+        unitCost: round(unitCost), plannedMaterialValue, actualMaterialValue, materialValueVariance: round(actualMaterialValue - plannedMaterialValue),
+      };
+    });
+    const orders = new Map<number, { planned: number; actual: number }>();
+    for (const row of rows) orders.set(row.orderId, { planned: row.plannedOutput, actual: row.actualOutput });
+    return { rows, summary: {
+      orders: orders.size,
+      plannedOutput: round([...orders.values()].reduce((sum, row) => sum + row.planned, 0)),
+      actualOutput: round([...orders.values()].reduce((sum, row) => sum + row.actual, 0)),
+      outputVariance: round([...orders.values()].reduce((sum, row) => sum + row.actual - row.planned, 0)),
+      plannedMaterialValue: round(rows.reduce((sum, row) => sum + row.plannedMaterialValue, 0)),
+      actualMaterialValue: round(rows.reduce((sum, row) => sum + row.actualMaterialValue, 0)),
+      materialValueVariance: round(rows.reduce((sum, row) => sum + row.materialValueVariance, 0)),
+      materialLines: rows.length,
+      overConsumedLines: rows.filter(row => row.materialQuantityVariance > 0.00005).length,
+      underConsumedLines: rows.filter(row => row.materialQuantityVariance < -0.00005).length,
+    } };
   },
 };
