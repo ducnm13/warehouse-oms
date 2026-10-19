@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { inventorySummaryReportQuerySchema, itemLedgerReportQuerySchema, operationsReportQuerySchema, productionOverviewReportQuerySchema, productionVarianceReportQuerySchema, salesByCustomerReportQuerySchema, salesByProductReportQuerySchema, salesProfitReportQuerySchema, transferReportQuerySchema } from "@challenge/contracts";
+import { financialSummaryReportQuerySchema, inventorySummaryReportQuerySchema, itemLedgerReportQuerySchema, operationsReportQuerySchema, productionOverviewReportQuerySchema, productionVarianceReportQuerySchema, purchaseReportQuerySchema, salesByCustomerReportQuerySchema, salesByProductReportQuerySchema, salesProfitReportQuerySchema, salesReturnReportQuerySchema, stockOnHandReportQuerySchema, transferReportQuerySchema } from "@challenge/contracts";
 import { asyncHandler } from "../../common/async-handler";
 import { authenticateV1, requirePermission } from "../../common/authenticate";
 import { validateQuery } from "../../common/validate";
@@ -15,3 +15,8 @@ reportingRouter.get("/sales-by-customer", validateQuery(salesByCustomerReportQue
 reportingRouter.get("/sales-by-product", validateQuery(salesByProductReportQuerySchema), asyncHandler(reportingController.salesByProduct));
 reportingRouter.get("/production-overview", validateQuery(productionOverviewReportQuerySchema), asyncHandler(reportingController.productionOverview));
 reportingRouter.get("/transfers", validateQuery(transferReportQuerySchema), asyncHandler(reportingController.transfers));
+reportingRouter.get("/purchases-by-supplier", validateQuery(purchaseReportQuerySchema), asyncHandler(reportingController.purchasesBySupplier));
+reportingRouter.get("/purchases-by-product", validateQuery(purchaseReportQuerySchema), asyncHandler(reportingController.purchasesByProduct));
+reportingRouter.get("/sales-returns", validateQuery(salesReturnReportQuerySchema), asyncHandler(reportingController.salesReturns));
+reportingRouter.get("/stock-on-hand", validateQuery(stockOnHandReportQuerySchema), asyncHandler(reportingController.stockOnHand));
+reportingRouter.get("/financial-summary", validateQuery(financialSummaryReportQuerySchema), asyncHandler(reportingController.financialSummary));

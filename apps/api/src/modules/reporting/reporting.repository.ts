@@ -153,6 +153,114 @@ export const reportingRepository = {
         t.fromWarehouseId, fw.name, t.toWarehouseId, tw.name
       ORDER BY t.transferDate DESC, t.id DESC LIMIT 500`, ...params);
   },
+  purchasesBySupplier(query: { from: string; to: string; supplierId?: number; search?: string }) {
+    const clauses = ["p.documentStatus='POSTED'", "p.documentDate>=?", "p.documentDate<=?"], params: unknown[] = [query.from, query.to];
+    if (query.supplierId) { clauses.push("p.supplierId=?"); params.push(query.supplierId); }
+    if (query.search) { clauses.push("(s.name LIKE ? OR s.code LIKE ? OR p.code LIKE ?)"); const value = `%${query.search}%`; params.push(value, value, value); }
+    return prisma.$queryRawUnsafe<any[]>(`SELECT s.id supplierId, s.code supplierCode, s.name supplierName,
+      COUNT(DISTINCT p.id) documents,
+      COALESCE(SUM(p.goodsAmount),0) goodsAmount, COALESCE(SUM(p.taxAmount),0) taxAmount,
+      COALESCE(SUM(p.totalAmount),0) totalAmount, COALESCE(SUM(p.paidAmount),0) paidAmount
+      FROM purchase_documents p JOIN suppliers s ON s.id=p.supplierId
+      WHERE ${clauses.join(" AND ")}
+      GROUP BY s.id, s.code, s.name ORDER BY totalAmount DESC`, ...params);
+  },
+  purchasesByProduct(query: { from: string; to: string; warehouseId?: number; search?: string }) {
+    const clauses = ["p.documentStatus='POSTED'", "p.documentDate>=?", "p.documentDate<=?"], params: unknown[] = [query.from, query.to];
+    if (query.warehouseId) { clauses.push("pdd.warehouseId=?"); params.push(query.warehouseId); }
+    if (query.search) { clauses.push("(pr.name LIKE ? OR pp.name LIKE ? OR pp.sku LIKE ?)"); const value = `%${query.search}%`; params.push(value, value, value); }
+    return prisma.$queryRawUnsafe<any[]>(`SELECT pdd.packagingId, pp.sku, pp.name packagingName, pp.unit, pr.name productName,
+      COUNT(DISTINCT p.id) documents, COALESCE(SUM(pdd.quantity),0) quantity,
+      COALESCE(SUM(pdd.lineAmount),0) goodsAmount, COALESCE(SUM(pdd.taxAmount),0) taxAmount,
+      COALESCE(SUM(pdd.lineAmount+pdd.taxAmount),0) totalAmount,
+      COALESCE(SUM(pdd.quantity*pdd.unitPrice),0)/NULLIF(SUM(pdd.quantity),0) avgUnitPrice
+      FROM purchase_document_details pdd
+      JOIN purchase_documents p ON p.id=pdd.documentId
+      JOIN productpackagings pp ON pp.id=pdd.packagingId JOIN products pr ON pr.id=pp.productId
+      WHERE ${clauses.join(" AND ")}
+      GROUP BY pdd.packagingId, pp.sku, pp.name, pp.unit, pr.name ORDER BY totalAmount DESC`, ...params);
+  },
+  salesReturns(query: { from: Date; toExclusive: Date; warehouseId?: number; customerId?: number; status?: string; search?: string }) {
+    const clauses = ["sr.returnDate>=?", "sr.returnDate<?"], params: unknown[] = [query.from, query.toExclusive];
+    if (query.warehouseId) { clauses.push("sr.warehouseId=?"); params.push(query.warehouseId); }
+    if (query.customerId) { clauses.push("sr.customerId=?"); params.push(query.customerId); }
+    if (query.status) { clauses.push("sr.status=?"); params.push(query.status); }
+    if (query.search) { clauses.push("(sr.code LIKE ? OR c.name LIKE ? OR o.code LIKE ? OR sr.reason LIKE ?)"); const value = `%${query.search}%`; params.push(value, value, value, value); }
+    return prisma.$queryRawUnsafe<any[]>(`SELECT sr.id, sr.code, sr.returnDate, sr.status, sr.reason, sr.settlementType,
+      sr.subtotal, sr.taxAmount, sr.totalAmount, sr.costAmount,
+      c.id customerId, c.code customerCode, c.name customerName,
+      w.name warehouseName, o.code originalOrderCode, COUNT(srl.id) lineCount
+      FROM sales_returns sr
+      JOIN customers c ON c.id=sr.customerId JOIN warehouses w ON w.id=sr.warehouseId JOIN sales_orders o ON o.id=sr.originalSalesOrderId
+      LEFT JOIN sales_return_lines srl ON srl.salesReturnId=sr.id
+      WHERE ${clauses.join(" AND ")}
+      GROUP BY sr.id, sr.code, sr.returnDate, sr.status, sr.reason, sr.settlementType, sr.subtotal, sr.taxAmount, sr.totalAmount, sr.costAmount, c.id, c.code, c.name, w.name, o.code
+      ORDER BY sr.returnDate DESC, sr.id DESC LIMIT 1000`, ...params);
+  },
+  stockOnHand(query: { warehouseId?: number; category?: string; search?: string }) {
+    const clauses: string[] = ["1=1"], params: unknown[] = [];
+    if (query.warehouseId) { clauses.push("pw.warehouseId=?"); params.push(query.warehouseId); }
+    if (query.category) { clauses.push("pr.category=?"); params.push(query.category); }
+    if (query.search) { clauses.push("(pr.name LIKE ? OR pp.name LIKE ? OR pp.sku LIKE ?)"); const value = `%${query.search}%`; params.push(value, value, value); }
+    return prisma.$queryRawUnsafe<any[]>(`SELECT pp.id packagingId, pp.sku, pp.name packagingName, pp.unit, COALESCE(pp.min_stock,0) minStock,
+      pr.id productId, pr.name productName, pr.category,
+      COALESCE(SUM(pw.stock_quantity),0) stockQuantity,
+      COALESCE(price.lastPrice,0) unitCost,
+      COALESCE(SUM(pw.stock_quantity),0)*COALESCE(price.lastPrice,0) stockValue
+      FROM productpackagings pp JOIN products pr ON pr.id=pp.productId
+      LEFT JOIN productwarehouses pw ON pw.packagingId=pp.id
+      LEFT JOIN (SELECT pdd.packagingId, pdd.unitPrice lastPrice FROM purchase_document_details pdd
+        JOIN (SELECT packagingId, MAX(id) maxId FROM purchase_document_details GROUP BY packagingId) latest ON latest.maxId=pdd.id) price ON price.packagingId=pp.id
+      WHERE ${clauses.join(" AND ")}
+      GROUP BY pp.id, pp.sku, pp.name, pp.unit, pp.min_stock, pr.id, pr.name, pr.category, price.lastPrice
+      ORDER BY stockValue DESC`, ...params);
+  },
+  salesInRange(from: string, to: string) {
+    return prisma.$queryRawUnsafe<any[]>(`SELECT COALESCE(SUM(so.totalAmount),0) revenue, COALESCE(SUM(so.taxAmount),0) tax
+      FROM sales_orders so WHERE so.status='FULFILLED' AND so.orderDate>=? AND so.orderDate<=?`, from, to);
+  },
+  cogsInRange(from: string, to: string) {
+    return prisma.$queryRawUnsafe<any[]>(`SELECT COALESCE(SUM(sod.costAmount),0) cogs
+      FROM sales_order_details sod JOIN sales_orders so ON so.id=sod.orderId
+      WHERE so.status='FULFILLED' AND so.orderDate>=? AND so.orderDate<=?`, from, to);
+  },
+  purchasesInRange(from: string, to: string) {
+    return prisma.$queryRawUnsafe<any[]>(`SELECT COALESCE(SUM(p.totalAmount),0) total, COALESCE(SUM(p.paidAmount),0) paid
+      FROM purchase_documents p WHERE p.documentStatus='POSTED' AND p.documentDate>=? AND p.documentDate<=?`, from, to);
+  },
+  returnsInRange(from: Date, toExclusive: Date) {
+    return prisma.$queryRawUnsafe<any[]>(`SELECT COALESCE(SUM(sr.totalAmount),0) total, COALESCE(SUM(sr.costAmount),0) cost
+      FROM sales_returns sr WHERE sr.status='POSTED' AND sr.returnDate>=? AND sr.returnDate<?`, from, toExclusive);
+  },
+  receivableOutstanding(asOf: Date) {
+    return prisma.$queryRawUnsafe<any[]>(`SELECT COALESCE(SUM(amount),0) outstanding FROM receivable_transactions WHERE occurredAt<?`, asOf);
+  },
+  payableOutstanding(asOf: Date) {
+    return prisma.$queryRawUnsafe<any[]>(`SELECT COALESCE(SUM(amount),0) outstanding FROM payable_transactions WHERE occurredAt<?`, asOf);
+  },
+  inventoryValueTotal() {
+    return prisma.$queryRawUnsafe<any[]>(`SELECT COALESCE(SUM(x.stock*COALESCE(x.lastPrice,0)),0) value FROM (
+      SELECT SUM(pw.stock_quantity) stock, (SELECT pdd.unitPrice FROM purchase_document_details pdd WHERE pdd.packagingId=pw.packagingId ORDER BY pdd.id DESC LIMIT 1) lastPrice
+      FROM productwarehouses pw GROUP BY pw.packagingId) x`);
+  },
+  monthlyFinancial(months: number) {
+    return prisma.$queryRawUnsafe<any[]>(`SELECT monthKey, SUM(revenue) revenue, SUM(cogs) cogs, SUM(purchases) purchases FROM (
+      SELECT DATE_FORMAT(so.orderDate,'%Y-%m') monthKey, SUM(so.totalAmount) revenue, 0 cogs, 0 purchases
+      FROM sales_orders so WHERE so.status='FULFILLED' AND so.orderDate>=DATE_SUB(CURDATE(), INTERVAL ? MONTH) GROUP BY DATE_FORMAT(so.orderDate,'%Y-%m')
+      UNION ALL
+      SELECT DATE_FORMAT(so.orderDate,'%Y-%m') monthKey, 0 revenue, SUM(sod.costAmount) cogs, 0 purchases
+      FROM sales_order_details sod JOIN sales_orders so ON so.id=sod.orderId
+      WHERE so.status='FULFILLED' AND so.orderDate>=DATE_SUB(CURDATE(), INTERVAL ? MONTH) GROUP BY DATE_FORMAT(so.orderDate,'%Y-%m')
+      UNION ALL
+      SELECT DATE_FORMAT(p.documentDate,'%Y-%m') monthKey, 0 revenue, 0 cogs, SUM(p.totalAmount) purchases
+      FROM purchase_documents p WHERE p.documentStatus='POSTED' AND p.documentDate>=DATE_SUB(CURDATE(), INTERVAL ? MONTH) GROUP BY DATE_FORMAT(p.documentDate,'%Y-%m')
+    ) data GROUP BY monthKey ORDER BY monthKey`, months, months, months);
+  },
+  topCustomerDebts(limit: number) {
+    return prisma.$queryRawUnsafe<any[]>(`SELECT c.id, c.code, c.name, COALESCE(SUM(r.amount),0) debt
+      FROM customers c JOIN receivable_transactions r ON r.customerId=c.id
+      GROUP BY c.id, c.code, c.name HAVING debt>0.005 ORDER BY debt DESC LIMIT ?`, limit);
+  },
   production(query: { from: Date; toExclusive: Date; warehouseId?: number; search?: string }) {
     return prisma.productionorders.findMany({ where: { sourceModule: "PRODUCTION_V1", status: "COMPLETED", completedAt: { gte: query.from, lt: query.toExclusive }, ...(query.warehouseId ? { warehouseId: query.warehouseId } : {}), ...(query.search ? { OR: [{ code: { contains: query.search } }, { batch_number: { contains: query.search } }] } : {}) }, include: { products: true, productiondetails: true, production_order_materials_v1: true }, orderBy: [{ completedAt: "asc" }, { id: "asc" }] });
   },

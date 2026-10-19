@@ -18,7 +18,7 @@ import toast from "../components/ui/toast";
 import { confirm } from "../components/ui/confirm";
 import { useReactToPrint } from "react-to-print";
 import { Transaction, Product, Warehouse, User, Customer } from "../types";
-import { formatDate } from "../lib/utils";
+import { formatDate, quantityAllowsDecimal } from "../lib/utils";
 import { InventoryDocument } from "../components/InventoryDocument";
 import NumberInput from "../components/NumberInput";
 
@@ -198,6 +198,10 @@ const MaterialTransactions = () => {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
+  // Đơn vị của dòng để quyết định cho nhập thập phân (kg) hay bắt buộc số nguyên
+  const unitOf = (packagingId: number) =>
+    products.flatMap((p) => p.packagings).find((pk) => pk.id === packagingId)
+      ?.unit || "";
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [viewTransaction, setViewTransaction] = useState<Transaction | null>(
     null,
@@ -887,6 +891,9 @@ const MaterialTransactions = () => {
                                 }}
                                 min={0.0001}
                                 decimals={3}
+                                integerOnly={
+                                  !quantityAllowsDecimal(unitOf(detail.packagingId))
+                                }
                                 className="w-full"
                               />
                             </div>

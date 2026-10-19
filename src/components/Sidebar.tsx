@@ -126,8 +126,6 @@ const SubMenu = ({
 	);
 };
 
-const REPORT_DEFAULT_TAB = "INVENTORY";
-
 const ReportMenuGroup = ({
 	children,
 	label,
@@ -143,18 +141,13 @@ const ReportMenuGroup = ({
 	</div>
 );
 
-const ReportMenuItem = ({ label, tab }: { label: string; tab: string }) => {
+const ReportMenuItem = ({ label, path }: { label: string; path: string }) => {
 	const location = useLocation();
 	const navigate = useNavigate();
-	const params = new URLSearchParams(location.search);
-	const current =
-		location.pathname === "/inventory-report"
-			? params.get("tab") || REPORT_DEFAULT_TAB
-			: "";
-	const active = current === tab;
+	const active = location.pathname === path;
 	return (
 		<button
-			onClick={() => navigate(`/inventory-report?tab=${tab}`)}
+			onClick={() => navigate(path)}
 			className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-150 ${
 				active
 					? "bg-[#465fff]/15 text-[#b2ccff] font-semibold"
@@ -459,40 +452,39 @@ export default function Sidebar({
 					{showReports && (
 						<>
 							<SectionLabel>Báo cáo</SectionLabel>
-							<SubMenu
-								icon={BarChart3}
-								label="Báo cáo"
-								path="/inventory-report"
-							>
-								<ReportMenuGroup label="Bán hàng">
-									<ReportMenuItem tab="SALES" label="Tổng quan" />
-									<ReportMenuItem tab="SALES_CUSTOMER" label="Theo KH / nhóm" />
-									<ReportMenuItem tab="SALES_PRODUCT" label="Theo sản phẩm" />
+							<SubMenu icon={BarChart3} label="Báo cáo" path="/reports">
+								<ReportMenuItem label="Trung tâm báo cáo" path="/reports" />
+								<ReportMenuGroup label="Tài chính">
+									<ReportMenuItem label="Tổng quan tài chính" path="/reports/financial" />
 								</ReportMenuGroup>
-								<ReportMenuGroup label="Lệnh sản xuất">
-									<ReportMenuItem tab="PROD_OVERVIEW" label="Tổng quan" />
-									<ReportMenuItem tab="VARIANCE" label="Định mức vs thực tế" />
+								<ReportMenuGroup label="Bán hàng">
+									<ReportMenuItem label="Doanh thu & lợi nhuận" path="/reports/sales-profit" />
+									<ReportMenuItem label="Theo KH / nhóm" path="/reports/sales-customer" />
+									<ReportMenuItem label="Theo sản phẩm" path="/reports/sales-product" />
+									<ReportMenuItem label="Trả hàng bán" path="/reports/sales-returns" />
+								</ReportMenuGroup>
+								<ReportMenuGroup label="Mua hàng">
+									<ReportMenuItem label="Theo nhà cung cấp" path="/reports/purchases-supplier" />
+									<ReportMenuItem label="Theo mặt hàng" path="/reports/purchases-product" />
 								</ReportMenuGroup>
 								<ReportMenuGroup label="Tồn kho">
-									<ReportMenuItem tab="INVENTORY" label="Chi tiết theo kho" />
-									<ReportMenuItem tab="LEDGER" label="Sổ chi tiết 1 mã" />
+									<ReportMenuItem label="Tổng hợp tồn kho" path="/reports/inventory-summary" />
+									<ReportMenuItem label="Giá trị tồn & tồn thấp" path="/reports/stock-on-hand" />
+									<ReportMenuItem label="Sổ chi tiết 1 mã" path="/reports/item-ledger" />
+									<ReportMenuItem label="Chuyển kho" path="/reports/transfers" />
 								</ReportMenuGroup>
-								<ReportMenuGroup label="Đơn online">
-									<ReportMenuItem tab="ONLINE" label="Tổng quan online" />
+								<ReportMenuGroup label="Sản xuất">
+									<ReportMenuItem label="Tổng quan sản xuất" path="/reports/production-overview" />
+									<ReportMenuItem label="Định mức vs thực tế" path="/reports/production-variance" />
+									<ReportMenuItem label="SX – Lắp ráp – Tháo dỡ" path="/reports/operations" />
 								</ReportMenuGroup>
-								<ReportMenuGroup label="Chuyển kho">
-									<ReportMenuItem
-										tab="TRANSFERS"
-										label="Tổng quan + chi tiết"
-									/>
+								<ReportMenuGroup label="Công nợ">
+									<ReportMenuItem label="Công nợ phải thu" path="/reports/debt-receivable" />
+									<ReportMenuItem label="Công nợ phải trả" path="/reports/debt-payable" />
 								</ReportMenuGroup>
-								<ReportMenuGroup label="Lắp ráp – Tháo dỡ">
-									<ReportMenuItem tab="OPERATIONS" label="Tổng quan chung" />
-									<ReportMenuItem tab="ASSEMBLY" label="Lắp ráp" />
-									<ReportMenuItem tab="DISASSEMBLY" label="Tháo dỡ" />
-								</ReportMenuGroup>
-								<ReportMenuGroup label="Khuyến mãi">
-									<ReportMenuItem tab="PROMO" label="Hàng khuyến mãi" />
+								<ReportMenuGroup label="Khuyến mãi & Online">
+									<ReportMenuItem label="Sử dụng khuyến mãi" path="/reports/promotions" />
+									<ReportMenuItem label="Bán hàng online" path="/reports/online" />
 								</ReportMenuGroup>
 							</SubMenu>
 						</>

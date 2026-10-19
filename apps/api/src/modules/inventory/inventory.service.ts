@@ -4,6 +4,7 @@ import { HttpError } from "../../common/http-error";
 import { mapInventoryDocument, mapStocktake } from "./inventory.mapper";
 import { inventoryInclude, inventoryRepository, prisma, stocktakeInclude } from "./inventory.repository";
 import { nextDocumentCode, documentCodePrefixes } from "../../common/document-code";
+import { syncProductionStatusFromDocuments } from "../production/production-status";
 
 const decimal = (value: number) => new Prisma.Decimal(value.toFixed(4));
 const money = (value: number) => new Prisma.Decimal(value.toFixed(2));
@@ -108,7 +109,7 @@ export const inventoryService = {
     await validateMaster(input.warehouseId, input.details.map(line => line.packagingId));
     return prisma.$transaction(async tx => {
       const current = await lockDocument(tx, id); assertVersion(current, input.version);
-      if (current.documentStatus !== "DRAFT" || current.sourceModule !== "MANUAL_V1") throw new HttpError(409, "INVALID_STATUS", "Chỉ được sửa chứng từ kho V1 đang nháp");
+      if (!["DRAFT", "CANCELLED"].includes(current.documentStatus) || current.sourceModule !== "MANUAL_V1") throw new HttpError(409, "INVALID_STATUS", "Chỉ được sửa chứng từ kho V1 đang nháp hoặc đã bỏ ghi sổ");
       const now = nowIso();
       await tx.inventorytransactiondetails.deleteMany({ where: { transactionId: id } });
       const row = await tx.inventorytransactions.update({ where: { id }, data: {
@@ -124,7 +125,7 @@ export const inventoryService = {
   async post(id: number, version: number, userId: number) {
     return prisma.$transaction(async tx => {
       const current = await lockDocument(tx, id); assertVersion(current, version);
-      if (current.documentStatus !== "DRAFT" || current.sourceModule !== "MANUAL_V1") throw new HttpError(409, "INVALID_STATUS", "Chứng từ không ở trạng thái nháp V1");
+      if (!["DRAFT", "CANCELLED"].includes(current.documentStatus) || current.sourceModule !== "MANUAL_V1") throw new HttpError(409, "INVALID_STATUS", "Chứng từ không ở trạng thái nháp V1");
       const document = await tx.inventorytransactions.findUnique({ where: { id }, include: inventoryInclude });
       if (!document?.warehouseId) throw new HttpError(409, "MISSING_WAREHOUSE", "Chứng từ chưa có kho");
       const occurredAt = new Date(), now = nowIso();
@@ -144,26 +145,15 @@ export const inventoryService = {
           quantity: decimal(quantity), unitCost: decimal(unitCost), totalValue: money(quantity * unitCost), occurredAt, createdBy: userId,
         } });
       }
-      const row = await tx.inventorytransactions.update({ where: { id }, data: { documentStatus: "POSTED", postedAt: occurredAt, postedBy: userId, version: { increment: 1 }, updatedAt: now }, include: inventoryInclude });
+      // Ghi sổ lại (từ đã bỏ ghi): xóa dấu vết hủy, giữ nguyên bút toán đảo cũ để bù trừ
+      const row = await tx.inventorytransactions.update({ where: { id }, data: { documentStatus: "POSTED", postedAt: occurredAt, postedBy: userId, cancelledAt: null, cancelledBy: null, cancelReason: null, reversalTransactionId: null, version: { increment: 1 }, updatedAt: now }, include: inventoryInclude });
 
-      // If this is an EXPORT document linked to a production order, update production order status to IN_PROGRESS
-      if (document.type === "EXPORT") {
-        const prodLink = await tx.production_order_document_links_v1.findFirst({
-          where: { linkType: "INVENTORY_ISSUE", linkedId: BigInt(id) },
-        });
-        if (prodLink) {
-          const prodOrder = await tx.productionorders.findUnique({ where: { id: prodLink.orderId } });
-          if (prodOrder && prodOrder.status === "DRAFT") {
-            await tx.productionorders.update({
-              where: { id: prodLink.orderId },
-              data: { status: "IN_PROGRESS", startedAt: occurredAt, startedBy: userId, version: { increment: 1 }, updatedAt: now },
-            });
-            await tx.audit_logs.create({
-              data: { action: "Tự động xác nhận sản xuất", details: `${prodOrder.code} -> IN_PROGRESS từ phiếu xuất ${document.code}`, userId, userName: String(userId), createdAt: now },
-            });
-          }
-        }
-      }
+      // Phiếu kho gắn lệnh sản xuất: suy lại trạng thái lệnh theo chứng từ đã ghi sổ
+      // (phiếu xuất NVL -> Đang sản xuất; đủ phiếu xuất + phiếu nhập -> Hoàn thành)
+      const prodLink = await tx.production_order_document_links_v1.findFirst({
+        where: { linkedId: BigInt(id) },
+      });
+      if (prodLink) await syncProductionStatusFromDocuments(tx, prodLink.orderId, userId);
 
       await tx.audit_logs.create({ data: { action: "Ghi sổ phiếu kho v1", details: row.code || String(id), userId, userName: String(userId), createdAt: now } });
       return mapInventoryDocument(row);
@@ -183,43 +173,62 @@ export const inventoryService = {
       if (originalLedger.length !== document.inventorytransactiondetails.length) {
         console.warn(`[InventoryCancel] Ledger count mismatch: ${originalLedger.length} ledger entries vs ${document.inventorytransactiondetails.length} document details for doc ${id}`);
       }
-      const now = nowIso(), occurredAt = new Date(), reversalType = document.type === "IMPORT" ? "EXPORT" : "IMPORT";
-      const reversal = await tx.inventorytransactions.create({ data: {
-        code: `H-${document.code}`, type: reversalType, transaction_date: now.slice(0, 10),
-        entry_date: reversalType === "IMPORT" ? now.slice(0, 10) : null, exit_date: reversalType === "EXPORT" ? now.slice(0, 10) : null,
-        warehouseId: document.warehouseId, note: `Đảo ${document.code}: ${input.reason}`, reason: "Hủy phiếu kho v1",
-        createdBy: userId, createdAt: now, updatedAt: now, documentStatus: "POSTED", postedAt: occurredAt, postedBy: userId, sourceModule: "REVERSAL_V1",
-      } });
+      const now = nowIso(), occurredAt = new Date();
+      // Hoàn tồn trực tiếp bằng bút toán đảo trong ledger, KHÔNG sinh chứng từ đảo (H-) để báo cáo gọn.
       for (const line of document.inventorytransactiondetails) {
         if (!line.packagingId) continue;
         const quantity = Number(line.quantity), balance = await lockBalance(tx, line.packagingId, document.warehouseId);
         if (document.type === "IMPORT" && balance < quantity) throw new HttpError(409, "REVERSAL_STOCK_SHORTAGE", `Không đủ tồn để đảo ${line.productpackagings?.sku || line.packagingId}`);
         const original = originalLedger.find(entry => entry.sourceLineId === line.id);
-        const reversalLine = await tx.inventorytransactiondetails.create({ data: { transactionId: reversal.id, packagingId: line.packagingId, quantity, unitCost: line.unitCost, totalValue: line.totalValue, note: input.reason, createdAt: now, updatedAt: now } });
         await tx.productwarehouses.update({ where: { packagingId_warehouseId: { packagingId: line.packagingId, warehouseId: document.warehouseId } }, data: {
           stock_quantity: document.type === "IMPORT" ? { decrement: quantity } : { increment: quantity }, updatedAt: now,
         } });
         // Use sourceType based on original document's sourceModule for audit trail
         const cancelSourceType = document.sourceModule === "MANUAL_V1" ? "INVENTORY_DOCUMENT_CANCEL" : `${document.sourceModule}_CANCEL`;
         await tx.inventory_ledger.create({ data: {
-          sourceType: cancelSourceType, sourceId: id, sourceLineId: reversalLine.id, documentCode: document.code || String(id),
+          sourceType: cancelSourceType, sourceId: id, sourceLineId: line.id, documentCode: document.code || String(id),
           direction: document.type === "IMPORT" ? "OUT" : "IN", packagingId: line.packagingId, warehouseId: document.warehouseId,
           quantity: decimal(quantity), unitCost: line.unitCost, totalValue: line.totalValue, reversalOfId: original?.id,
           occurredAt, createdBy: userId,
         } });
       }
-      const row = await tx.inventorytransactions.update({ where: { id }, data: { documentStatus: "CANCELLED", cancelledAt: occurredAt.toISOString(), cancelledBy: userId, cancelReason: input.reason, reversalTransactionId: reversal.id, version: { increment: 1 }, updatedAt: now }, include: inventoryInclude });
+      const row = await tx.inventorytransactions.update({ where: { id }, data: { documentStatus: "CANCELLED", cancelledAt: occurredAt.toISOString(), cancelledBy: userId, cancelReason: input.reason, version: { increment: 1 }, updatedAt: now }, include: inventoryInclude });
       await tx.audit_logs.create({ data: { action: "Hủy phiếu kho v1", details: `${row.code}: ${input.reason}`, userId, userName: String(userId), createdAt: now } });
+      // Hủy chứng từ gắn lệnh sản xuất: suy lại trạng thái lệnh (có thể mất điều kiện Hoàn thành)
+      const prodLink = await tx.production_order_document_links_v1.findFirst({ where: { linkedId: BigInt(id) } });
+      if (prodLink) await syncProductionStatusFromDocuments(tx, prodLink.orderId, userId);
       return mapInventoryDocument(row);
     }, { timeout: 30_000 });
   },
   async delete(id: number, input: InventoryDeleteInput, userId: number) {
     return prisma.$transaction(async tx => {
       const current = await lockDocument(tx, id); assertVersion(current, input.version);
-      if (current.documentStatus !== "DRAFT") throw new HttpError(409, "INVALID_STATUS", "Chỉ được xóa phiếu kho nháp");
+      if (current.documentStatus === "DRAFT") {
+        await tx.inventorytransactiondetails.deleteMany({ where: { transactionId: id } });
+        const row = await tx.inventorytransactions.delete({ where: { id } });
+        await tx.audit_logs.create({ data: { action: "Xóa phiếu kho v1", details: `${row.code}`, userId, userName: String(userId), createdAt: nowIso() } });
+        return { success: true, message: "Đã xóa phiếu kho" };
+      }
+      if (current.documentStatus !== "CANCELLED") throw new HttpError(409, "INVALID_STATUS", "Chỉ xóa được phiếu nháp hoặc phiếu đã hủy");
+      if (current.sourceModule !== "MANUAL_V1") throw new HttpError(409, "AUTO_DOCUMENT_NOT_CANCELLABLE", "Phiếu tự sinh, vui lòng xóa từ chứng từ gốc");
+      const now = nowIso();
+      // Xóa ledger gốc + ledger đảo của chính phiếu này (tồn đã được hoàn khi hủy nên không đổi)
+      await tx.inventory_ledger.deleteMany({ where: { sourceId: id, sourceType: { in: ["INVENTORY_DOCUMENT", "INVENTORY_DOCUMENT_CANCEL"] } } });
+      // Dọn chứng từ đảo cũ (dữ liệu trước đây) — ledger đảo trỏ về phiếu gốc nên đã xóa ở trên
+      const legacyReversals = await tx.inventorytransactions.findMany({ where: { reversalTransactionId: id }, select: { id: true } });
+      for (const rev of legacyReversals) {
+        await tx.inventorytransactiondetails.deleteMany({ where: { transactionId: rev.id } });
+        await tx.inventorytransactions.delete({ where: { id: rev.id } });
+      }
+      // Gỡ liên kết lệnh sản xuất/lắp ráp/tháo dỡ rồi suy lại trạng thái lệnh sản xuất
+      const prodLinks = await tx.production_order_document_links_v1.findMany({ where: { linkedId: BigInt(id) } });
+      await tx.production_order_document_links_v1.deleteMany({ where: { linkedId: BigInt(id) } });
+      await tx.assembly_order_document_links.deleteMany({ where: { linkedId: BigInt(id) } });
+      await tx.disassembly_order_document_links.deleteMany({ where: { linkedId: BigInt(id) } });
       await tx.inventorytransactiondetails.deleteMany({ where: { transactionId: id } });
       const row = await tx.inventorytransactions.delete({ where: { id } });
-      await tx.audit_logs.create({ data: { action: "Xóa phiếu kho v1", details: `${row.code}`, userId, userName: String(userId), createdAt: nowIso() } });
+      await tx.audit_logs.create({ data: { action: "Xóa phiếu kho đã hủy v1", details: `${row.code}`, userId, userName: String(userId), createdAt: now } });
+      for (const link of prodLinks) await syncProductionStatusFromDocuments(tx, link.orderId, userId);
       return { success: true, message: "Đã xóa phiếu kho" };
     });
   },

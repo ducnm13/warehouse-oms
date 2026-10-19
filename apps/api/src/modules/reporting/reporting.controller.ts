@@ -10,4 +10,9 @@ export const reportingController = {
   async salesByProduct(req: Request, res: Response) { res.json({ success: true, message: "Lấy báo cáo bán hàng theo sản phẩm thành công", data: await reportingService.salesByProduct(req.query as any) }); },
   async productionOverview(req: Request, res: Response) { res.json({ success: true, message: "Lấy báo cáo tổng quan sản xuất thành công", data: await reportingService.productionOverview(req.query as any) }); },
   async transfers(req: Request, res: Response) { res.json({ success: true, message: "Lấy báo cáo chuyển kho thành công", data: await reportingService.transfers(req.query as any) }); },
+  async purchasesBySupplier(req: Request, res: Response) { res.json({ success: true, message: "Lấy báo cáo mua hàng theo nhà cung cấp thành công", data: await reportingService.purchasesBySupplier(req.query as any) }); },
+  async purchasesByProduct(req: Request, res: Response) { res.json({ success: true, message: "Lấy báo cáo mua hàng theo mặt hàng thành công", data: await reportingService.purchasesByProduct(req.query as any) }); },
+  async salesReturns(req: Request, res: Response) { res.json({ success: true, message: "Lấy báo cáo trả hàng bán thành công", data: await reportingService.salesReturns(req.query as any) }); },
+  async stockOnHand(req: Request, res: Response) { res.json({ success: true, message: "Lấy báo cáo tồn kho hiện tại thành công", data: await reportingService.stockOnHand(req.query as any) }); },
+  async financialSummary(req: Request, res: Response) { res.json({ success: true, message: "Lấy báo cáo tài chính tổng quan thành công", data: await reportingService.financialSummary(req.query as any) }); },
 };

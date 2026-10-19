@@ -1972,7 +1972,7 @@ export default function CatalogProducts({
 									<Save size={14} />{" "}
 									{createProduct.isPending || updateProduct.isPending
 										? "Đang lưu..."
-										: "Cất và Thêm"}
+										: "Lưu"}
 								</button>
 							</div>
 						</form>
@@ -2199,8 +2199,7 @@ export default function CatalogProducts({
 									disabled={savePkg.isPending}
 									className="inline-flex items-center gap-2 rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
 								>
-									<Save size={14} />{" "}
-									{savePkg.isPending ? "Đang lưu..." : "Cất và Thêm"}
+									<Save size={14} /> {savePkg.isPending ? "Đang lưu..." : "Lưu"}
 								</button>
 							</div>
 						</form>

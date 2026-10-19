@@ -32,6 +32,8 @@ export default function DocumentActions({
 }: DocumentActionsProps) {
   const isPosted = status === "POSTED";
   const isDraft = status === "DRAFT";
+  const isCancelled = status === "CANCELLED";
+  const canEditOrPost = isDraft || isCancelled;
   return (
     <>
       {onPrint && (
@@ -47,7 +49,7 @@ export default function DocumentActions({
           </span>
         </button>
       )}
-      {isDraft && canPost && onPost && (
+      {canEditOrPost && canPost && onPost && (
         <button
           type="button"
           className="erp-btn erp-btn-post"
@@ -56,7 +58,11 @@ export default function DocumentActions({
         >
           <span className="inline-flex items-center gap-2">
             <CheckCircle2 size={15} />
-            {posting ? "Đang ghi sổ..." : "Ghi sổ"}
+            {posting
+              ? "Đang ghi sổ..."
+              : isCancelled
+                ? "Ghi sổ lại"
+                : "Ghi sổ"}
           </span>
         </button>
       )}
@@ -73,7 +79,7 @@ export default function DocumentActions({
           </span>
         </button>
       )}
-      {isDraft && canEdit && onEdit && (
+      {canEditOrPost && canEdit && onEdit && (
         <button
           type="button"
           className="erp-btn erp-btn-primary"

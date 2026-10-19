@@ -1,4 +1,4 @@
-import type { InventorySummaryReportQuery, ItemLedgerReportQuery, OperationsReportQuery, ProductionOverviewReportQuery, ProductionVarianceReportQuery, SalesByCustomerReportQuery, SalesByProductReportQuery, SalesProfitReportQuery, TransferReportQuery } from "@challenge/contracts";
+import type { FinancialSummaryReportQuery, InventorySummaryReportQuery, ItemLedgerReportQuery, OperationsReportQuery, ProductionOverviewReportQuery, ProductionVarianceReportQuery, PurchaseReportQuery, SalesByCustomerReportQuery, SalesByProductReportQuery, SalesProfitReportQuery, SalesReturnReportQuery, StockOnHandReportQuery, TransferReportQuery } from "@challenge/contracts";
 import { HttpError } from "../../common/http-error";
 import { reportingRepository } from "./reporting.repository";
 
@@ -53,6 +53,48 @@ export const reportingService = {
   async transfers(query: TransferReportQuery) {
     const rows = await reportingRepository.transfers(query);
     return { rows, summary: (rows as any[]).reduce((sum: any, row: any) => ({ docs: sum.docs + 1, quantity: sum.quantity + n(row.quantity) }), { docs: 0, quantity: 0 }) };
+  },
+  async purchasesBySupplier(query: PurchaseReportQuery) {
+    const rows = (await reportingRepository.purchasesBySupplier(query)).map(row => {
+      const totalAmount = n(row.totalAmount), paidAmount = n(row.paidAmount);
+      return { supplierId: row.supplierId, supplierCode: row.supplierCode, supplierName: row.supplierName, documents: n(row.documents), goodsAmount: round(n(row.goodsAmount)), taxAmount: round(n(row.taxAmount)), totalAmount: round(totalAmount), paidAmount: round(paidAmount), outstanding: round(totalAmount - paidAmount) };
+    });
+    return { rows, summary: rows.reduce((sum, row) => ({ documents: sum.documents + row.documents, goodsAmount: round(sum.goodsAmount + row.goodsAmount), taxAmount: round(sum.taxAmount + row.taxAmount), totalAmount: round(sum.totalAmount + row.totalAmount), paidAmount: round(sum.paidAmount + row.paidAmount), outstanding: round(sum.outstanding + row.outstanding) }), { documents: 0, goodsAmount: 0, taxAmount: 0, totalAmount: 0, paidAmount: 0, outstanding: 0 }) };
+  },
+  async purchasesByProduct(query: PurchaseReportQuery) {
+    const rows = (await reportingRepository.purchasesByProduct(query)).map(row => ({ packagingId: row.packagingId, sku: row.sku, packagingName: row.packagingName, unit: row.unit, productName: row.productName, documents: n(row.documents), quantity: n(row.quantity), goodsAmount: round(n(row.goodsAmount)), taxAmount: round(n(row.taxAmount)), totalAmount: round(n(row.totalAmount)), avgUnitPrice: round(n(row.avgUnitPrice)) }));
+    return { rows, summary: rows.reduce((sum, row) => ({ documents: sum.documents + row.documents, quantity: sum.quantity + row.quantity, goodsAmount: round(sum.goodsAmount + row.goodsAmount), taxAmount: round(sum.taxAmount + row.taxAmount), totalAmount: round(sum.totalAmount + row.totalAmount) }), { documents: 0, quantity: 0, goodsAmount: 0, taxAmount: 0, totalAmount: 0 }) };
+  },
+  async salesReturns(query: SalesReturnReportQuery) {
+    const raw = await reportingRepository.salesReturns({ ...range(query.from, query.to), warehouseId: query.warehouseId, customerId: query.customerId, status: query.status, search: query.search });
+    const rows = raw.map(row => ({ id: row.id, code: row.code, returnDate: row.returnDate, status: row.status, reason: row.reason, settlementType: row.settlementType, customerId: row.customerId, customerCode: row.customerCode, customerName: row.customerName, warehouseName: row.warehouseName, originalOrderCode: row.originalOrderCode, lineCount: n(row.lineCount), subtotal: round(n(row.subtotal)), taxAmount: round(n(row.taxAmount)), totalAmount: round(n(row.totalAmount)), costAmount: round(n(row.costAmount)) }));
+    const posted = rows.filter(row => row.status === "POSTED");
+    return { rows, summary: { documents: rows.length, posted: posted.length, subtotal: round(posted.reduce((s, r) => s + r.subtotal, 0)), taxAmount: round(posted.reduce((s, r) => s + r.taxAmount, 0)), totalAmount: round(posted.reduce((s, r) => s + r.totalAmount, 0)), costAmount: round(posted.reduce((s, r) => s + r.costAmount, 0)) } };
+  },
+  async stockOnHand(query: StockOnHandReportQuery) {
+    let rows = (await reportingRepository.stockOnHand(query)).map(row => ({ packagingId: row.packagingId, sku: row.sku, packagingName: row.packagingName, unit: row.unit, productId: row.productId, productName: row.productName, category: row.category, stockQuantity: n(row.stockQuantity), minStock: n(row.minStock), unitCost: round(n(row.unitCost)), stockValue: round(n(row.stockValue)), lowStock: n(row.stockQuantity) <= n(row.minStock) }));
+    if (query.onlyLowStock) rows = rows.filter(row => row.lowStock);
+    return { rows, summary: { items: rows.length, stockValue: round(rows.reduce((s, r) => s + r.stockValue, 0)), lowStock: rows.filter(r => r.lowStock && r.stockQuantity > 0).length, outOfStock: rows.filter(r => r.stockQuantity <= 0.00005).length } };
+  },
+  async financialSummary(query: FinancialSummaryReportQuery) {
+    const dates = range(query.from, query.to), asOf = new Date(`${query.to}T23:59:59.999Z`);
+    const [salesRows, cogsRows, purchaseRows, returnRows, receivableRows, payableRows, inventoryRows, monthly, debts] = await Promise.all([
+      reportingRepository.salesInRange(query.from, query.to), reportingRepository.cogsInRange(query.from, query.to), reportingRepository.purchasesInRange(query.from, query.to),
+      reportingRepository.returnsInRange(dates.from, dates.toExclusive), reportingRepository.receivableOutstanding(asOf), reportingRepository.payableOutstanding(asOf),
+      reportingRepository.inventoryValueTotal(), reportingRepository.monthlyFinancial(11), reportingRepository.topCustomerDebts(5),
+    ]);
+    const grossRevenue = n(salesRows[0]?.revenue), taxAmount = n(salesRows[0]?.tax), cogs = n(cogsRows[0]?.cogs);
+    const returnsTotal = n(returnRows[0]?.total), returnsCost = n(returnRows[0]?.cost);
+    const netRevenue = grossRevenue - returnsTotal, grossProfit = netRevenue - (cogs - returnsCost);
+    return {
+      revenue: round(grossRevenue), returnsTotal: round(returnsTotal), netRevenue: round(netRevenue), taxAmount: round(taxAmount),
+      cogs: round(cogs - returnsCost), grossProfit: round(grossProfit),
+      grossMarginPercent: netRevenue ? round(grossProfit / netRevenue * 100) : 0,
+      purchases: round(n(purchaseRows[0]?.total)), purchasesPaid: round(n(purchaseRows[0]?.paid)), purchasesOutstanding: round(n(purchaseRows[0]?.total) - n(purchaseRows[0]?.paid)),
+      receivables: round(n(receivableRows[0]?.outstanding)), payables: round(n(payableRows[0]?.outstanding)), inventoryValue: round(n(inventoryRows[0]?.value)),
+      monthly: monthly.map(row => { const revenue = n(row.revenue), cogs = n(row.cogs), purchases = n(row.purchases); return { monthKey: row.monthKey, revenue: round(revenue), cogs: round(cogs), purchases: round(purchases), profit: round(revenue - cogs) }; }),
+      topCustomerDebts: debts.map(row => ({ id: row.id, code: row.code, name: row.name, debt: round(n(row.debt)) })),
+    };
   },
   async productionVariance(query: ProductionVarianceReportQuery) {
     const raw = await reportingRepository.productionVariance({ ...range(query.from, query.to), warehouseId: query.warehouseId, search: query.search });

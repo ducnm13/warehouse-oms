@@ -23,6 +23,12 @@ export function formatNumberInput(value: number): string {
   return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(value);
 }
 
+// Số lượng chỉ cho phép thập phân với đơn vị khối lượng (kg); các đơn vị đếm
+// (gói, hộp, chai, túi...) phải là số nguyên.
+export function quantityAllowsDecimal(unit?: string | null) {
+  return (unit || '').trim().toLowerCase() === 'kg';
+}
+
 export function formatDate(dateString: string) {
   return new Date(dateString).toLocaleDateString('vi-VN');
 }

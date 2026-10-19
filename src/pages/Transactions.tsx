@@ -11,7 +11,6 @@ import {
 	Printer,
 	Search,
 	Trash2,
-	Undo2,
 	X,
 } from "lucide-react";
 import toast from "../components/ui/toast";
@@ -22,7 +21,12 @@ import NumberInput from "../components/NumberInput";
 import DocumentActions from "../components/DocumentActions";
 import { InventoryDocument } from "../components/InventoryDocument";
 import { buildCompanyPrintProfile } from "../lib/printTemplate";
-import { formatDate, formatNumber, formatProductName } from "../lib/utils";
+import {
+	formatDate,
+	formatNumber,
+	formatProductName,
+	quantityAllowsDecimal,
+} from "../lib/utils";
 import type {
 	InventoryBalanceV1,
 	InventoryDocumentV1,
@@ -349,6 +353,9 @@ export default function Transactions({
 			})),
 		[packagingOptions],
 	);
+	// Đơn vị của dòng để quyết định cho nhập thập phân (kg) hay bắt buộc số nguyên
+	const unitOf = (packagingId: number) =>
+		packagingOptions.find(p => p.id === packagingId)?.unit || "";
 	const invalidate = () =>
 		Promise.all([
 			queryClient.invalidateQueries({ queryKey: ["inventory-documents-v1"] }),
@@ -440,7 +447,10 @@ export default function Transactions({
 			setEditing(null);
 			void invalidate();
 		},
-		onError: (error: Error) => toast.error(error.message),
+		onError: (error: Error) => {
+			toast.error(error.message);
+			void invalidate();
+		},
 	});
 	const actionMutation = useMutation({
 		mutationFn: ({
@@ -468,7 +478,10 @@ export default function Transactions({
 			setSelected(null);
 			void invalidate();
 		},
-		onError: (error: Error) => toast.error(error.message),
+		onError: (error: Error) => {
+			toast.error(error.message);
+			void invalidate();
+		},
 	});
 	const deleteMutation = useMutation({
 		mutationFn: (document: InventoryDocumentV1) =>
@@ -481,7 +494,10 @@ export default function Transactions({
 			setSelected(null);
 			void invalidate();
 		},
-		onError: (error: Error) => toast.error(error.message),
+		onError: (error: Error) => {
+			toast.error(error.message);
+			void invalidate();
+		},
 	});
 	const openCreate = (forcedType?: "IMPORT" | "EXPORT") => {
 		const nextType = (forcedType ||
@@ -796,21 +812,40 @@ export default function Transactions({
 														<button
 															title="Sửa"
 															className="erp-icon-btn"
-															disabled={document.documentStatus !== "DRAFT"}
+															disabled={
+																!(
+																	document.documentStatus === "DRAFT" ||
+																	(document.documentStatus ===
+																		"CANCELLED" &&
+																		document.sourceModule === "MANUAL_V1")
+																)
+															}
 															onClick={() => openEdit(document)}
 														>
 															<Edit size={16} />
 														</button>
 														<button
-															title="Ghi sổ"
+															title={
+																document.documentStatus === "CANCELLED"
+																	? "Ghi sổ lại"
+																	: "Ghi sổ"
+															}
 															className="erp-icon-btn text-emerald-600"
 															disabled={
-																document.documentStatus !== "DRAFT" ||
-																actionMutation.isPending
+																!(
+																	document.documentStatus === "DRAFT" ||
+																	(document.documentStatus ===
+																		"CANCELLED" &&
+																		document.sourceModule === "MANUAL_V1")
+																) || actionMutation.isPending
 															}
 							onClick={async () => {
 								if (
-									await confirm(`Ghi sổ ${document.code}?`)
+									await confirm(
+										document.documentStatus === "CANCELLED"
+											? `Ghi sổ lại ${document.code}?`
+											: `Ghi sổ ${document.code}?`,
+									)
 								)
 									actionMutation.mutate({
 										document,
@@ -820,51 +855,64 @@ export default function Transactions({
 														>
 															<CheckCircle2 size={16} />
 														</button>
-														{document.documentStatus === "DRAFT" && (
+														{document.documentStatus === "DRAFT" ||
+														document.documentStatus === "CANCELLED" ||
+														(document.documentStatus === "POSTED" &&
+															document.sourceModule === "MANUAL_V1") ? (
 															<button
-																title="Xóa phiếu nháp"
+																title={
+																	document.documentStatus === "CANCELLED"
+																		? "Xóa phiếu đã hủy"
+																		: document.documentStatus === "DRAFT"
+																			? "Xóa phiếu nháp"
+																			: "Hủy phiếu & hoàn lại tồn kho"
+																}
 																className="erp-icon-btn text-red-600"
-																disabled={deleteMutation.isPending}
-							onClick={async () => {
-								if (
-									await confirm(
-										`Xóa phiếu nháp ${document.code}?`,
-									)
-								)
-									deleteMutation.mutate(document);
+																disabled={
+																	deleteMutation.isPending ||
+																	actionMutation.isPending
+																}
+																onClick={async () => {
+																	if (
+																		document.documentStatus === "DRAFT"
+																	) {
+																		if (
+																			await confirm(
+																				`Xóa phiếu nháp ${document.code}?`,
+																			)
+																		)
+																			deleteMutation.mutate(document);
+																		return;
+																	}
+																	if (
+																		document.documentStatus ===
+																		"CANCELLED"
+																	) {
+																		if (
+																			await confirm(
+																				`Xóa vĩnh viễn phiếu đã hủy ${document.code}? Thao tác không thể hoàn tác.`,
+																			)
+																		)
+																			deleteMutation.mutate(document);
+																		return;
+																	}
+																	const reason = await prompt({
+																		title: "Hủy phiếu kho",
+																		message:
+																			"Nhập lý do hủy (tồn kho sẽ được hoàn lại):",
+																		minLength: 3,
+																	});
+																	if (reason)
+																		actionMutation.mutate({
+																			document,
+																			action: "cancel",
+																			reason: reason.trim(),
+																		});
 																}}
 															>
 																<Trash2 size={16} />
 															</button>
-														)}
-														<button
-															title={
-																document.sourceModule !== "MANUAL_V1"
-																	? "Phiếu tự sinh, hủy từ chứng từ gốc"
-																	: "Hủy và đảo"
-															}
-															className="erp-icon-btn text-red-600"
-															disabled={
-																document.documentStatus !== "POSTED" ||
-																document.sourceModule !== "MANUAL_V1" ||
-																actionMutation.isPending
-															}
-							onClick={async () => {
-								const reason = await prompt({
-									title: "Hủy phiếu kho",
-									message: "Nhập lý do hủy:",
-									minLength: 3,
-								});
-								if (reason)
-									actionMutation.mutate({
-										document,
-										action: "cancel",
-										reason: reason.trim(),
-									});
-							}}
-														>
-															<Undo2 size={16} />
-														</button>
+														) : null}
 													</div>
 												</td>
 											</tr>
@@ -1151,6 +1199,9 @@ export default function Transactions({
 															onChange={v => updateLine(index, { quantity: v })}
 															min={0.0001}
 															decimals={3}
+															integerOnly={
+																!quantityAllowsDecimal(unitOf(line.packagingId))
+															}
 															className="w-28"
 														/>
 													</td>
@@ -1352,14 +1403,22 @@ export default function Transactions({
 									openEdit(selected);
 								}}
 							/>
-							{selected.documentStatus === "DRAFT" && (
+							{(selected.documentStatus === "DRAFT" ||
+								(selected.documentStatus === "CANCELLED" &&
+									selected.sourceModule === "MANUAL_V1")) && (
 								<button
 									type="button"
 									className="erp-btn text-red-600"
 									disabled={deleteMutation.isPending}
 											onClick={async () => {
+												const isCancelled =
+													selected.documentStatus === "CANCELLED";
 												if (
-													await confirm(`Xóa phiếu nháp ${selected.code}?`)
+													await confirm(
+														isCancelled
+															? `Xóa vĩnh viễn phiếu đã hủy ${selected.code}? Thao tác không thể hoàn tác.`
+															: `Xóa phiếu nháp ${selected.code}?`,
+													)
 												)
 													deleteMutation.mutate(selected);
 											}}

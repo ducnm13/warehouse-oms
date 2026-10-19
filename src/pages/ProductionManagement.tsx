@@ -12,6 +12,7 @@ import {
 	Play,
 	Plus,
 	Printer,
+	Save,
 	Search,
 	Trash2,
 	Undo2,
@@ -597,6 +598,8 @@ export default function ProductionManagement({
 	const isCompleted = selected?.status === "COMPLETED";
 	// Được nhập/sửa thực tế khi đang SX hoặc đã chốt (chốt lại để bổ sung)
 	const canActual = isProgress || isCompleted;
+	// Được sửa thông tin mẻ (kg, ngày SX/HSD, số lô...) khi lệnh nháp hoặc đang SX (chưa chốt)
+	const canEditBatch = isDraft || isProgress;
 
 	const rows = docs.data?.data || [];
 
@@ -787,7 +790,7 @@ export default function ProductionManagement({
 																	? "Bổ sung thông tin lệnh"
 																	: order.status === "COMPLETED"
 																		? "Bổ sung số lượng & chốt lại"
-																		: "Nhập thực tế & chốt"
+																		: "Sửa thông tin mẻ & nhập thực tế"
 															}
 														>
 															<Edit size={16} />
@@ -871,7 +874,9 @@ export default function ProductionManagement({
 								<p>
 									{isDraft
 										? "Bổ sung thông tin mẻ sản xuất"
-										: "Nhập số lượng thực tế từng SKU rồi CHỐT (kho lập phiếu nhập theo số chốt)"}
+										: isProgress
+											? "Sửa thông tin mẻ (tổng bột, ngày SX/HSD, số lô...) và nhập số lượng thực tế rồi CHỐT"
+											: "Nhập số lượng thực tế từng SKU rồi CHỐT (kho lập phiếu nhập theo số chốt)"}
 								</p>
 							</div>
 							<button onClick={() => setEditForm(null)}>
@@ -925,7 +930,7 @@ export default function ProductionManagement({
 										<label>
 											Mã lệnh{" "}
 											<input
-												disabled={!isDraft}
+												disabled={!canEditBatch}
 												value={editForm.code}
 												onChange={e =>
 													setEditForm({
@@ -939,7 +944,7 @@ export default function ProductionManagement({
 										<label>
 											Ngày tạo lệnh{" "}
 											<DateInput
-												disabled={!isDraft}
+												disabled={!canEditBatch}
 												value={editForm.orderDate}
 												onChange={value =>
 													setEditForm({
@@ -953,7 +958,7 @@ export default function ProductionManagement({
 											Kho SX{" "}
 											<select
 												required
-												disabled={!isDraft}
+												disabled={!canEditBatch}
 												value={editForm.warehouseId}
 												onChange={e =>
 													setEditForm({
@@ -974,7 +979,7 @@ export default function ProductionManagement({
 											Số lô{" "}
 											<input
 												required
-												disabled={!isDraft}
+												disabled={!canEditBatch}
 												value={editForm.batchNumber}
 												onChange={e =>
 													setEditForm({
@@ -988,7 +993,7 @@ export default function ProductionManagement({
 										<label>
 											Ngày Sản Xuất{" "}
 											<DateInput
-												disabled={!isDraft}
+												disabled={!canEditBatch}
 												value={editForm.mfgDate}
 												onChange={value => handleMfgDateChange(value)}
 											/>
@@ -996,7 +1001,7 @@ export default function ProductionManagement({
 										<label>
 											Hạn Sử Dụng{" "}
 											<DateInput
-												disabled={!isDraft}
+												disabled={!canEditBatch}
 												value={editForm.expDate}
 												onChange={value =>
 													setEditForm({ ...editForm, expDate: value })
@@ -1009,7 +1014,7 @@ export default function ProductionManagement({
 												type="number"
 												min="0"
 												step="0.001"
-												disabled={!isDraft}
+												disabled={!canEditBatch}
 												value={editForm.totalPowderKg}
 												onChange={e =>
 													setEditForm({
@@ -1025,7 +1030,7 @@ export default function ProductionManagement({
 												type="number"
 												min="0"
 												step="1"
-												disabled={!isDraft}
+												disabled={!canEditBatch}
 												value={editForm.targetSachets}
 												onChange={e =>
 													setEditForm({
@@ -1042,7 +1047,7 @@ export default function ProductionManagement({
 												min="0"
 												max="100"
 												step="0.01"
-												disabled={!isDraft}
+												disabled={!canEditBatch}
 												value={editForm.lossPercent}
 												onChange={e =>
 													setEditForm({
@@ -1055,7 +1060,7 @@ export default function ProductionManagement({
 										<label className="md:col-span-3">
 											Diễn giải{" "}
 											<input
-												disabled={!isDraft}
+												disabled={!canEditBatch}
 												value={editForm.note}
 												onChange={e =>
 													setEditForm({ ...editForm, note: e.target.value })
@@ -1077,7 +1082,7 @@ export default function ProductionManagement({
 														{netWeightKg} kg)
 													</span>
 												</span>
-												{isDraft && expectedPacks > 0 && (
+												{canEditBatch && expectedPacks > 0 && (
 													<button
 														type="button"
 														className="erp-btn"
@@ -1399,6 +1404,18 @@ export default function ProductionManagement({
 										</button>
 									</>
 								)}
+								{isProgress && manage && (
+									<button
+										type="submit"
+										className="erp-btn erp-btn-primary"
+										disabled={updateMutation.isPending}
+									>
+										<Save size={15} />{" "}
+										{updateMutation.isPending
+											? "Đang lưu..."
+											: "Lưu thay đổi"}
+									</button>
+								)}
 								{canActual && manage && (
 									<button
 										type="button"
@@ -1522,7 +1539,12 @@ export default function ProductionManagement({
 													}
 												}}
 											>
-												{link.linkType}: {link.linkedCode || link.linkedId}
+												{link.linkType === "INVENTORY_ISSUE"
+													? "Phiếu xuất"
+													: link.linkType === "INVENTORY_RECEIPT"
+														? "Phiếu nhập"
+														: link.linkType}
+												: {link.linkedCode || link.linkedId}
 											</button>
 										))}
 									</div>
@@ -1556,7 +1578,7 @@ export default function ProductionManagement({
 											? "Bổ sung thông tin"
 											: selected.status === "COMPLETED"
 												? "Bổ sung & chốt lại"
-												: "Nhập thực tế & chốt"}
+												: "Sửa & chốt"}
 									</button>
 								)}
 							{selected.status === "DRAFT" && manage && (

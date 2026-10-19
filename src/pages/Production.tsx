@@ -449,6 +449,11 @@ export default function Production({
 			return;
 		}
 		const costMap = refs.data?.costMap || new Map<number, number>();
+		// Phiếu xuất NVL: mặc định chọn kho nguyên liệu (nếu có), ngược lại lấy kho của lệnh
+		const materialWarehouseId =
+			refs.data?.warehouses
+				.find(w => w.name.toLowerCase().includes("nguyên liệu"))
+				?.id || 0;
 		const draft = {
 			productionOrderId: order.id,
 			productionOrderCode: order.code,
@@ -457,7 +462,10 @@ export default function Production({
 			form: {
 				type,
 				transactionDate: today(),
-				warehouseId: order.warehouseId,
+				warehouseId:
+					type === "EXPORT"
+						? materialWarehouseId || order.warehouseId
+						: order.warehouseId,
 				recipient: type === "EXPORT" ? "Tổ sản xuất" : "Kho thành phẩm",
 				reason:
 					type === "EXPORT" ? "Xuất NVL sản xuất" : "Nhập thành phẩm sản xuất",
@@ -494,7 +502,12 @@ export default function Production({
 		if (onNavigate) {
 			onNavigate(type === "EXPORT" ? "inventory-export" : "inventory-import");
 		} else {
-			window.open("/inventory-import?productionDraft=1", "_blank");
+			window.open(
+				type === "EXPORT"
+					? "/inventory-export?productionDraft=1"
+					: "/inventory-import?productionDraft=1",
+				"_blank",
+			);
 		}
 		toast.success(
 			type === "EXPORT"
@@ -1024,8 +1037,12 @@ export default function Production({
 												title="Mở phiếu kho liên kết ở tab mới"
 												onClick={() => {
 													if (x.linkedCode) {
+														const tab =
+															x.linkType === "INVENTORY_ISSUE"
+																? "inventory-export"
+																: "inventory-import";
 														window.open(
-															`/inventory-export?code=${encodeURIComponent(x.linkedCode)}`,
+															`/${tab}?code=${encodeURIComponent(x.linkedCode)}`,
 															"_blank",
 														);
 													}
@@ -1158,26 +1175,6 @@ export default function Production({
 									onClick={() => createReceiptDraft(selected)}
 								>
 									<FileSpreadsheet size={15} /> Lập phiếu nhập
-								</button>
-							)}
-							{manage && selected.status === "DRAFT" && (
-								<button
-									type="button"
-									className="erp-btn erp-btn-post"
-									disabled={action.isPending}
-									onClick={() => handleConfirm(selected)}
-								>
-									<Play size={15} /> Ghi sổ
-								</button>
-							)}
-							{manage && selected.status === "IN_PROGRESS" && (
-								<button
-									type="button"
-									className="erp-btn erp-btn-post"
-									disabled={action.isPending}
-									onClick={() => handleComplete(selected)}
-								>
-									<CheckCircle2 size={15} /> Ghi sổ
 								</button>
 							)}
 							{manage && selected.status !== "CANCELLED" && (

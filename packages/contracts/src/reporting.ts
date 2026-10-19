@@ -55,6 +55,28 @@ export const transferReportQuerySchema = dateRange.safeExtend({
   search: z.string().trim().max(255).optional(),
 });
 
+export const purchaseReportQuerySchema = dateRange.safeExtend({
+  warehouseId: z.coerce.number().int().positive().optional(),
+  supplierId: z.coerce.number().int().positive().optional(),
+  search: z.string().trim().max(255).optional(),
+});
+
+export const salesReturnReportQuerySchema = dateRange.safeExtend({
+  warehouseId: z.coerce.number().int().positive().optional(),
+  customerId: z.coerce.number().int().positive().optional(),
+  status: z.enum(["DRAFT", "POSTED", "CANCELLED"]).optional(),
+  search: z.string().trim().max(255).optional(),
+});
+
+export const stockOnHandReportQuerySchema = z.object({
+  warehouseId: z.coerce.number().int().positive().optional(),
+  category: z.string().trim().max(50).optional(),
+  search: z.string().trim().max(255).optional(),
+  onlyLowStock: z.coerce.boolean().optional(),
+});
+
+export const financialSummaryReportQuerySchema = dateRange;
+
 export type InventorySummaryReportQuery = z.infer<typeof inventorySummaryReportQuerySchema>;
 export type ItemLedgerReportQuery = z.infer<typeof itemLedgerReportQuerySchema>;
 export type SalesProfitReportQuery = z.infer<typeof salesProfitReportQuerySchema>;
@@ -64,3 +86,7 @@ export type SalesByCustomerReportQuery = z.infer<typeof salesByCustomerReportQue
 export type SalesByProductReportQuery = z.infer<typeof salesByProductReportQuerySchema>;
 export type ProductionOverviewReportQuery = z.infer<typeof productionOverviewReportQuerySchema>;
 export type TransferReportQuery = z.infer<typeof transferReportQuerySchema>;
+export type PurchaseReportQuery = z.infer<typeof purchaseReportQuerySchema>;
+export type SalesReturnReportQuery = z.infer<typeof salesReturnReportQuerySchema>;
+export type StockOnHandReportQuery = z.infer<typeof stockOnHandReportQuerySchema>;
+export type FinancialSummaryReportQuery = z.infer<typeof financialSummaryReportQuerySchema>;

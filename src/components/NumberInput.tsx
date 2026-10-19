@@ -17,10 +17,13 @@ interface NumberInputProps {
 const NumberInput = forwardRef<HTMLInputElement, NumberInputProps>(
   ({ value, onChange, min, max, step = "any", decimals = 3, className = "", disabled, title, integerOnly }, ref) => {
     const [displayValue, setDisplayValue] = useState(() => integerOnly ? formatInteger(value) : formatNumber(value));
+    const [focused, setFocused] = useState(false);
 
     useEffect(() => {
+      // Đang gõ thì giữ nguyên chuỗi người dùng nhập, không tự chèn lại dấu phân cách
+      if (focused) return;
       setDisplayValue(integerOnly ? formatInteger(value) : formatNumber(value));
-    }, [value, integerOnly]);
+    }, [value, integerOnly, focused]);
 
     // Parse theo chuẩn vi-VN (app format kiểu này): chấm là nhóm nghìn ("1.000"),
     // phẩy lẻ là thập phân ("38,442" là 38,442). Có cả 2 dấu thì dấu sau cùng là
@@ -63,16 +66,15 @@ const NumberInput = forwardRef<HTMLInputElement, NumberInputProps>(
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const raw = e.target.value;
       const parsed = parseInput(raw);
-      if (parsed !== null) {
-        onChange(parsed);
-        setDisplayValue(integerOnly ? formatInteger(parsed) : formatNumber(parsed));
-      } else {
-        setDisplayValue(raw);
-        onChange(0);
-      }
+      // Giữ nguyên chuỗi vừa gõ (không format lại giữa chừng) để tránh "1000" bị
+      // hiển thị "1.000" rồi gõ tiếp thành "1.0000" và bị parse thành 1.0.
+      // Việc format dấu phân cách nghìn chỉ diễn ra khi rời ô (onBlur).
+      setDisplayValue(integerOnly ? raw.replace(/[^\d-]/g, "") : raw);
+      onChange(parsed === null ? 0 : parsed);
     };
 
     const handleBlur = () => {
+      setFocused(false);
       const parsed = parseInput(displayValue);
       if (parsed !== null) {
         onChange(parsed);
@@ -83,6 +85,7 @@ const NumberInput = forwardRef<HTMLInputElement, NumberInputProps>(
     };
 
     const handleFocus = () => {
+      setFocused(true);
       setDisplayValue(value.toString());
     };
 

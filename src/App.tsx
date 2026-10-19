@@ -24,7 +24,24 @@ import Suppliers from './pages/Suppliers';
 import PurchasesV1 from './pages/PurchasesV1';
 import FinancialDashboard from './pages/FinancialDashboard';
 import Debt from './pages/Debt';
-import Reporting from './pages/Reporting';
+import ReportsIndex from './pages/reports/ReportsIndex';
+import FinancialSummaryReport from './pages/reports/FinancialSummaryReport';
+import SalesProfitReport from './pages/reports/SalesProfitReport';
+import SalesByCustomerReport from './pages/reports/SalesByCustomerReport';
+import SalesByProductReport from './pages/reports/SalesByProductReport';
+import SalesReturnsReport from './pages/reports/SalesReturnsReport';
+import PurchasesBySupplierReport from './pages/reports/PurchasesBySupplierReport';
+import PurchasesByProductReport from './pages/reports/PurchasesByProductReport';
+import InventorySummaryReport from './pages/reports/InventorySummaryReport';
+import StockOnHandReport from './pages/reports/StockOnHandReport';
+import ItemLedgerReport from './pages/reports/ItemLedgerReport';
+import TransfersReport from './pages/reports/TransfersReport';
+import ProductionOverviewReport from './pages/reports/ProductionOverviewReport';
+import ProductionVarianceReport from './pages/reports/ProductionVarianceReport';
+import OperationsReport from './pages/reports/OperationsReport';
+import DebtAgingReport from './pages/reports/DebtAgingReport';
+import PromotionUsageReport from './pages/reports/PromotionUsageReport';
+import OnlineReport from './pages/reports/OnlineReport';
 import Promotions from './pages/Promotions';
 import SalesReturns from './pages/SalesReturns';
 import CompanySettings from './pages/CompanySettings';
@@ -139,7 +156,26 @@ const AppRoutes = () => {
           <Route path="/suppliers" element={<Suppliers />} />
           <Route path="/inventory-import" element={<Transactions initialType="IMPORT" />} />
           <Route path="/inventory-export" element={<Transactions initialType="EXPORT" />} />
-          <Route path="/inventory-report" element={<Reporting />} />
+          <Route path="/inventory-report" element={<Navigate to="/reports" replace />} />
+          <Route path="/reports" element={<ReportsIndex />} />
+          <Route path="/reports/financial" element={<FinancialSummaryReport />} />
+          <Route path="/reports/sales-profit" element={<SalesProfitReport />} />
+          <Route path="/reports/sales-customer" element={<SalesByCustomerReport />} />
+          <Route path="/reports/sales-product" element={<SalesByProductReport />} />
+          <Route path="/reports/sales-returns" element={<SalesReturnsReport />} />
+          <Route path="/reports/purchases-supplier" element={<PurchasesBySupplierReport />} />
+          <Route path="/reports/purchases-product" element={<PurchasesByProductReport />} />
+          <Route path="/reports/inventory-summary" element={<InventorySummaryReport />} />
+          <Route path="/reports/stock-on-hand" element={<StockOnHandReport />} />
+          <Route path="/reports/item-ledger" element={<ItemLedgerReport />} />
+          <Route path="/reports/transfers" element={<TransfersReport />} />
+          <Route path="/reports/production-overview" element={<ProductionOverviewReport />} />
+          <Route path="/reports/production-variance" element={<ProductionVarianceReport />} />
+          <Route path="/reports/operations" element={<OperationsReport />} />
+          <Route path="/reports/debt-receivable" element={<DebtAgingReport kind="receivable" />} />
+          <Route path="/reports/debt-payable" element={<DebtAgingReport kind="payable" />} />
+          <Route path="/reports/promotions" element={<PromotionUsageReport />} />
+          <Route path="/reports/online" element={<OnlineReport />} />
           <Route path="/production" element={<Production user={user!} onNavigate={(tab) => navigate(`/${tab}`)} />} />
           <Route path="/production-mgmt" element={<ProductionManagement user={user!} onNavigate={(tab) => navigate(`/${tab}`)} />} />
           <Route path="/assembly" element={<Assembly user={user!} />} />
