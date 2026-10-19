@@ -26,6 +26,7 @@ import { formatDate, formatNumber } from "../lib/utils";
 import type { Product, ProductionOrderV1, User, Warehouse } from "../types";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
+import SearchableSelect from "../components/SearchableSelect";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -512,6 +513,15 @@ export default function ProductionManagement({
 		...(selected?.outputs || []).map(d => d.packagingId),
 		...allocRows.map(r => r.packagingId),
 	]);
+	const pickSkuOptions = producibleOptions
+		.filter(p => p.id > 0 && !usedPackagingIds.has(p.id))
+		.map(p => ({
+			value: p.id,
+			label: p.productName || p.name,
+			subLabel: [p.sku, p.name !== p.productName ? p.name : "", p.unit]
+				.filter(Boolean)
+				.join(" | "),
+		}));
 	const handleSuggestSkus = () => {
 		const baseSku = (mainOutput?.sku || "").toUpperCase();
 		const m = baseSku.match(/^([A-ZÀ-Ỹ]+)(\d+)/);
@@ -1111,23 +1121,13 @@ export default function ProductionManagement({
 										<h4 className="font-semibold">Bảng phân bổ thành phẩm</h4>
 										{canActual && manage && (
 											<div className="flex flex-wrap items-center gap-2">
-												<select
+												<SearchableSelect
 													value={pickSku}
-													onChange={e => setPickSku(+e.target.value)}
-													className="erp-select w-auto"
-												>
-													<option value={0}>Chọn SKU phân bổ thêm</option>
-													{producibleOptions
-														.filter(
-															p => p.id > 0 && !usedPackagingIds.has(p.id),
-														)
-														.map(p => (
-															<option key={p.id} value={p.id}>
-																{p.name}
-																{p.sku ? ` (${p.sku})` : ""}
-															</option>
-														))}
-												</select>
+													options={pickSkuOptions}
+													onChange={setPickSku}
+													placeholder="Chọn SKU phân bổ thêm (gõ tên/mã để tìm)"
+													className="w-80"
+												/>
 												<button
 													type="button"
 													className="erp-btn"

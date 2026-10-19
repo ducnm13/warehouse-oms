@@ -17,9 +17,9 @@
 		"build": "tsc && vite build",
 		"server": "tsx server.ts",
 		"typecheck": "tsc --noEmit && npm run typecheck --workspaces --if-present",
-		"prisma:generate": "npm run prisma:generate -w @challenge/database",
-		"prisma:push": "npm run prisma:push -w @challenge/database",
-		"prisma:studio": "npm run prisma:studio -w @challenge/database"
+		"prisma:generate": "prisma generate --schema packages/database/prisma/schema.prisma",
+		"prisma:push": "prisma db push --schema packages/database/prisma/schema.prisma",
+		"prisma:studio": "prisma studio --schema packages/database/prisma/schema.prisma"
 	},
 	"dependencies": {
 		"@google/genai": "^1.29.0",
