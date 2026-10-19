@@ -18,6 +18,7 @@
 		"server": "tsx server.ts",
 		"typecheck": "tsc --noEmit && npm run typecheck --workspaces --if-present",
 		"prisma:generate": "npm run prisma:generate -w @challenge/database",
+		"prisma:push": "npm run prisma:push -w @challenge/database",
 		"prisma:studio": "npm run prisma:studio -w @challenge/database"
 	},
 	"dependencies": {
