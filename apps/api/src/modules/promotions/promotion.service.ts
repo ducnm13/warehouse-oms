@@ -1,4 +1,5 @@
 import type { PromotionPreviewInput, PromotionProgramInput, PromotionUpdateInput } from "@challenge/contracts";
+import { resolveDocumentCode } from "../../common/document-code";
 import { HttpError } from "../../common/http-error";
 import { evaluatePromotions } from "./promotion.engine";
 import { mapPromotion } from "./promotion.mapper";
@@ -27,7 +28,8 @@ export const promotionService = {
   async get(id: number) { const row = await promotionRepository.find(id); if (!row || row.deletedAt) throw new HttpError(404, "PROMOTION_NOT_FOUND", "Không tìm thấy chương trình"); return mapPromotion(row); },
   async create(input: PromotionProgramInput, userId: number) {
     await validateReferences(input);
-    if (await promotionRepository.codeExists(input.code)) throw new HttpError(409, "PROMOTION_CODE_EXISTS", "Mã chương trình đã tồn tại");
+    const code = await resolveDocumentCode("promotion", input.code);
+    input = { ...input, code };
     const row = await prisma.promotion_programs.create({ data: { code: input.code, name: input.name, startDate: day(input.startDate), endDate: day(input.endDate), customerScope: input.customerScope, customerGroup: input.customerScope === "GROUP" ? input.customerGroup : null, priority: input.priority, note: input.note || null, createdBy: userId, updatedAt: new Date(), ...nested(input) }, include: promotionInclude });
     await prisma.audit_logs.create({ data: { action: "Tạo khuyến mãi v1", details: row.code, userId, userName: String(userId), createdAt: new Date().toISOString() } });
     return mapPromotion(row);
@@ -55,5 +57,45 @@ export const promotionService = {
       await tx.audit_logs.create({ data: { action: status === "ACTIVE" ? "Kích hoạt khuyến mãi v1" : "Ngừng khuyến mãi v1", details: row.code, userId, userName: String(userId), createdAt: new Date().toISOString() } }); return mapPromotion(row);
     });
   },
+  async remove(id: number, userId: number) {
+    return prisma.$transaction(async tx => {
+      const current = (await tx.$queryRawUnsafe("SELECT id,code,status FROM promotion_programs WHERE id=? AND deletedAt IS NULL FOR UPDATE", id) as any[])[0];
+      if (!current) throw new HttpError(404, "PROMOTION_NOT_FOUND", "Không tìm thấy chương trình");
+      if (current.status !== "INACTIVE") throw new HttpError(409, "PROMOTION_NOT_DELETABLE", "Chỉ chương trình ở trạng thái ngừng áp dụng (INACTIVE) mới được xóa");
+      await tx.promotion_programs.update({ where: { id }, data: { deletedAt: new Date(), version: { increment: 1 }, updatedAt: new Date() } });
+      await tx.audit_logs.create({ data: { action: "Xóa khuyến mãi v1", details: current.code, userId, userName: String(userId), createdAt: new Date().toISOString() } });
+      return { id };
+    });
+  },
   preview(input: PromotionPreviewInput) { return evaluatePromotions(input); },
+  // Báo cáo hàng khuyến mãi đã tặng theo chương trình + SKU quà
+  async usageSummary(from: string, to: string) {
+    const fromDate = new Date(`${from}T00:00:00.000Z`);
+    const toExclusive = new Date(new Date(`${to}T00:00:00.000Z`).getTime() + 86400000);
+    const rows = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT l.programId, l.programCode, l.programName,
+        pp.id packagingId, pp.sku, pp.name packagingName, pp.unit, p.name productName,
+        COUNT(DISTINCT l.salesOrderId) orders, SUM(l.rewardQuantity) giftQty
+       FROM promotion_usage_logs l
+       JOIN productpackagings pp ON pp.id=l.rewardPackagingId
+       JOIN products p ON p.id=pp.productId
+       WHERE l.createdAt>=? AND l.createdAt<?
+       GROUP BY l.programId, l.programCode, l.programName,
+         pp.id, pp.sku, pp.name, pp.unit, p.name
+       ORDER BY giftQty DESC`,
+      fromDate, toExclusive,
+    );
+    const mapped = rows.map(row => ({
+      programId: Number(row.programId), programCode: row.programCode, programName: row.programName,
+      packagingId: Number(row.packagingId), sku: row.sku, packagingName: row.packagingName,
+      unit: row.unit, productName: row.productName,
+      orders: Number(row.orders || 0), giftQty: Number(row.giftQty || 0),
+    }));
+    return {
+      rows: mapped,
+      summary: mapped.reduce((sum, row) => ({
+        programs: sum.programs, orders: sum.orders + row.orders, giftQty: sum.giftQty + row.giftQty,
+      }), { programs: new Set(mapped.map(row => row.programId)).size, orders: 0, giftQty: 0 }),
+    };
+  },
 };

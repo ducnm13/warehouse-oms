@@ -1,5 +1,6 @@
 import React, { forwardRef, useState } from "react";
 import { formatNumber } from "../lib/utils";
+import PrintAppFooter from "./PrintAppFooter";
 
 export const StocktakeDocument = forwardRef(
   ({ stocktake, details }: { stocktake: any; details: any[] }, ref: any) => {
@@ -117,6 +118,7 @@ export const StocktakeDocument = forwardRef(
             <p className="text-xs">(Ký, đóng dấu)</p>
           </div>
         </div>
+        <PrintAppFooter />
       </div>
     );
   },

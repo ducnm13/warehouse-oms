@@ -24,6 +24,18 @@ export const salesRepository = {
     const rows = await prisma.productpackagings.findMany({ where: { id: { in: ids } }, select: { id: true } });
     return new Set(rows.map(row => row.id));
   },
+  packagingPrices(ids: number[], customerId?: number) {
+    return prisma.product_prices.findMany({
+      where: { packagingId: { in: ids }, isActive: 1 },
+      select: { packagingId: true, priceType: true, price: true },
+    });
+  },
+  packagingPricesByType(ids: number[], priceType: string) {
+    return prisma.product_prices.findMany({
+      where: { packagingId: { in: ids }, isActive: 1, priceType },
+      select: { packagingId: true, priceType: true, price: true },
+    });
+  },
 };
 
 export { prisma, Prisma };

@@ -22,10 +22,40 @@ export const assemblyBomInputSchema = z.object({
 export const assemblyBomUpdateSchema = assemblyBomInputSchema.safeExtend({ version: z.coerce.number().int().positive() });
 export const assemblyBomListQuerySchema = z.object({ search: z.string().trim().max(255).optional(), status: z.enum(["ACTIVE", "INACTIVE"]).optional() });
 
-const orderBase = z.object({ orderDate: z.iso.date(), plannedQuantity: quantity, note });
-export const assemblyDraftSchema = orderBase.extend({ outputPackagingId: positiveId, componentWarehouseId: positiveId, outputWarehouseId: positiveId });
+const orderBase = z.object({
+  code: z.string().trim().max(20).optional().default(""),
+  orderDate: z.iso.date(),
+  note: z.string().trim().max(1000).optional().default(""),
+});
+const finishedLine = z.object({
+  packagingId: positiveId,
+  plannedQuantity: quantity,
+  note: z.string().trim().max(500).optional().default(""),
+});
+export const assemblyDraftSchema = orderBase.extend({
+  outputs: z.array(finishedLine).min(1).max(100),
+  componentWarehouseId: positiveId,
+  outputWarehouseId: positiveId,
+  assemblyCost: z.coerce.number().min(0).max(999999999999).optional().default(0),
+}).superRefine((value, ctx) => {
+  const seen = new Set<number>();
+  value.outputs.forEach((row, index) => {
+    if (seen.has(row.packagingId)) ctx.addIssue({ code: "custom", path: ["outputs", index, "packagingId"], message: "Thành phẩm không được trùng" });
+    seen.add(row.packagingId);
+  });
+});
 export const assemblyUpdateSchema = assemblyDraftSchema.extend({ version: z.coerce.number().int().positive() });
-export const disassemblyDraftSchema = orderBase.extend({ sourcePackagingId: positiveId, sourceWarehouseId: positiveId, recoveryWarehouseId: positiveId });
+export const disassemblyDraftSchema = orderBase.extend({
+  outputs: z.array(finishedLine).min(1).max(100),
+  sourceWarehouseId: positiveId,
+  recoveryWarehouseId: positiveId,
+}).superRefine((value, ctx) => {
+  const seen = new Set<number>();
+  value.outputs.forEach((row, index) => {
+    if (seen.has(row.packagingId)) ctx.addIssue({ code: "custom", path: ["outputs", index, "packagingId"], message: "Thành phẩm không được trùng" });
+    seen.add(row.packagingId);
+  });
+});
 export const disassemblyUpdateSchema = disassemblyDraftSchema.extend({ version: z.coerce.number().int().positive() });
 export const lifecycleListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(100).default(20),

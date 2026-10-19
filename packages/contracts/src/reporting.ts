@@ -33,8 +33,34 @@ export const productionVarianceReportQuerySchema = dateRange.safeExtend({
   search: z.string().trim().max(255).optional(),
 });
 
+export const salesByCustomerReportQuerySchema = dateRange.safeExtend({
+  warehouseId: z.coerce.number().int().positive().optional(),
+  groupId: z.coerce.number().int().positive().optional(),
+  search: z.string().trim().max(255).optional(),
+});
+
+export const salesByProductReportQuerySchema = dateRange.safeExtend({
+  warehouseId: z.coerce.number().int().positive().optional(),
+  search: z.string().trim().max(255).optional(),
+});
+
+export const productionOverviewReportQuerySchema = dateRange.safeExtend({
+  warehouseId: z.coerce.number().int().positive().optional(),
+  search: z.string().trim().max(255).optional(),
+});
+
+export const transferReportQuerySchema = dateRange.safeExtend({
+  warehouseId: z.coerce.number().int().positive().optional(),
+  status: z.enum(["DRAFT", "IN_TRANSIT", "RECEIVED", "CANCELLED"]).optional(),
+  search: z.string().trim().max(255).optional(),
+});
+
 export type InventorySummaryReportQuery = z.infer<typeof inventorySummaryReportQuerySchema>;
 export type ItemLedgerReportQuery = z.infer<typeof itemLedgerReportQuerySchema>;
 export type SalesProfitReportQuery = z.infer<typeof salesProfitReportQuerySchema>;
 export type OperationsReportQuery = z.infer<typeof operationsReportQuerySchema>;
 export type ProductionVarianceReportQuery = z.infer<typeof productionVarianceReportQuerySchema>;
+export type SalesByCustomerReportQuery = z.infer<typeof salesByCustomerReportQuerySchema>;
+export type SalesByProductReportQuery = z.infer<typeof salesByProductReportQuerySchema>;
+export type ProductionOverviewReportQuery = z.infer<typeof productionOverviewReportQuerySchema>;
+export type TransferReportQuery = z.infer<typeof transferReportQuerySchema>;

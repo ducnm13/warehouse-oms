@@ -1,0 +1,319 @@
+import React, { useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useReactToPrint } from "react-to-print";
+import { BarChart3, Boxes, CheckCircle2, Edit, Eye, Plus, Printer, Search, Trash2, Undo2, X } from "lucide-react";
+import toast from "react-hot-toast";
+import { apiV1, legacyApi } from "../lib/apiV1";
+import SearchableSelect from "../components/SearchableSelect";
+import NumberInput from "../components/NumberInput";
+import DocumentActions from "../components/DocumentActions";
+import { InventoryDocument } from "../components/InventoryDocument";
+import { buildCompanyPrintProfile } from "../lib/printTemplate";
+import { formatDate, formatNumber, formatProductName } from "../lib/utils";
+import type { InventoryBalanceV1, InventoryDocumentV1, InventoryReconciliationV1, Product, Warehouse } from "../types";
+import { useMultiEscapeKey } from "../hooks/useEscapeKey";
+
+type Line = { packagingId: number; quantity: number; unitCost: number; note: string };
+type FormState = { type: "IMPORT" | "EXPORT"; transactionDate: string; warehouseId: number; recipient: string; reason: string; note: string };
+type View = "documents" | "balances" | "reconciliation";
+const today = () => new Date().toISOString().slice(0, 10);
+const emptyLine = (): Line => ({ packagingId: 0, quantity: 1, unitCost: 0, note: "" });
+const emptyForm = (warehouseId = 0): FormState => ({ type: "IMPORT", transactionDate: today(), warehouseId, recipient: "", reason: "", note: "" });
+const statusMeta = {
+  DRAFT: { label: "Nháp", css: "bg-slate-100 text-slate-700" },
+  POSTED: { label: "Đã ghi sổ", css: "bg-emerald-100 text-emerald-700" },
+  CANCELLED: { label: "Đã hủy", css: "bg-red-100 text-red-700" },
+} as const;
+
+export default function Transactions({ initialType = "IMPORT" }: { initialType?: "IMPORT" | "EXPORT" } = {}) {
+  const queryClient = useQueryClient();
+  const [view, setView] = useState<View>("documents");
+  const [search, setSearch] = useState(""), [status, setStatus] = useState(""), [type, setType] = useState<string>(initialType || ""), [warehouseId, setWarehouseId] = useState(0), [sourceModule, setSourceModule] = useState(""), [page, setPage] = useState(1);
+  const [open, setOpen] = useState(false), [editing, setEditing] = useState<InventoryDocumentV1 | null>(null), [selected, setSelected] = useState<InventoryDocumentV1 | null>(null);
+  const [form, setForm] = useState<FormState>(emptyForm()), [lines, setLines] = useState<Line[]>([emptyLine()]);
+  const [productionLink, setProductionLink] = useState<{ orderId: number; orderCode: string } | null>(null);
+  const [assemblyLink, setAssemblyLink] = useState<{ orderId: number; orderCode: string; kind: "ASSEMBLY" | "DISASSEMBLY" } | null>(null);
+  const [deepLinkCode, setDeepLinkCode] = useState<string | null>(null);
+
+  const [reportDoc, setReportDoc] = useState<InventoryDocumentV1 | null>(null);
+  const reportRef = useRef<HTMLDivElement>(null);
+  const handlePrintReport = useReactToPrint({
+    contentRef: reportRef,
+    documentTitle: reportDoc ? `Phieu-kho-${reportDoc.code}` : "Phieu-kho",
+    // Lề 0 để trình duyệt ẩn header/footer (địa chỉ web, số trang) trên giấy in
+    pageStyle: "@page { size: A4; margin: 0; }",
+  });
+  const companyQuery = useQuery({
+    queryKey: ["company-profile"],
+    queryFn: async () => {
+      try {
+        const res = await apiV1("/api/v1/company");
+        return buildCompanyPrintProfile(res.data);
+      } catch {
+        return null;
+      }
+    },
+    staleTime: 5 * 60_000,
+  });
+  useMultiEscapeKey([
+    { isOpen: open, onClose: () => setOpen(false), priority: 1 },
+    { isOpen: !!editing, onClose: () => setEditing(null), priority: 2 },
+    { isOpen: !!selected, onClose: () => setSelected(null), priority: 3 },
+    { isOpen: !!reportDoc, onClose: () => setReportDoc(null), priority: 4 },
+  ]);
+  const applyInventoryDraft = (draft: any, link?: { orderId: number; orderCode: string; kind?: "ASSEMBLY" | "DISASSEMBLY" }) => {
+    setType(draft.initialType || "EXPORT");
+    setForm({
+      type: draft.initialType || "EXPORT",
+      transactionDate: draft.form?.transactionDate || today(),
+      warehouseId: Number(draft.form?.warehouseId || 0),
+      recipient: draft.form?.recipient || "",
+      reason: draft.form?.reason || "",
+      note: draft.form?.note || "",
+    });
+    setLines((draft.lines || []).map((line: any) => ({
+      packagingId: Number(line.packagingId || 0),
+      quantity: Number(line.quantity || 0),
+      unitCost: Number(line.unitCost || 0),
+      note: String(line.note || ""),
+    })));
+    if (link?.kind) setAssemblyLink({ orderId: link.orderId, orderCode: link.orderCode, kind: link.kind });
+    else if (link) setProductionLink({ orderId: link.orderId, orderCode: link.orderCode });
+    setOpen(true);
+  };
+  const handleDeepLink = React.useCallback(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const codeParam = params.get("code") || localStorage.getItem("inventory-deep-link-code");
+      if (codeParam) {
+        setDeepLinkCode(codeParam);
+        setSearch(codeParam);
+        setPage(1);
+        localStorage.removeItem("inventory-deep-link-code");
+        window.history.replaceState({}, "", window.location.pathname);
+      }
+      // Check URL param for production draft (set by window.open in Production.tsx)
+      if (params.get("productionDraft") === "1") {
+        const raw = sessionStorage.getItem("inventory-production-draft");
+        if (raw) {
+          const draft = JSON.parse(raw);
+          applyInventoryDraft(draft, draft.productionOrderId ? { orderId: Number(draft.productionOrderId), orderCode: String(draft.productionOrderCode || "") } : undefined);
+          sessionStorage.removeItem("inventory-production-draft");
+        }
+        window.history.replaceState({}, "", window.location.pathname);
+        return;
+      }
+      // Check sessionStorage for production draft (set by onNavigate same-tab navigation)
+      const prodDraftRaw = sessionStorage.getItem("inventory-production-draft");
+      if (prodDraftRaw) {
+        const draft = JSON.parse(prodDraftRaw);
+        // Only apply if draft matches current page type and was created from production
+        if (draft.fromProduction && draft.initialType === initialType) {
+          applyInventoryDraft(draft, draft.productionOrderId ? { orderId: Number(draft.productionOrderId), orderCode: String(draft.productionOrderCode || "") } : undefined);
+          sessionStorage.removeItem("inventory-production-draft");
+        }
+      }
+      // Check URL param for assembly draft
+      if (params.get("assemblyDraft") === "1") {
+        const raw = sessionStorage.getItem("inventory-assembly-draft");
+        if (!raw) return;
+        const draft = JSON.parse(raw);
+        applyInventoryDraft(draft, draft.assemblyOrderId ? { orderId: Number(draft.assemblyOrderId), orderCode: String(draft.assemblyOrderCode || ""), kind: draft.assemblyKind === "DISASSEMBLY" ? "DISASSEMBLY" : "ASSEMBLY" } : undefined);
+        sessionStorage.removeItem("inventory-assembly-draft");
+        window.history.replaceState({}, "", window.location.pathname);
+      }
+      // Check sessionStorage for assembly draft (onNavigate)
+      const assemblyDraftRaw = sessionStorage.getItem("inventory-assembly-draft");
+      if (assemblyDraftRaw) {
+        const draft = JSON.parse(assemblyDraftRaw);
+        if (draft.fromProduction && draft.initialType === initialType) {
+          applyInventoryDraft(draft, draft.assemblyOrderId ? { orderId: Number(draft.assemblyOrderId), orderCode: String(draft.assemblyOrderCode || ""), kind: draft.assemblyKind === "DISASSEMBLY" ? "DISASSEMBLY" : "ASSEMBLY" } : undefined);
+          sessionStorage.removeItem("inventory-assembly-draft");
+        }
+      }
+    } catch {
+      // Bỏ qua draft lỗi để mở trang kho bình thường.
+    }
+  }, [initialType]);
+
+  React.useEffect(() => {
+    handleDeepLink();
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "inventory-deep-link-code" && e.newValue) {
+        handleDeepLink();
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [handleDeepLink]);
+
+  const references = useQuery({ queryKey: ["inventory-references"], queryFn: async () => {
+    const [warehouses, products, costPrices] = await Promise.all([
+      legacyApi<Warehouse[]>("/api/warehouses"),
+      legacyApi<Product[]>("/api/products"),
+      apiV1<Array<{ packagingId: number; price: number }>>("/api/v1/catalog/packaging-cost-prices").then(response => response.data || []).catch(() => []),
+    ]);
+    const costPriceMap = new Map<number, number>();
+    for (const row of costPrices as Array<{ packagingId: number; price: number }>) {
+      costPriceMap.set(row.packagingId, Number(row.price || 0));
+    }
+    return { warehouses, products, costPriceMap };
+  }});
+  const documents = useQuery({
+    queryKey: ["inventory-documents-v1", page, search, status, type, warehouseId, sourceModule], enabled: view === "documents",
+    queryFn: () => apiV1<InventoryDocumentV1[]>(`/api/v1/inventory/documents?page=${page}&limit=20&search=${encodeURIComponent(search)}${status ? `&status=${status}` : ""}${type ? `&type=${type}` : ""}${warehouseId ? `&warehouseId=${warehouseId}` : ""}${sourceModule ? `&sourceModule=${sourceModule}` : ""}`),
+  });
+  const balanceQuery = useQuery({
+    queryKey: ["inventory-balances-v1", warehouseId, search], enabled: view === "balances",
+    queryFn: () => apiV1<InventoryBalanceV1[]>(`/api/v1/inventory/balances?search=${encodeURIComponent(search)}${warehouseId ? `&warehouseId=${warehouseId}` : ""}`),
+  });
+  const reconciliationQuery = useQuery({
+    queryKey: ["inventory-reconciliation-v1", warehouseId], enabled: view === "reconciliation",
+    queryFn: () => apiV1<InventoryReconciliationV1[]>(`/api/v1/inventory/reconciliation${warehouseId ? `?warehouseId=${warehouseId}` : ""}`),
+  });
+  const packagingOptions = useMemo(() => (references.data?.products || []).flatMap(product => (product.packagings || []).map(packaging => ({ ...packaging, productName: product.name }))), [references.data]);
+  const productSearchOptions = useMemo(() => packagingOptions.map(item => ({
+    value: item.id,
+    label: item.productName,
+    subLabel: item.name !== item.productName
+      ? `${item.name}${item.sku ? ` | SKU: ${item.sku}` : ""}`
+      : item.sku ? `SKU: ${item.sku}` : undefined,
+  })), [packagingOptions]);
+  const invalidate = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["inventory-documents-v1"] }), queryClient.invalidateQueries({ queryKey: ["inventory-balances-v1"] }), queryClient.invalidateQueries({ queryKey: ["inventory-reconciliation-v1"] }),
+  ]);
+  const saveMutation = useMutation({
+    mutationFn: () => {
+      if (!form.warehouseId || lines.some(line => !line.packagingId || line.quantity <= 0 || line.unitCost < 0)) throw new Error("Kiểm tra kho, hàng hóa, số lượng và đơn giá");
+      if (new Set(lines.map(line => line.packagingId)).size !== lines.length) throw new Error("Một quy cách không được nhập nhiều dòng");
+      const payload = { ...form, details: lines };
+      return editing ? apiV1<InventoryDocumentV1>(`/api/v1/inventory/documents/${editing.id}`, { method: "PUT", body: JSON.stringify({ ...payload, version: editing.version }) }) : apiV1<InventoryDocumentV1>("/api/v1/inventory/documents", { method: "POST", body: JSON.stringify(payload) });
+    },
+onSuccess: async response => {
+		toast.success(response.message);
+		setSelected(response.data);
+		if (assemblyLink && !editing) {
+        try {
+          const base = assemblyLink.kind === "DISASSEMBLY" ? "/api/v1/assembly/disassembly-orders" : "/api/v1/assembly/orders";
+          await apiV1(`${base}/${assemblyLink.orderId}/link-inventory`, {
+            method: "POST",
+            body: JSON.stringify({
+              linkType: form.type === "EXPORT" ? "INVENTORY_ISSUE" : "INVENTORY_RECEIPT",
+              linkedId: (response.data as InventoryDocumentV1).id,
+              linkedCode: (response.data as InventoryDocumentV1).code,
+            }),
+          });
+          toast.success(`Đã liên kết phiếu với lệnh ${assemblyLink.orderCode}`);
+        } catch (e: any) {
+          toast.error(e.message || "Không liên kết được phiếu với lệnh lắp ráp/tháo dỡ");
+        }
+        setAssemblyLink(null);
+      }
+      if (productionLink && !editing) {
+        try {
+          await apiV1(`/api/v1/production-orders/${productionLink.orderId}/link-inventory`, {
+            method: "POST",
+            body: JSON.stringify({
+              linkType: form.type === "EXPORT" ? "INVENTORY_ISSUE" : "INVENTORY_RECEIPT",
+              linkedId: (response.data as InventoryDocumentV1).id,
+              linkedCode: (response.data as InventoryDocumentV1).code,
+            }),
+          });
+          toast.success(`Đã liên kết phiếu với lệnh ${productionLink.orderCode}`);
+        } catch (e: any) {
+          toast.error(e.message || "Không liên kết được phiếu với lệnh sản xuất");
+        }
+        setProductionLink(null);
+      }
+      setOpen(false); setEditing(null); void invalidate();
+    }, onError: (error: Error) => toast.error(error.message),
+  });
+  const actionMutation = useMutation({
+    mutationFn: ({ document, action, reason }: { document: InventoryDocumentV1; action: "post" | "cancel"; reason?: string }) => apiV1<InventoryDocumentV1>(`/api/v1/inventory/documents/${document.id}/${action}`, { method: "POST", body: JSON.stringify(action === "cancel" ? { version: document.version, reason } : { version: document.version }) }),
+    onSuccess: response => { toast.success(response.message); setSelected(null); void invalidate(); }, onError: (error: Error) => toast.error(error.message),
+  });
+  const deleteMutation = useMutation({
+    mutationFn: (document: InventoryDocumentV1) => apiV1<InventoryDocumentV1>(`/api/v1/inventory/documents/${document.id}/delete`, { method: "POST", body: JSON.stringify({ version: document.version }) }),
+    onSuccess: response => { toast.success(response.message); setSelected(null); void invalidate(); }, onError: (error: Error) => toast.error(error.message),
+  });
+  const openCreate = (forcedType?: "IMPORT" | "EXPORT") => {
+    const nextType = (forcedType || (type as "IMPORT" | "EXPORT") || initialType) as "IMPORT" | "EXPORT";
+    setType(nextType);
+    setEditing(null);
+    setForm({ ...emptyForm(references.data?.warehouses[0]?.id), type: nextType });
+    setLines([emptyLine()]);
+    setOpen(true);
+  };
+  const [printingDoc] = useState(false);
+
+  const openEdit = (document: InventoryDocumentV1) => { setEditing(document); setForm({ type: document.type, transactionDate: document.transactionDate, warehouseId: document.warehouseId, recipient: document.recipient || "", reason: document.reason || "", note: document.note || "" }); setLines(document.details.map(line => ({ packagingId: line.packagingId, quantity: Number(line.quantity), unitCost: Number(line.unitCost), note: line.note || "" }))); setOpen(true); };
+  const updateLine = (index: number, patch: Partial<Line>) => setLines(current => current.map((line, position) => position === index ? { ...line, ...patch } : line));
+  const applyPackagingCost = (index: number, packagingId: number) => {
+    const cost = references.data?.costPriceMap?.get(packagingId) || 0;
+    updateLine(index, { packagingId, ...(form.type === "IMPORT" && cost > 0 ? { unitCost: cost } : {}) });
+  };
+  const rows = documents.data?.data || [], balances = balanceQuery.data?.data || [], reconciliations = reconciliationQuery.data?.data || [], meta = documents.data?.meta || {};
+  React.useEffect(() => {
+    if (view !== "documents" || documents.isLoading || rows.length !== 1) return;
+    if (initialType) return;
+    if (!selected && !open) setSelected(rows[0]);
+  }, [view, documents.isLoading, rows.length, initialType]);
+
+  React.useEffect(() => {
+    if (!deepLinkCode || view !== "documents" || documents.isLoading || !rows.length) return;
+    const match = rows.find(doc => doc.code === deepLinkCode);
+    if (match && !selected && !open) {
+      setSelected(match);
+      setDeepLinkCode(null);
+    }
+  }, [deepLinkCode, view, documents.isLoading, rows, selected, open]);
+  const totalValue = lines.reduce((sum, line) => sum + line.quantity * line.unitCost, 0);
+  const switchView = (next: View) => { setView(next); setSearch(""); setPage(1); };
+
+  return <div className="erp-page">
+    <div className="erp-page-header"><div><h1>{initialType === "EXPORT" ? "Xuất kho" : initialType === "IMPORT" ? "Nhập kho" : "Nhập, xuất kho V1"}</h1><p>Phiếu bán hàng ghi sổ tự sinh phiếu xuất kho tại đây · Chứng từ nháp → ghi sổ → hủy/đảo.</p></div>{view === "documents" && <div className="flex gap-2">{!initialType && <button className="erp-btn" onClick={() => openCreate("IMPORT")}><Plus size={16}/> Nhập kho</button>}{!initialType && <button className="erp-btn erp-btn-primary" onClick={() => openCreate("EXPORT")}><Plus size={16}/> Xuất kho</button>}{initialType === "IMPORT" && <button className="erp-btn erp-btn-primary" onClick={() => openCreate("IMPORT")}><Plus size={16}/> Nhập kho</button>}{initialType === "EXPORT" && <button className="erp-btn erp-btn-primary" onClick={() => openCreate("EXPORT")}><Plus size={16}/> Xuất kho</button>}</div>}</div>
+    <div className="erp-card p-1 flex flex-wrap gap-1"><button className={`erp-btn ${view === "documents" ? "erp-btn-primary" : ""}`} onClick={() => switchView("documents")}><Boxes size={15}/> Chứng từ</button><button className={`erp-btn ${view === "balances" ? "erp-btn-primary" : ""}`} onClick={() => switchView("balances")}><Boxes size={15}/> Tồn theo kho</button><button className={`erp-btn ${view === "reconciliation" ? "erp-btn-primary" : ""}`} onClick={() => switchView("reconciliation")}><BarChart3 size={15}/> Đối soát ledger</button></div>
+      <div className="erp-card"><div className="erp-toolbar"><div className="erp-search"><Search size={16}/><input value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder={view === "documents" ? "Tìm mã PX-BH..., người nhận, diễn giải..." : "Tìm hàng hóa, SKU..."}/></div><div className="flex flex-wrap gap-2"><select value={warehouseId} onChange={event => { setWarehouseId(+event.target.value); setPage(1); }}><option value={0}>Tất cả kho</option>{references.data?.warehouses.map(warehouse => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}</select>{view === "documents" && !initialType && <><select value={type} onChange={event => { setType(event.target.value); setPage(1); }}><option value="">Tất cả loại</option><option value="IMPORT">Nhập kho</option><option value="EXPORT">Xuất kho</option></select><select value={sourceModule} onChange={event => { setSourceModule(event.target.value); setPage(1); }}><option value="">Tất cả nguồn</option><option value="MANUAL_V1">Nhập tay</option><option value="SALE_V1">Bán hàng tự sinh</option><option value="PURCHASE_V1">Mua hàng V1</option></select><select value={status} onChange={event => { setStatus(event.target.value); setPage(1); }}><option value="">Tất cả trạng thái</option>{Object.entries(statusMeta).map(([key, item]) => <option key={key} value={key}>{item.label}</option>)}</select></>}</div></div>
+      {view === "documents" && <><div className="overflow-x-auto"><table className="erp-table"><thead><tr><th>Mã chứng từ</th><th>Ngày</th><th>Loại</th><th>Nguồn</th><th>Kho</th><th>Trạng thái</th><th className="text-right">Giá trị</th><th>Thao tác</th></tr></thead><tbody>{documents.isLoading ? <tr><td colSpan={8} className="text-center">Đang tải...</td></tr> : rows.length === 0 ? <tr><td colSpan={8} className="text-center text-slate-400">Chưa có chứng từ kho, kể cả phiếu do bán hàng tự sinh</td></tr> : rows.map(document => <tr key={document.id}><td><b>{document.code}</b><small>{document.recipient || document.reason || "-"}</small></td><td>{formatDate(document.transactionDate)}</td><td><span className={`erp-badge ${document.type === "IMPORT" ? "bg-blue-100 text-blue-700" : "bg-orange-100 text-orange-700"}`}>{document.type === "IMPORT" ? "Nhập kho" : "Xuất kho"}</span></td><td><span className="erp-badge bg-slate-100 text-slate-600">{document.sourceModule === "SALE_V1" ? "Bán hàng" : document.sourceModule === "PURCHASE_V1" ? "Mua hàng" : "Nhập tay"}</span></td><td>{document.warehouseName}</td><td><span className={`erp-badge ${statusMeta[document.documentStatus].css}`}>{statusMeta[document.documentStatus].label}</span></td><td className="text-right font-semibold">{formatNumber(document.details.reduce((sum, line) => sum + Number(line.totalValue), 0))}</td><td><div className="flex gap-1"><button title="Xem" className="erp-icon-btn" onClick={() => setSelected(document)}><Eye size={16}/></button><button title="Sửa" className="erp-icon-btn" disabled={document.documentStatus !== "DRAFT"} onClick={() => openEdit(document)}><Edit size={16}/></button><button title="Ghi sổ" className="erp-icon-btn text-emerald-600" disabled={document.documentStatus !== "DRAFT" || actionMutation.isPending} onClick={() => window.confirm(`Ghi sổ ${document.code}?`) && actionMutation.mutate({ document, action: "post" })}><CheckCircle2 size={16}/></button><button title={document.sourceModule !== "MANUAL_V1" ? "Phiếu tự sinh, hủy từ chứng từ gốc" : "Hủy và đảo"} className="erp-icon-btn text-red-600" disabled={document.documentStatus !== "POSTED" || document.sourceModule !== "MANUAL_V1" || actionMutation.isPending} onClick={() => { const reason = window.prompt("Lý do hủy (ít nhất 3 ký tự):"); if (reason?.trim() && reason.trim().length >= 3) actionMutation.mutate({ document, action: "cancel", reason: reason.trim() }); }}><Undo2 size={16}/></button></div></td></tr>)}</tbody></table></div><div className="flex items-center justify-between p-3 text-sm"><span>Tổng {meta.total || 0} chứng từ</span><div className="flex gap-2"><button className="erp-btn" disabled={page <= 1} onClick={() => setPage(value => value - 1)}>Trước</button><span className="self-center">Trang {page}/{meta.totalPages || 1}</span><button className="erp-btn" disabled={page >= Number(meta.totalPages || 1)} onClick={() => setPage(value => value + 1)}>Sau</button></div></div></>}
+      {view === "balances" && <div className="overflow-x-auto"><table className="erp-table"><thead><tr><th>SKU</th><th>Hàng hóa / Quy cách</th><th>Kho</th><th>Đơn vị</th><th className="text-right">Tồn hiện tại</th></tr></thead><tbody>{balanceQuery.isLoading ? <tr><td colSpan={5} className="text-center">Đang tải...</td></tr> : balances.length === 0 ? <tr><td colSpan={5} className="text-center text-slate-400">Không có số dư phù hợp</td></tr> : balances.map(row => <tr key={`${row.packagingId}-${row.warehouseId}`}><td>{row.sku || "-"}</td><td><b>{row.productName}</b><small>{row.packagingName}</small></td><td>{row.warehouseName}</td><td>{row.unit || "-"}</td><td className="text-right text-lg font-bold">{formatNumber(row.quantity)}</td></tr>)}</tbody></table></div>}
+      {view === "reconciliation" && <><div className="p-3 text-sm"><span className={`erp-badge ${reconciliations.some(row => Math.abs(row.difference) > 0.0001) ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>{reconciliations.filter(row => Math.abs(row.difference) > 0.0001).length} chênh lệch / {reconciliations.length} số dư</span></div><div className="overflow-x-auto"><table className="erp-table"><thead><tr><th>SKU</th><th>Hàng hóa</th><th>Kho</th><th className="text-right">Opening + ledger</th><th className="text-right">Projection</th><th className="text-right">Chênh lệch</th></tr></thead><tbody>{reconciliationQuery.isLoading ? <tr><td colSpan={6} className="text-center">Đang tải...</td></tr> : reconciliations.map(row => <tr key={`${row.packagingId}-${row.warehouseId}`} className={Math.abs(row.difference) > 0.0001 ? "bg-red-50" : ""}><td>{row.sku || "-"}</td><td>{row.productName}<small>{row.packagingName}</small></td><td>{row.warehouseName}</td><td className="text-right">{formatNumber(row.expectedQuantity)}</td><td className="text-right">{formatNumber(row.actualQuantity)}</td><td className={`text-right font-bold ${Math.abs(row.difference) > 0.0001 ? "text-red-600" : "text-emerald-600"}`}>{formatNumber(row.difference)}</td></tr>)}</tbody></table></div></>}
+    </div>
+    {productionLink && <div className="rounded bg-amber-50 p-3 text-sm text-amber-700">Phiếu nháp cho lệnh sản xuất <b>{productionLink.orderCode}</b>. Chỉnh số lượng theo công thức thực tế rồi lưu, lưu xong mới trừ/cộng kho.</div>}
+    {assemblyLink && <div className="rounded bg-amber-50 p-3 text-sm text-amber-700">Phiếu nháp cho lệnh {assemblyLink.kind === "DISASSEMBLY" ? "tháo dỡ" : "lắp ráp"} <b>{assemblyLink.orderCode}</b>. Kiểm tra lại sản phẩm, số lượng rồi lưu.</div>}
+    {open && <div className="erp-modal-backdrop"><div className="erp-modal max-w-5xl"><div className="erp-modal-header"><div><h2>{editing ? `Sửa ${editing.code}` : productionLink ? `Lập phiếu ${form.type === "EXPORT" ? "xuất NVL" : "nhập thành phẩm"} cho ${productionLink.orderCode}` : assemblyLink ? `Lập phiếu ${form.type === "EXPORT" ? "xuất" : "nhập"} cho ${assemblyLink.orderCode}` : "Lập chứng từ kho"}</h2><p>Chứng từ chỉ ảnh hưởng tồn sau khi ghi sổ. Phiếu đã ghi sổ có nút bỏ ghi để chỉnh sửa.</p></div><button onClick={() => setOpen(false)}><X/></button></div><form onSubmit={event => { event.preventDefault(); saveMutation.mutate(); }}><div className="erp-modal-body space-y-5"><div className="grid gap-4 md:grid-cols-3"><label>Loại phiếu<select value={form.type} onChange={event => setForm({ ...form, type: event.target.value as FormState["type"] })}><option value="IMPORT">Nhập kho</option><option value="EXPORT">Xuất kho</option></select></label><label>Ngày chứng từ<input type="date" required value={form.transactionDate} onChange={event => setForm({ ...form, transactionDate: event.target.value })}/></label><label>Kho<select required value={form.warehouseId} onChange={event => setForm({ ...form, warehouseId: +event.target.value })}><option value={0}>Chọn kho</option>{references.data?.warehouses.map(warehouse => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}</select></label><label>Người nhận / giao<input value={form.recipient} maxLength={255} onChange={event => setForm({ ...form, recipient: event.target.value })}/></label><label className="md:col-span-2">Lý do<input value={form.reason} maxLength={500} onChange={event => setForm({ ...form, reason: event.target.value })}/></label></div><div className="overflow-x-auto border rounded"><table className="erp-table"><thead><tr><th>Hàng hóa / Quy cách</th><th>Số lượng</th><th>Đơn giá vốn</th><th className="text-right">Thành tiền</th><th>Ghi chú</th><th></th></tr></thead><tbody>{lines.map((line, index) => <tr key={index}><td className="min-w-64"><SearchableSelect required value={line.packagingId} options={productSearchOptions} onChange={packagingId => applyPackagingCost(index, packagingId)} placeholder="Nhập tên/SKU để chọn hàng hóa" /></td><td><NumberInput value={line.quantity} onChange={v => updateLine(index, { quantity: v })} min={0.0001} decimals={3} className="w-28"/></td><td><NumberInput value={line.unitCost} onChange={v => updateLine(index, { unitCost: v })} min={0} decimals={0} disabled={form.type === "EXPORT"} title={form.type === "EXPORT" ? "Giá xuất được tính khi ghi sổ" : ""} className="w-32"/></td><td className="text-right font-semibold">{formatNumber(line.quantity * line.unitCost)}</td><td><input value={line.note} maxLength={500} onChange={event => updateLine(index, { note: event.target.value })}/></td><td><button type="button" className="erp-icon-btn text-red-500" disabled={lines.length === 1} onClick={() => setLines(current => current.filter((_, position) => position !== index))}><X size={15}/></button></td></tr>)}</tbody></table></div><button type="button" className="erp-btn" onClick={() => setLines(current => [...current, emptyLine()])}><Plus size={15}/> Thêm dòng</button><div className="grid gap-4 md:grid-cols-2"><label>Diễn giải<textarea rows={3} value={form.note} maxLength={1000} onChange={event => setForm({ ...form, note: event.target.value })}/></label><div className="text-right text-xl font-bold text-emerald-700">Tổng giá trị: {formatNumber(totalValue)} ₫</div></div></div><div className="erp-modal-footer"><button type="button" className="erp-btn" onClick={() => setOpen(false)}>Hủy</button><button disabled={saveMutation.isPending} className="erp-btn erp-btn-primary">{saveMutation.isPending ? "Đang lưu..." : "Lưu nháp"}</button></div></form></div></div>}
+    {selected && <div className="erp-modal-backdrop"><div className="erp-modal max-w-4xl"><div className="erp-modal-header"><div><h2>{selected.code}</h2><p>{selected.warehouseName} · {statusMeta[selected.documentStatus].label}</p></div><button onClick={() => setSelected(null)}><X/></button></div><div className="erp-modal-body space-y-4"><div className="grid gap-3 md:grid-cols-3"><div><small>Ngày chứng từ</small><b className="block">{formatDate(selected.transactionDate)}</b></div><div><small>Người nhận / giao</small><b className="block">{selected.recipient || "-"}</b></div><div><small>Lý do</small><b className="block">{selected.reason || "-"}</b></div></div><table className="erp-table"><thead><tr><th>Hàng hóa</th><th className="text-right">Số lượng</th><th className="text-right">Đơn giá</th><th className="text-right">Thành tiền</th></tr></thead><tbody>{selected.details.map(line => <tr key={line.id}><td>{formatProductName(line.productName, line.packagingName)}<small>{line.sku}</small></td><td className="text-right">{formatNumber(line.quantity)} {line.unit}</td><td className="text-right">{formatNumber(line.unitCost)}</td><td className="text-right font-semibold">{formatNumber(line.totalValue)}</td></tr>)}</tbody></table>{selected.note && <div className="rounded bg-slate-50 p-3">Diễn giải: {selected.note}</div>}{selected.cancelReason && <div className="rounded bg-red-50 p-3 text-red-700">Lý do hủy: {selected.cancelReason}</div>}</div><div className="erp-modal-footer"><DocumentActions status={selected.documentStatus} printing={printingDoc} unposting={actionMutation.isPending} canUnpost={selected.sourceModule === "MANUAL_V1"} onPrint={() => setReportDoc(selected)} onUnpost={() => { const reason = window.prompt("Lý do bỏ ghi (ít nhất 3 ký tự):"); if (reason && reason.trim().length >= 3) actionMutation.mutate({ document: selected, action: "cancel", reason: reason.trim() }); }} onEdit={() => { setSelected(null); openEdit(selected); }} /><button type="button" className="erp-btn" onClick={() => setSelected(null)}>Đóng</button></div></div></div>}
+    {reportDoc && (
+      <div className="sales-print-view fixed inset-0 z-[9999] flex flex-col bg-gray-900/90 backdrop-blur-md">
+        <div className="bg-white border-b p-4 flex items-center justify-between no-print shadow-md">
+          <div className="flex items-center gap-4">
+            <h3 className="text-lg font-black text-gray-800 uppercase tracking-tighter">
+              {reportDoc.type === "EXPORT" ? "Phiếu xuất kho" : "Phiếu nhập kho"}
+            </h3>
+            <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-500">
+              {reportDoc.code}
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setReportDoc(null)}
+              className="px-6 py-2 border rounded-lg font-black text-gray-500 hover:bg-gray-50 transition-all uppercase text-[10px] tracking-widest"
+            >
+              Đóng
+            </button>
+            <button
+              onClick={handlePrintReport}
+              className="px-10 py-2 bg-indigo-600 text-white rounded-lg font-black hover:bg-indigo-700 transition-all shadow-lg uppercase text-[10px] tracking-widest flex items-center gap-2"
+            >
+              <Printer size={16} /> In phiếu ngay
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-auto p-8 bg-gray-200/50">
+          <div ref={reportRef} className="sales-print-view shadow-2xl bg-white mx-auto mb-8 w-[210mm] max-w-full">
+            <InventoryDocument transaction={reportDoc} company={companyQuery.data} />
+          </div>
+        </div>
+      </div>
+    )}
+  </div>;
+}

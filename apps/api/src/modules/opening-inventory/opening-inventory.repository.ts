@@ -15,7 +15,10 @@ export const openingInventoryRepository = {
       skip,
       take,
       orderBy: { createdAt: "desc" },
-      include: { warehouse: { select: { id: true, name: true } } },
+      include: {
+        warehouse: { select: { id: true, name: true } },
+        _count: { select: { lines: true } },
+      },
     }),
 
   count: (where: object) => prisma.opening_inventory_documents.count({ where }),

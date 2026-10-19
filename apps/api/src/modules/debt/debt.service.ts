@@ -13,7 +13,7 @@ const table = (kind: Kind) => kind === "RECEIPT" ? "payment_receipts" : "payment
 
 async function lockPayment(tx: any, kind: Kind, id: bigint) {
   const rows = await tx.$queryRawUnsafe(`SELECT id,status,version,sourceModule FROM ${table(kind)} WHERE id=? FOR UPDATE`, id) as any[];
-  if (!rows[0] || rows[0].sourceModule !== "DEBT_V1") throw new HttpError(404, "PAYMENT_NOT_FOUND", "Không tìm thấy phiếu thu/chi V1");
+  if (!rows[0] || (rows[0].sourceModule && rows[0].sourceModule !== "DEBT_V1")) throw new HttpError(404, "PAYMENT_NOT_FOUND", "Không tìm thấy phiếu thu/chi");
   return rows[0];
 }
 const assertVersion = (row: any, version: number) => { if (Number(row.version) !== version) throw new HttpError(409, "VERSION_CONFLICT", "Dữ liệu đã được người khác cập nhật"); };
@@ -32,6 +32,7 @@ function assertAllocationTotal(input: DebtPaymentDraftInput) {
 async function hydrate(kind: Kind, row: any) {
   if (!row) return null;
   if (kind === "RECEIPT") {
+    if (!row.id) return mapPayment({ ...row, id: `sale-${row.salesOrderId || row.sourceId || row.code}`, partnerCode: row.partnerCode, partnerName: row.partnerName, paymentDate: row.paymentDate || row.receiptDate, allocations: row.allocations || [] }, kind);
     const [partner, allocations] = await Promise.all([
       prisma.customers.findUnique({ where: { id: row.customerId } }),
       prisma.$queryRawUnsafe<any[]>(`SELECT a.id,a.salesOrderId documentId,a.amount,s.code documentCode,s.totalAmount,s.paidAmount
@@ -60,7 +61,7 @@ export const debtService = {
           s.orderDate documentDate,s.dueDate,COALESCE(s.totalAmount,0) totalAmount,
           COALESCE((SELECT SUM(r.amount) FROM receivable_transactions r WHERE r.sourceId=s.id AND r.customerId=s.customerId),0) outstanding
         FROM sales_orders s JOIN customers c ON c.id=s.customerId
-        WHERE s.status='FULFILLED' AND (? IS NULL OR s.customerId=?) AND (? IS NULL OR s.code LIKE ? OR c.code LIKE ? OR c.name LIKE ?)
+        WHERE s.status IN ('POSTED','FULFILLED') AND (? IS NULL OR s.customerId=?) AND (? IS NULL OR s.code LIKE ? OR c.code LIKE ? OR c.name LIKE ?)
         HAVING outstanding > 0.005 ORDER BY COALESCE(s.dueDate,s.orderDate),s.id`, query.partnerId || null, query.partnerId || null, search, search, search, search)
       : await prisma.$queryRawUnsafe<any[]>(`SELECT p.id documentId,p.code documentCode,p.supplierId partnerId,s.code partnerCode,s.name partnerName,
           p.documentDate,p.dueDate,COALESCE(p.totalAmount,0) totalAmount,
@@ -88,14 +89,48 @@ export const debtService = {
   async list(kind: Kind, query: any) {
     const model: any = kind === "RECEIPT" ? prisma.payment_receipts : prisma.payment_vouchers;
     const partnerField = kind === "RECEIPT" ? "customerId" : "supplierId";
-    const where: any = { sourceModule: "DEBT_V1", ...(query.status ? { status: query.status } : {}), ...(query.partnerId ? { [partnerField]: query.partnerId } : {}), ...(query.search ? { OR: [{ code: { contains: query.search } }, { note: { contains: query.search } }] } : {}) };
+    const where: any = {
+      ...(query.sourceModule ? { sourceModule: query.sourceModule } : {}),
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.partnerId ? { [partnerField]: query.partnerId } : {}),
+      ...(query.search ? { OR: [{ code: { contains: query.search } }, { note: { contains: query.search } }] } : {}),
+    };
     const [rows, total] = await Promise.all([model.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (query.page - 1) * query.limit, take: query.limit }), model.count({ where })]);
-    return { data: await Promise.all(rows.map((row: any) => hydrate(kind, row))), meta: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) } };
+    const hydrated = await Promise.all(rows.map((row: any) => hydrate(kind, row)));
+    if (kind === "RECEIPT" && !query.status) {
+      const salePayments = await prisma.$queryRawUnsafe<any[]>(`SELECT s.id salesOrderId,s.code,s.customerId,c.code partnerCode,c.name partnerName,
+          s.orderDate paymentDate,s.paymentMethod method,s.paidAmount amount,s.totalAmount
+        FROM sales_orders s JOIN customers c ON c.id=s.customerId
+        WHERE s.status IN ('POSTED','FULFILLED') AND COALESCE(s.paidAmount,0) > 0.005
+        ${query.search ? "AND (s.code LIKE ? OR c.code LIKE ? OR c.name LIKE ?)" : ""}
+        ORDER BY s.id DESC LIMIT 100`, ...(query.search ? [`%${query.search}%`, `%${query.search}%`, `%${query.search}%`] : []));
+      for (const payment of salePayments) {
+        hydrated.push(await hydrate(kind, {
+          salesOrderId: payment.salesOrderId,
+          sourceId: payment.salesOrderId,
+          code: `Thu ngay ${payment.code}`,
+          kind,
+          customerId: payment.customerId,
+          partnerCode: payment.partnerCode,
+          partnerName: payment.partnerName,
+          paymentDate: payment.paymentDate,
+          method: payment.method || "BANK",
+          amount: payment.amount,
+          direction: "RECEIPT",
+          status: "POSTED",
+          version: 1,
+          sourceModule: "SALE_V1",
+          note: `Thu ngay khi ghi sổ ${payment.code}`,
+          allocations: [{ id: `sale-${payment.salesOrderId}`, documentId: payment.salesOrderId, documentCode: payment.code, amount: payment.amount, totalAmount: payment.totalAmount, paidAmount: payment.amount }],
+        }));
+      }
+    }
+    return { data: hydrated, meta: { page: query.page, limit: query.limit, total: hydrated.length, totalPages: 1 } };
   },
 
   async get(kind: Kind, id: bigint) {
     const row: any = await findPayment(kind, id);
-    if (!row || row.sourceModule !== "DEBT_V1") throw new HttpError(404, "PAYMENT_NOT_FOUND", "Không tìm thấy phiếu thu/chi V1");
+    if (!row || (row.sourceModule && row.sourceModule !== "DEBT_V1")) throw new HttpError(404, "PAYMENT_NOT_FOUND", "Không tìm thấy phiếu thu/chi");
     return hydrate(kind, row);
   },
 
@@ -154,7 +189,7 @@ export const debtService = {
         if (kind === "RECEIPT") {
           const rows = await tx.$queryRawUnsafe<any[]>("SELECT id,code,customerId,status,totalAmount,paidAmount FROM sales_orders WHERE id=? FOR UPDATE", allocation.salesOrderId);
           const document = rows[0];
-          if (!document || document.status !== "FULFILLED") throw new HttpError(409, "DOCUMENT_NOT_POSTED", "Đơn bán chưa ghi sổ");
+          if (!document || !["POSTED", "FULFILLED"].includes(document.status)) throw new HttpError(409, "DOCUMENT_NOT_POSTED", "Đơn bán chưa ghi sổ");
           if (Number(document.customerId) !== payment.customerId) throw new HttpError(409, "PARTNER_MISMATCH", "Đơn bán không thuộc khách hàng của phiếu thu");
           const outstandingRows = await tx.$queryRawUnsafe<any[]>("SELECT COALESCE(SUM(amount),0) outstanding FROM receivable_transactions WHERE sourceId=? AND customerId=?", document.id, document.customerId);
           const amount = Number(allocation.amount), remaining = Number(outstandingRows[0]?.outstanding || 0);
@@ -202,7 +237,10 @@ export const debtService = {
         for (const allocation of allocations) {
           const rows = await tx.$queryRawUnsafe<any[]>("SELECT id,code,customerId,totalAmount,paidAmount FROM sales_orders WHERE id=? FOR UPDATE", allocation.salesOrderId); const document = rows[0];
           const amount = Number(allocation.amount), paid = Math.max(0, Number(document.paidAmount || 0) - amount);
-          const original = await tx.receivable_transactions.findFirst({ where: { sourceType: "DEBT_RECEIPT", sourceId: document.id, paymentDocumentId: payment.id, entryType: "PAYMENT" } });
+          let original = await tx.receivable_transactions.findFirst({ where: { sourceType: "DEBT_RECEIPT", sourceId: document.id, paymentDocumentId: payment.id, entryType: "PAYMENT" } });
+          if (!original) {
+            original = await tx.receivable_transactions.findFirst({ where: { sourceType: "SALE_PAYMENT", sourceId: document.id, entryType: "PAYMENT" }, orderBy: { id: "desc" } });
+          }
           if (!original) throw new HttpError(409, "PAYMENT_LEDGER_NOT_FOUND", `Không tìm thấy ledger phiếu thu cho ${document.code}`);
           await tx.receivable_transactions.create({ data: { customerId: payment.customerId, sourceType: "DEBT_RECEIPT_CANCEL", sourceId: document.id, sourceCode: document.code, entryType: "PAYMENT_REVERSAL", amount: money(amount), paymentDocumentId: reversal.id, reversalOfId: original.id, occurredAt: cancelledAt, createdBy: userId } });
           const remainingAfterRows = await tx.$queryRawUnsafe<any[]>("SELECT COALESCE(SUM(amount),0) outstanding FROM receivable_transactions WHERE sourceId=? AND customerId=?", document.id, document.customerId);

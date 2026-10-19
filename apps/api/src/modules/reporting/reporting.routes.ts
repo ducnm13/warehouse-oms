@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { inventorySummaryReportQuerySchema, itemLedgerReportQuerySchema, operationsReportQuerySchema, productionVarianceReportQuerySchema, salesProfitReportQuerySchema } from "@challenge/contracts";
+import { inventorySummaryReportQuerySchema, itemLedgerReportQuerySchema, operationsReportQuerySchema, productionOverviewReportQuerySchema, productionVarianceReportQuerySchema, salesByCustomerReportQuerySchema, salesByProductReportQuerySchema, salesProfitReportQuerySchema, transferReportQuerySchema } from "@challenge/contracts";
 import { asyncHandler } from "../../common/async-handler";
 import { authenticateV1, requirePermission } from "../../common/authenticate";
 import { validateQuery } from "../../common/validate";
@@ -11,3 +11,7 @@ reportingRouter.get("/item-ledger", validateQuery(itemLedgerReportQuerySchema), 
 reportingRouter.get("/sales-profit", validateQuery(salesProfitReportQuerySchema), asyncHandler(reportingController.salesProfit));
 reportingRouter.get("/operations", validateQuery(operationsReportQuerySchema), asyncHandler(reportingController.operations));
 reportingRouter.get("/production-variance", validateQuery(productionVarianceReportQuerySchema), asyncHandler(reportingController.productionVariance));
+reportingRouter.get("/sales-by-customer", validateQuery(salesByCustomerReportQuerySchema), asyncHandler(reportingController.salesByCustomer));
+reportingRouter.get("/sales-by-product", validateQuery(salesByProductReportQuerySchema), asyncHandler(reportingController.salesByProduct));
+reportingRouter.get("/production-overview", validateQuery(productionOverviewReportQuerySchema), asyncHandler(reportingController.productionOverview));
+reportingRouter.get("/transfers", validateQuery(transferReportQuerySchema), asyncHandler(reportingController.transfers));

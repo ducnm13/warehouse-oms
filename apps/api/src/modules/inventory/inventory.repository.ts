@@ -23,6 +23,10 @@ export const inventoryRepository = {
   list(where: Prisma.inventorytransactionsWhereInput, skip: number, take: number) {
     return prisma.inventorytransactions.findMany({ where, include: inventoryInclude, orderBy: [{ transaction_date: "desc" }, { id: "desc" }], skip, take });
   },
+  findByCodes(codes: string[]) {
+    if (!codes.length) return [];
+    return prisma.inventorytransactions.findMany({ where: { code: { in: codes } }, include: inventoryInclude });
+  },
   count(where: Prisma.inventorytransactionsWhereInput) { return prisma.inventorytransactions.count({ where }); },
   findById(id: number) { return prisma.inventorytransactions.findUnique({ where: { id }, include: inventoryInclude }); },
   stocktakeList(where: Prisma.stocktakesWhereInput, skip: number, take: number) {

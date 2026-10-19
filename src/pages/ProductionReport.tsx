@@ -5,7 +5,7 @@ import {
   FileSpreadsheet,
   CheckCircle2,
 } from "lucide-react";
-import { toast } from "react-hot-toast";
+import { toast } from "../components/ui/toast";
 
 export default function ProductionReport() {
   // Mặc định lấy tháng hiện tại (Định dạng YYYY-MM)

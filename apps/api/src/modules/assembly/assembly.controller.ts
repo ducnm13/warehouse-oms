@@ -13,6 +13,8 @@ export const assemblyController = {
   async updateAssembly(req: Request, res: Response) { res.json({ success: true, message: "Đã cập nhật lệnh lắp ráp", data: await assemblyService.updateAssembly(id(req), req.body, user(req)) }); },
   async postAssembly(req: Request, res: Response) { res.json({ success: true, message: "Đã ghi sổ lắp ráp", data: await assemblyService.postAssembly(id(req), req.body, user(req)) }); },
   async cancelAssembly(req: Request, res: Response) { res.json({ success: true, message: "Đã hủy lệnh lắp ráp", data: await assemblyService.cancel("ASSEMBLY", id(req), req.body, user(req)) }); },
+  async linkAssemblyInventory(req: Request, res: Response) { res.json({ success: true, message: "Đã liên kết phiếu kho với lệnh lắp ráp", data: await assemblyService.linkInventory("ASSEMBLY", id(req), req.body, user(req)) }); },
+  async linkDisassemblyInventory(req: Request, res: Response) { res.json({ success: true, message: "Đã liên kết phiếu kho với lệnh tháo dỡ", data: await assemblyService.linkInventory("DISASSEMBLY", id(req), req.body, user(req)) }); },
   async listDisassembly(req: Request, res: Response) { const result = await assemblyService.listDisassembly(req.query); res.json({ success: true, message: "Lấy lệnh tháo dỡ thành công", ...result }); },
   async getDisassembly(req: Request, res: Response) { res.json({ success: true, message: "Lấy lệnh tháo dỡ thành công", data: await assemblyService.getDisassembly(id(req)) }); },
   async createDisassembly(req: Request, res: Response) { res.status(201).json({ success: true, message: "Đã tạo lệnh tháo dỡ", data: await assemblyService.createDisassembly(req.body, user(req)) }); },

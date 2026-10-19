@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2, FileSignature, Printer, Save } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "../components/ui/toast";
 import { apiV1 } from "../lib/apiV1";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ export default function CompanySettings() {
         logoUrl: d.profile.logoUrl || "",
       });
     }
-    if (d.signatures) setSignatures(d.signatures);
+    if (d.signatures) setSignatures(d.signatures.map(s => ({ ...s, isActive: Boolean(s.isActive) })));
     if (d.printSettings) {
       setPrintSettings({
         printSignerNames: d.printSettings.printSignerNames,
@@ -66,12 +66,16 @@ export default function CompanySettings() {
   });
 
   const saveSignatures = useMutation({
-    mutationFn: () => apiV1("/api/v1/company/signatures", {
-      method: "PUT",
-      body: JSON.stringify({
-        signatures: signatures.map(s => ({ code: s.code, signerName: s.signerName || null, signerTitle: s.signerTitle, isActive: s.isActive })),
-      }),
-    }),
+    mutationFn: () => {
+      const bad = signatures.find(s => !s.code?.trim() || !(s.signerTitle || "").trim());
+      if (bad) throw new Error(`Chức danh người ký (dòng ${bad.code || "?"}) không được để trống`);
+      return apiV1("/api/v1/company/signatures", {
+        method: "PUT",
+        body: JSON.stringify({
+          signatures: signatures.map(s => ({ code: s.code, signerName: s.signerName || null, signerTitle: s.signerTitle, isActive: Boolean(s.isActive) })),
+        }),
+      });
+    },
     onSuccess: (r: any) => { toast.success(r.message); void qc.invalidateQueries({ queryKey: ["company-settings"] }); },
     onError: (e: Error) => toast.error(e.message),
   });

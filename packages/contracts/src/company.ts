@@ -13,10 +13,18 @@ export const companyProfileUpdateSchema = z.object({
 export type CompanyProfileUpdateInput = z.infer<typeof companyProfileUpdateSchema>;
 
 // ─── Signature ────────────────────────────────────────────────────────────────
+// DB lưu isActive dạng Int (0/1) nên API chấp nhận cả boolean lẫn 0/1,
+// luôn chuẩn hoá về boolean (repository tự đổi sang 0/1 khi ghi).
+export const signatureIsActive = z
+  .union([z.boolean(), z.number().int().min(0).max(1)])
+  .optional()
+  .default(true)
+  .transform(value => (typeof value === "boolean" ? value : value === 1));
+
 export const signatureUpdateSchema = z.object({
   signerName: z.string().trim().max(255).optional().nullable(),
   signerTitle: z.string().trim().max(255).min(1),
-  isActive: z.boolean().optional().default(true),
+  isActive: signatureIsActive,
 });
 export type SignatureUpdateInput = z.infer<typeof signatureUpdateSchema>;
 
@@ -26,7 +34,7 @@ export const signaturesUpdateSchema = z.object({
       code: z.string().trim().min(1).max(50),
       signerName: z.string().trim().max(255).optional().nullable(),
       signerTitle: z.string().trim().max(255).min(1),
-      isActive: z.boolean().optional().default(true),
+      isActive: signatureIsActive,
     }),
   ).min(1),
 });

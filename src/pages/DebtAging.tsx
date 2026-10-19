@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, Download, Landmark, RefreshCw, Search } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "../components/ui/toast";
 import { apiV1 } from "../lib/apiV1";
 import { formatDate, formatNumber } from "../lib/utils";
 import type { DebtAgingResult, DebtAgingRow } from "../types";
+import { DateInput } from "../components/DateRangeCalendar";
 
 type DebtView = "receivable" | "payable";
 type AgingBucket = DebtAgingRow["bucket"] | "ALL";
@@ -89,7 +90,7 @@ export default function DebtAging() {
     <div className="erp-card overflow-hidden">
       <div className="erp-toolbar flex-wrap">
         <div className="erp-search"><Search size={16}/><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Tìm mã chứng từ hoặc đối tác..."/></div>
-        <label className="flex items-center gap-2 text-sm font-medium text-slate-600">Ngày chốt<input type="date" value={asOf} max={today()} onChange={event => setAsOf(event.target.value)}/></label>
+        <label className="flex items-center gap-2 text-sm font-medium text-slate-600">Ngày chốt<DateInput value={asOf} max={today()} onChange={value => setAsOf(value)}/></label>
         <select value={bucket} onChange={event => setBucket(event.target.value as AgingBucket)}><option value="ALL">Tất cả tuổi nợ</option>{Object.entries(bucketLabel).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
       </div>
       {query.isLoading ? <div className="p-12 text-center text-slate-500">Đang tải báo cáo công nợ...</div>

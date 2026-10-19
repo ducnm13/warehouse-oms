@@ -75,6 +75,84 @@ export const reportingRepository = {
       LEFT JOIN (SELECT pd.orderId,SUM(pd.quantity*COALESCE(pp.packCount,1)) plannedOutput,SUM(pd.actual_quantity*COALESCE(pp.packCount,1)) actualOutput FROM productiondetails pd JOIN productpackagings pp ON pp.id=pd.packagingId GROUP BY pd.orderId) outputs ON outputs.orderId=po.id
       WHERE ${clauses.join(" AND ")} ORDER BY po.completedAt,po.id,mp.name,mpp.name`, ...params);
   },
+  salesByCustomer(query: { from: string; to: string; warehouseId?: number; groupId?: number; search?: string }) {
+    const inner: string[] = ["so.status='FULFILLED'", "so.orderDate>=?", "so.orderDate<=?"], innerParams: unknown[] = [query.from, query.to];
+    if (query.warehouseId) { inner.push("so.warehouseId=?"); innerParams.push(query.warehouseId); }
+    const outer: string[] = [], outerParams: unknown[] = [];
+    if (query.groupId) { outer.push("cg.id=?"); outerParams.push(query.groupId); }
+    if (query.search) { outer.push("(c.name LIKE ? OR c.code LIKE ?)"); const value = `%${query.search}%`; outerParams.push(value, value); }
+    return prisma.$queryRawUnsafe<any[]>(`SELECT c.id customerId, c.code customerCode, c.name customerName,
+      cg.id groupId, cg.name groupName,
+      COUNT(*) orders, SUM(o.grossSales) grossSales, SUM(o.discountAmount) discountAmount,
+      SUM(o.lineTotal)-COALESCE(r.returnSubtotal,0) netRevenue,
+      SUM(o.taxAmount)-COALESCE(r.returnTax,0) taxAmount,
+      SUM(o.costAmount)-COALESCE(r.returnCost,0) cogs
+      FROM customers c LEFT JOIN customer_groups cg ON cg.id=c.groupId
+      JOIN (SELECT so.customerId, so.id orderId, so.taxAmount,
+        SUM(sod.quantity*sod.unitPrice) grossSales,
+        SUM(sod.quantity*sod.unitPrice-sod.lineTotal) discountAmount,
+        SUM(sod.lineTotal) lineTotal, SUM(sod.costAmount) costAmount
+        FROM sales_orders so JOIN sales_order_details sod ON sod.orderId=so.id
+        WHERE ${inner.join(" AND ")} GROUP BY so.customerId, so.id, so.taxAmount) o ON o.customerId=c.id
+      LEFT JOIN (SELECT customerId, SUM(subtotal) returnSubtotal, SUM(taxAmount) returnTax, SUM(costAmount) returnCost
+        FROM sales_returns WHERE status='POSTED' GROUP BY customerId) r ON r.customerId=c.id
+      ${outer.length ? `WHERE ${outer.join(" AND ")}` : ""}
+      GROUP BY c.id, c.code, c.name, cg.id, cg.name, r.returnSubtotal, r.returnTax, r.returnCost
+      ORDER BY netRevenue DESC`, ...innerParams, ...outerParams);
+  },
+  salesByProduct(query: { from: string; to: string; warehouseId?: number; search?: string }) {
+    const clauses = ["so.status='FULFILLED'", "sod.lineType='SALE'", "so.orderDate>=?", "so.orderDate<=?"], params: unknown[] = [query.from, query.to];
+    if (query.warehouseId) { clauses.push("so.warehouseId=?"); params.push(query.warehouseId); }
+    if (query.search) { clauses.push("(p.name LIKE ? OR pp.name LIKE ? OR pp.sku LIKE ?)"); const value = `%${query.search}%`; params.push(value, value, value); }
+    return prisma.$queryRawUnsafe<any[]>(`SELECT sod.packagingId, pp.sku, pp.name packagingName, pp.unit, p.name productName,
+      SUM(sod.quantity) quantity, SUM(sod.quantity*sod.unitPrice) grossSales,
+      SUM(sod.quantity*sod.unitPrice-sod.lineTotal) discountAmount,
+      SUM(sod.lineTotal)-COALESCE(ret.returnTotal,0) netRevenue,
+      SUM(sod.costAmount)-COALESCE(ret.returnCost,0) cogs
+      FROM sales_order_details sod
+      JOIN sales_orders so ON so.id=sod.orderId
+      JOIN productpackagings pp ON pp.id=sod.packagingId
+      JOIN products p ON p.id=pp.productId
+      LEFT JOIN (SELECT srl.packagingId, SUM(srl.lineTotal) returnTotal, SUM(srl.costAmount) returnCost
+        FROM sales_return_lines srl JOIN sales_returns sr ON sr.id=srl.salesReturnId
+        WHERE sr.status='POSTED' GROUP BY srl.packagingId) ret ON ret.packagingId=sod.packagingId
+      WHERE ${clauses.join(" AND ")}
+      GROUP BY sod.packagingId, pp.sku, pp.name, pp.unit, p.name, ret.returnTotal, ret.returnCost
+      ORDER BY netRevenue DESC`, ...params);
+  },
+  productionOverview(query: { from: Date; toExclusive: Date; warehouseId?: number; search?: string }) {
+    const clauses = ["po.sourceModule='PRODUCTION_V1'", "po.status='COMPLETED'", "po.completedAt>=?", "po.completedAt<?"], params: unknown[] = [query.from, query.toExclusive];
+    if (query.warehouseId) { clauses.push("po.warehouseId=?"); params.push(query.warehouseId); }
+    if (query.search) { clauses.push("(po.code LIKE ? OR p.name LIKE ? OR pp.name LIKE ? OR pp.sku LIKE ?)"); const value = `%${query.search}%`; params.push(value, value, value, value); }
+    return prisma.$queryRawUnsafe<any[]>(`SELECT pp.id packagingId, pp.sku, pp.name packagingName, pp.unit, p.name productName,
+      COUNT(DISTINCT po.id) orders,
+      SUM(pd.quantity) plannedPacks, SUM(pd.actual_quantity) actualPacks,
+      SUM(CASE WHEN ordPlanned.totalPlanned>0 THEN po.total_powder_kg*pd.quantity/ordPlanned.totalPlanned ELSE 0 END) powderKg
+      FROM productiondetails pd
+      JOIN productionorders po ON po.id=pd.orderId
+      JOIN productpackagings pp ON pp.id=pd.packagingId
+      JOIN products p ON p.id=pp.productId
+      JOIN (SELECT orderId, SUM(quantity) totalPlanned FROM productiondetails GROUP BY orderId) ordPlanned ON ordPlanned.orderId=po.id
+      WHERE ${clauses.join(" AND ")}
+      GROUP BY pp.id, pp.sku, pp.name, pp.unit, p.name ORDER BY actualPacks DESC`, ...params);
+  },
+  transfers(query: { from: string; to: string; warehouseId?: number; status?: string; search?: string }) {
+    const clauses = ["t.transferDate>=?", "t.transferDate<=?"], params: unknown[] = [query.from, query.to];
+    if (query.warehouseId) { clauses.push("(t.fromWarehouseId=? OR t.toWarehouseId=?)"); params.push(query.warehouseId, query.warehouseId); }
+    if (query.status) { clauses.push("t.status=?"); params.push(query.status); }
+    if (query.search) { clauses.push("(t.code LIKE ? OR t.note LIKE ?)"); const value = `%${query.search}%`; params.push(value, value); }
+    return prisma.$queryRawUnsafe<any[]>(`SELECT t.id, t.code, t.transferDate, t.status, t.note,
+      t.fromWarehouseId, fw.name fromWarehouseName, t.toWarehouseId, tw.name toWarehouseName,
+      COUNT(td.id) lineCount, COALESCE(SUM(td.quantity),0) quantity
+      FROM warehouse_transfers t
+      JOIN warehouses fw ON fw.id=t.fromWarehouseId
+      JOIN warehouses tw ON tw.id=t.toWarehouseId
+      LEFT JOIN warehouse_transfer_details td ON td.transferId=t.id
+      WHERE ${clauses.join(" AND ")}
+      GROUP BY t.id, t.code, t.transferDate, t.status, t.note,
+        t.fromWarehouseId, fw.name, t.toWarehouseId, tw.name
+      ORDER BY t.transferDate DESC, t.id DESC LIMIT 500`, ...params);
+  },
   production(query: { from: Date; toExclusive: Date; warehouseId?: number; search?: string }) {
     return prisma.productionorders.findMany({ where: { sourceModule: "PRODUCTION_V1", status: "COMPLETED", completedAt: { gte: query.from, lt: query.toExclusive }, ...(query.warehouseId ? { warehouseId: query.warehouseId } : {}), ...(query.search ? { OR: [{ code: { contains: query.search } }, { batch_number: { contains: query.search } }] } : {}) }, include: { products: true, productiondetails: true, production_order_materials_v1: true }, orderBy: [{ completedAt: "asc" }, { id: "asc" }] });
   },

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import {
 	Menu,
 	Bell,
@@ -15,7 +16,6 @@ interface HeaderProps {
 	sidebarOpen: boolean;
 	setSidebarOpen: (arg: boolean) => void;
 	user: UserType | null;
-	setActiveItem: (item: string) => void;
 	onLogout: () => void;
 }
 
@@ -31,9 +31,9 @@ const Header = ({
 	sidebarOpen,
 	setSidebarOpen,
 	user,
-	setActiveItem,
 	onLogout,
 }: HeaderProps) => {
+	const navigate = useNavigate();
 	const [showNotifications, setShowNotifications] = useState(false);
 	const [logs, setLogs] = useState<AuditLog[]>([]);
 	const isAdmin = user?.role === "ADMIN";
@@ -46,11 +46,12 @@ const Header = ({
 
 	const fetchLogs = async () => {
 		try {
-			const res = await fetch("/api/audit-logs", {
+			const res = await fetch("/api/audit-logs?limit=10", {
 				headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
 			});
 			if (res.ok) {
-				setLogs(await res.json());
+				const body = await res.json();
+				setLogs(Array.isArray(body) ? body : body.data || []);
 			}
 		} catch (err) {
 			console.error("Lỗi khi tải lịch sử thao tác", err);
@@ -58,7 +59,7 @@ const Header = ({
 	};
 
 	const handleSeeAllLogs = () => {
-		setActiveItem("audit-logs");
+		navigate("/audit-logs");
 		setShowNotifications(false);
 	};
 
@@ -81,7 +82,7 @@ const Header = ({
 	}, []);
 
 	return (
-		<header className="sticky top-0 z-40 flex h-14 w-full bg-white border-b border-slate-200">
+		<header className="sticky top-0 z-40 flex h-[60px] w-full border-b border-[#eaecf0] bg-white/90 backdrop-blur">
 			<div className="flex flex-grow items-center justify-between px-4 md:px-6">
 				<div className="flex items-center gap-2 sm:gap-4 lg:hidden">
 					<button
@@ -213,13 +214,17 @@ const Header = ({
 									{user?.fullName}
 								</span>
 								<span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-									{user?.role}
+									{user?.roleName || user?.role}
 								</span>
 							</div>
 
 							<div className="flex items-center gap-2">
-								<div className="w-10 h-10 rounded-xl bg-indigo-100 border-2 border-white shadow-sm flex items-center justify-center text-indigo-700 font-black text-lg ring-1 ring-slate-100 group-hover:scale-105 transition-transform">
-									{user?.fullName?.charAt(0).toUpperCase() || "U"}
+								<div className="w-10 h-10 rounded-xl bg-indigo-100 border-2 border-white shadow-sm flex items-center justify-center text-indigo-700 font-black text-lg ring-1 ring-slate-100 group-hover:scale-105 transition-transform overflow-hidden">
+									{user?.avatarUrl ? (
+										<img src={user.avatarUrl} alt="Ảnh đại diện" className="h-full w-full object-cover" />
+									) : (
+										user?.fullName?.charAt(0).toUpperCase() || "U"
+									)}
 								</div>
 								<ChevronDown
 									size={16}
@@ -238,13 +243,13 @@ const Header = ({
 										{user?.fullName}
 									</p>
 									<p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-										{user?.role}
+										{user?.roleName || user?.role}
 									</p>
 								</div>
 
 								<button
 									onClick={() => {
-										setActiveItem("profile");
+										navigate("/profile");
 										setIsDropdownOpen(false);
 									}}
 									className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"

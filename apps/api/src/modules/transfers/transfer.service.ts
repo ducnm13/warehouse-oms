@@ -3,11 +3,11 @@ import { Prisma } from "@challenge/database";
 import { HttpError } from "../../common/http-error";
 import { mapTransfer } from "./transfer.mapper";
 import { prisma, transferInclude, transferRepository } from "./transfer.repository";
+import { nextDocumentCode } from "../../common/document-code";
 
 const decimal = (value: number) => new Prisma.Decimal(value.toFixed(4));
 const money = (value: number) => new Prisma.Decimal(value.toFixed(2));
 const nowIso = () => new Date().toISOString();
-const transferCode = (date: string) => `CKV1-${date.replaceAll("-", "")}-${Date.now().toString().slice(-6)}`;
 
 async function validateMaster(input: TransferDraftInput) {
   const packagingIds = input.details.map(line => line.packagingId);
@@ -20,7 +20,7 @@ async function validateMaster(input: TransferDraftInput) {
 }
 
 async function lockTransfer(tx: any, id: number) {
-  const rows = await tx.$queryRawUnsafe("SELECT id,status,version,sourceModule FROM warehouse_transfers WHERE id=? FOR UPDATE", id) as any[];
+  const rows = await tx.$queryRawUnsafe("SELECT id,code,status,version,sourceModule FROM warehouse_transfers WHERE id=? FOR UPDATE", id) as any[];
   if (!rows[0] || rows[0].sourceModule !== "TRANSFER_V1") throw new HttpError(404, "TRANSFER_NOT_FOUND", "Không tìm thấy phiếu chuyển kho V1");
   return rows[0];
 }
@@ -107,8 +107,9 @@ export const transferService = {
     await validateMaster(input);
     return prisma.$transaction(async tx => {
       const now = nowIso();
+      const generatedCode = await nextDocumentCode("transfer");
       const row = await tx.warehouse_transfers.create({ data: {
-        code: transferCode(input.transferDate), transferDate: input.transferDate,
+        code: generatedCode, transferDate: input.transferDate,
         fromWarehouseId: input.fromWarehouseId, toWarehouseId: input.toWarehouseId,
         status: "DRAFT", note: input.note, sourceModule: "TRANSFER_V1",
         createdBy: userId, createdAt: now,
@@ -252,5 +253,16 @@ export const transferService = {
       await tx.audit_logs.create({ data: { action: "Hủy chuyển kho v1", details: `${row.code}: ${input.reason}`, userId, userName: String(userId), createdAt: now } });
       return mapTransfer(row);
     }, { timeout: 30_000 });
+  },
+  async remove(id: number, version: number, userId: number) {
+    return prisma.$transaction(async tx => {
+      const current = await lockTransfer(tx, id); assertVersion(current, version);
+      if (!(["DRAFT", "CANCELLED"] as string[]).includes(current.status)) throw new HttpError(409, "TRANSFER_NOT_DELETABLE", "Chỉ được xóa phiếu chuyển kho ở trạng thái nháp hoặc đã hủy");
+      // Nháp chưa phát sinh postings; phiếu hủy đã đảo cân bằng (xuất/hoàn kho) nên tồn kho không đổi.
+      // Chi tiết và links cascade theo header; các phiếu kho/ledger đảo giữ lại để đối soát.
+      await tx.warehouse_transfers.delete({ where: { id } });
+      await tx.audit_logs.create({ data: { action: "Xóa chuyển kho v1", details: current.code || String(id), userId, userName: String(userId), createdAt: nowIso() } });
+      return { id };
+    });
   },
 };

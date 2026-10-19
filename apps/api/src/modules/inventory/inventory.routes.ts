@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { inventoryActionSchema, inventoryBalanceQuerySchema, inventoryCancelSchema, inventoryDraftSchema, inventoryListQuerySchema, inventoryUpdateSchema, numericIdParamsSchema, stocktakeDraftSchema, stocktakeListQuerySchema, stocktakeUpdateSchema } from "@challenge/contracts";
+import { inventoryActionSchema, inventoryBalanceQuerySchema, inventoryCancelSchema, inventoryDeleteSchema, inventoryDraftSchema, inventoryListQuerySchema, inventoryUpdateSchema, numericIdParamsSchema, stocktakeDraftSchema, stocktakeListQuerySchema, stocktakeUpdateSchema } from "@challenge/contracts";
 import { asyncHandler } from "../../common/async-handler";
 import { authenticateV1, requirePermission } from "../../common/authenticate";
 import { validateBody, validateParams, validateQuery } from "../../common/validate";
@@ -10,11 +10,13 @@ inventoryRouter.use(authenticateV1);
 inventoryRouter.get("/balances", requirePermission("inventory.view"), validateQuery(inventoryBalanceQuerySchema), asyncHandler(inventoryController.balances));
 inventoryRouter.get("/reconciliation", requirePermission("inventory.view"), validateQuery(inventoryBalanceQuerySchema), asyncHandler(inventoryController.reconciliation));
 inventoryRouter.get("/documents", requirePermission("inventory.view"), validateQuery(inventoryListQuerySchema), asyncHandler(inventoryController.list));
+inventoryRouter.get("/documents/by-codes", asyncHandler(inventoryController.getByCodes));
 inventoryRouter.get("/documents/:id", requirePermission("inventory.view"), validateParams(numericIdParamsSchema), asyncHandler(inventoryController.get));
 inventoryRouter.post("/documents", requirePermission("inventory.manage"), validateBody(inventoryDraftSchema), asyncHandler(inventoryController.create));
 inventoryRouter.put("/documents/:id", requirePermission("inventory.manage"), validateParams(numericIdParamsSchema), validateBody(inventoryUpdateSchema), asyncHandler(inventoryController.update));
 inventoryRouter.post("/documents/:id/post", requirePermission("inventory.post"), validateParams(numericIdParamsSchema), validateBody(inventoryActionSchema), asyncHandler(inventoryController.post));
 inventoryRouter.post("/documents/:id/cancel", requirePermission("inventory.cancel"), validateParams(numericIdParamsSchema), validateBody(inventoryCancelSchema), asyncHandler(inventoryController.cancel));
+inventoryRouter.post("/documents/:id/delete", requirePermission("inventory.manage"), validateParams(numericIdParamsSchema), validateBody(inventoryDeleteSchema), asyncHandler(inventoryController.delete));
 
 inventoryRouter.get("/stocktakes", requirePermission("inventory.view"), validateQuery(stocktakeListQuerySchema), asyncHandler(stocktakeController.list));
 inventoryRouter.get("/stocktakes/:id", requirePermission("inventory.view"), validateParams(numericIdParamsSchema), asyncHandler(stocktakeController.get));

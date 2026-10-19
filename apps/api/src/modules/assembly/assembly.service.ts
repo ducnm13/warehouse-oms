@@ -1,20 +1,37 @@
 import type { AssemblyBomInput, AssemblyBomUpdateInput, AssemblyCancelInput, AssemblyDraftInput, AssemblyPostInput, AssemblyUpdateInput, DisassemblyDraftInput, DisassemblyPostInput, DisassemblyUpdateInput } from "@challenge/contracts";
+import { resolveDocumentCode } from "../../common/document-code";
 import { HttpError } from "../../common/http-error";
 import { averageCost, decimal, ensureOpening, inventoryDocument, lockBalance, money, nowIso, verifyLinePayload, verifyVersion } from "./assembly.inventory";
 import { mapAssembly, mapAssemblyBom, mapDisassembly } from "./assembly.mapper";
 import { assemblyInclude, assemblyRepository, bomInclude, disassemblyInclude, prisma } from "./assembly.repository";
 
 const dateValue = (value: string) => new Date(`${value}T00:00:00.000Z`);
-const code = (prefix: string) => `${prefix}-${Date.now()}`;
 async function validateWarehouses(tx: any, ids: number[]) {
   if (await tx.warehouses.count({ where: { id: { in: [...new Set(ids)] } } }) !== new Set(ids).size) throw new HttpError(422, "WAREHOUSE_NOT_FOUND", "Kho không tồn tại");
 }
-async function activeBom(tx: any, packagingId: number) {
-  const bom = await tx.assembly_bom_headers.findFirst({ where: { outputPackagingId: packagingId, status: "ACTIVE" }, include: bomInclude, orderBy: [{ version: "desc" }, { id: "desc" }] });
-  if (!bom) throw new HttpError(422, "ASSEMBLY_BOM_REQUIRED", "Quy cách chưa có BOM lắp ráp đang hiệu lực");
-  return bom;
+async function catalogBom(tx: any, packagingId: number) {
+  const rows: any[] = await tx.$queryRawUnsafe(
+    `SELECT materialPackagingId, quantity, unit FROM product_boms WHERE productPackagingId = ? ORDER BY id ASC`,
+    packagingId,
+  );
+  if (!rows.length) throw new HttpError(422, "ASSEMBLY_BOM_REQUIRED", `Mã ${packagingId} chưa có định mức BOM trong danh mục`);
+  return rows;
 }
-const snapshotLines = (bom: any, plannedQuantity: number) => bom.lines.map((line: any) => ({ componentPackagingId: line.componentPackagingId, plannedQuantity: decimal(Number(line.quantity) * plannedQuantity / Number(bom.outputQuantity)), allocationWeight: line.allocationWeight, note: line.note }));
+const snapshotMultiLines = async (tx: any, outputs: Array<{ packagingId: number; plannedQuantity: number }>) => {
+  const aggregated = new Map<number, number>();
+  for (const output of outputs) {
+    const bom = await catalogBom(tx, output.packagingId);
+    for (const line of bom) {
+      aggregated.set(
+        Number(line.materialPackagingId),
+        (aggregated.get(Number(line.materialPackagingId)) || 0) + Number(line.quantity || 0) * Number(output.plannedQuantity || 0),
+      );
+    }
+  }
+  return [...aggregated.entries()].map(([componentPackagingId, plannedQuantity]) => ({
+    componentPackagingId, plannedQuantity: decimal(plannedQuantity), allocationWeight: decimal(0), note: "",
+  }));
+};
 async function lockOrder(tx: any, table: "assembly_orders" | "disassembly_orders", id: number, module: string) {
   const rows = await tx.$queryRawUnsafe(`SELECT id,status,version,sourceModule FROM ${table} WHERE id=? FOR UPDATE`, id) as any[];
   if (!rows[0] || rows[0].sourceModule !== module) throw new HttpError(404, "ORDER_NOT_FOUND", "Không tìm thấy lệnh V1");
@@ -53,10 +70,75 @@ export const assemblyService = {
   async listAssembly(query: any) { const where: any = { sourceModule: "ASSEMBLY_V1", ...(query.status ? { status: query.status } : {}), ...(query.month ? { orderDate: { gte: dateValue(`${query.month}-01`), lt: new Date(Date.UTC(Number(query.month.slice(0, 4)), Number(query.month.slice(5, 7)), 1)) } } : {}), ...(query.search ? { OR: [{ code: { contains: query.search } }, { bomCode: { contains: query.search } }] } : {}) }; const [rows, total] = await Promise.all([assemblyRepository.listAssembly(where, (query.page - 1) * query.limit, query.limit), assemblyRepository.countAssembly(where)]); return { data: rows.map(mapAssembly), meta: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) } }; },
   async getAssembly(id: number) { const row = await assemblyRepository.findAssembly(id); if (!row || row.sourceModule !== "ASSEMBLY_V1") throw new HttpError(404, "ORDER_NOT_FOUND", "Không tìm thấy lệnh lắp ráp"); return mapAssembly(row); },
   async createAssembly(input: AssemblyDraftInput, userId: number) {
-    const id = await prisma.$transaction(async tx => { await validateWarehouses(tx, [input.componentWarehouseId, input.outputWarehouseId]); const bom = await activeBom(tx, input.outputPackagingId), now = new Date(); const row = await tx.assembly_orders.create({ data: { code: code("LRV1"), orderDate: dateValue(input.orderDate), outputPackagingId: input.outputPackagingId, plannedQuantity: decimal(input.plannedQuantity), componentWarehouseId: input.componentWarehouseId, outputWarehouseId: input.outputWarehouseId, bomId: bom.id, bomCode: bom.code, bomVersion: bom.version, note: input.note, createdBy: userId, updatedAt: now, lines: { create: snapshotLines(bom, input.plannedQuantity) } } }); await audit(tx, "Tạo lệnh lắp ráp v1", row.code, userId); return row.id; }); return this.getAssembly(id);
+    const id = await prisma.$transaction(async tx => {
+      await validateWarehouses(tx, [input.componentWarehouseId, input.outputWarehouseId]);
+      const outputIds = input.outputs.map(x => x.packagingId);
+      if (await tx.productpackagings.count({ where: { id: { in: outputIds } } }) !== new Set(outputIds).size) throw new HttpError(422, "PACKAGING_NOT_FOUND", "Mã thành phẩm không tồn tại");
+      const now = new Date();
+      const firstOutput = input.outputs[0];
+      const codeValue = await resolveDocumentCode("assembly", (input as any).code);
+      const snapshot = await snapshotMultiLines(tx, input.outputs);
+      await tx.$executeRawUnsafe(
+        `INSERT INTO assembly_orders (code, orderDate, outputPackagingId, plannedQuantity, componentWarehouseId, outputWarehouseId, bomCode, bomVersion, assemblyCost, note, createdBy, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, 'CATALOG-BOM', 1, ?, ?, ?, NOW(3))`,
+        codeValue, dateValue(input.orderDate), firstOutput.packagingId,
+        Number(input.outputs.reduce((s, x) => s + Number(x.plannedQuantity || 0), 0)),
+        input.componentWarehouseId, input.outputWarehouseId,
+        Number((input as any).assemblyCost || 0), input.note || "", userId,
+      );
+      const created: any[] = await tx.$queryRawUnsafe("SELECT id FROM assembly_orders WHERE code = ? ORDER BY id DESC LIMIT 1", codeValue);
+      const rowId = Number(created[0]?.id || 0);
+      if (!rowId) throw new HttpError(500, "ASSEMBLY_CREATE_FAILED", "Không tạo được lệnh lắp ráp");
+      const row = { id: rowId, code: codeValue };
+      for (const line of snapshot) {
+        await tx.assembly_order_lines.create({
+          data: {
+            orderId: rowId,
+            componentPackagingId: (line as any).componentPackagingId,
+            plannedQuantity: (line as any).plannedQuantity,
+            allocationWeight: (line as any).allocationWeight,
+            note: (line as any).note,
+          },
+        });
+      }
+      for (const output of input.outputs) {
+        await tx.$executeRawUnsafe(
+          "INSERT INTO assembly_order_outputs (orderId, outputPackagingId, plannedQuantity, note) VALUES (?, ?, ?, ?)",
+          row.id, output.packagingId, Number(output.plannedQuantity || 0), output.note || "",
+        );
+      }
+      await audit(tx, "Tạo lệnh lắp ráp v1", row.code, userId); return row.id;
+    }); return this.getAssembly(id);
   },
   async updateAssembly(id: number, input: AssemblyUpdateInput, userId: number) {
-    await prisma.$transaction(async tx => { const locked = await lockOrder(tx, "assembly_orders", id, "ASSEMBLY_V1"); verifyVersion(locked, input.version); if (locked.status !== "DRAFT") throw new HttpError(409, "INVALID_STATUS", "Chỉ sửa lệnh nháp"); await validateWarehouses(tx, [input.componentWarehouseId, input.outputWarehouseId]); const bom = await activeBom(tx, input.outputPackagingId); await tx.assembly_order_lines.deleteMany({ where: { orderId: id } }); await tx.assembly_orders.update({ where: { id }, data: { orderDate: dateValue(input.orderDate), outputPackagingId: input.outputPackagingId, plannedQuantity: decimal(input.plannedQuantity), componentWarehouseId: input.componentWarehouseId, outputWarehouseId: input.outputWarehouseId, bomId: bom.id, bomCode: bom.code, bomVersion: bom.version, note: input.note, version: { increment: 1 }, updatedAt: new Date(), lines: { create: snapshotLines(bom, input.plannedQuantity) } } }); await audit(tx, "Cập nhật lệnh lắp ráp v1", String(id), userId); }); return this.getAssembly(id);
+    await prisma.$transaction(async tx => {
+      const locked = await lockOrder(tx, "assembly_orders", id, "ASSEMBLY_V1"); verifyVersion(locked, input.version); if (locked.status !== "DRAFT") throw new HttpError(409, "INVALID_STATUS", "Chỉ sửa lệnh nháp");
+      await validateWarehouses(tx, [input.componentWarehouseId, input.outputWarehouseId]);
+      const outputIds = input.outputs.map(x => x.packagingId);
+      if (await tx.productpackagings.count({ where: { id: { in: outputIds } } }) !== new Set(outputIds).size) throw new HttpError(422, "PACKAGING_NOT_FOUND", "Mã thành phẩm không tồn tại");
+      await tx.$executeRawUnsafe("DELETE FROM assembly_order_outputs WHERE orderId = ?", id);
+      await tx.assembly_order_lines.deleteMany({ where: { orderId: id } });
+      const snapshot = await snapshotMultiLines(tx, input.outputs);
+      await tx.assembly_orders.update({
+        where: { id },
+        data: {
+          orderDate: dateValue(input.orderDate),
+          outputPackagingId: input.outputs[0].packagingId,
+          plannedQuantity: decimal(input.outputs.reduce((s, x) => s + Number(x.plannedQuantity || 0), 0)),
+          componentWarehouseId: input.componentWarehouseId, outputWarehouseId: input.outputWarehouseId,
+          assemblyCost: decimal(Number((input as any).assemblyCost || 0)),
+          note: input.note, version: { increment: 1 }, updatedAt: new Date(),
+          lines: { create: snapshot },
+        },
+      });
+      for (const output of input.outputs) {
+        await tx.$executeRawUnsafe(
+          "INSERT INTO assembly_order_outputs (orderId, outputPackagingId, plannedQuantity, note) VALUES (?, ?, ?, ?)",
+          id, output.packagingId, Number(output.plannedQuantity || 0), output.note || "",
+        );
+      }
+      await audit(tx, "Cập nhật lệnh lắp ráp v1", String(id), userId);
+    }); return this.getAssembly(id);
   },
   async postAssembly(id: number, input: AssemblyPostInput, userId: number) {
     await prisma.$transaction(async tx => {
@@ -74,8 +156,73 @@ export const assemblyService = {
   },
   async listDisassembly(query: any) { const where: any = { sourceModule: "DISASSEMBLY_V1", ...(query.status ? { status: query.status } : {}), ...(query.month ? { orderDate: { gte: dateValue(`${query.month}-01`), lt: new Date(Date.UTC(Number(query.month.slice(0, 4)), Number(query.month.slice(5, 7)), 1)) } } : {}), ...(query.search ? { OR: [{ code: { contains: query.search } }, { bomCode: { contains: query.search } }] } : {}) }; const [rows, total] = await Promise.all([assemblyRepository.listDisassembly(where, (query.page - 1) * query.limit, query.limit), assemblyRepository.countDisassembly(where)]); return { data: rows.map(mapDisassembly), meta: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) } }; },
   async getDisassembly(id: number) { const row = await assemblyRepository.findDisassembly(id); if (!row || row.sourceModule !== "DISASSEMBLY_V1") throw new HttpError(404, "ORDER_NOT_FOUND", "Không tìm thấy lệnh tháo dỡ"); return mapDisassembly(row); },
-  async createDisassembly(input: DisassemblyDraftInput, userId: number) { const id = await prisma.$transaction(async tx => { await validateWarehouses(tx, [input.sourceWarehouseId, input.recoveryWarehouseId]); const bom = await activeBom(tx, input.sourcePackagingId), now = new Date(); const row = await tx.disassembly_orders.create({ data: { code: code("TDV1"), orderDate: dateValue(input.orderDate), sourcePackagingId: input.sourcePackagingId, plannedQuantity: decimal(input.plannedQuantity), sourceWarehouseId: input.sourceWarehouseId, recoveryWarehouseId: input.recoveryWarehouseId, bomId: bom.id, bomCode: bom.code, bomVersion: bom.version, note: input.note, createdBy: userId, updatedAt: now, lines: { create: snapshotLines(bom, input.plannedQuantity) } } }); await audit(tx, "Tạo lệnh tháo dỡ v1", row.code, userId); return row.id; }); return this.getDisassembly(id); },
-  async updateDisassembly(id: number, input: DisassemblyUpdateInput, userId: number) { await prisma.$transaction(async tx => { const locked = await lockOrder(tx, "disassembly_orders", id, "DISASSEMBLY_V1"); verifyVersion(locked, input.version); if (locked.status !== "DRAFT") throw new HttpError(409, "INVALID_STATUS", "Chỉ sửa lệnh nháp"); await validateWarehouses(tx, [input.sourceWarehouseId, input.recoveryWarehouseId]); const bom = await activeBom(tx, input.sourcePackagingId); await tx.disassembly_order_lines.deleteMany({ where: { orderId: id } }); await tx.disassembly_orders.update({ where: { id }, data: { orderDate: dateValue(input.orderDate), sourcePackagingId: input.sourcePackagingId, plannedQuantity: decimal(input.plannedQuantity), sourceWarehouseId: input.sourceWarehouseId, recoveryWarehouseId: input.recoveryWarehouseId, bomId: bom.id, bomCode: bom.code, bomVersion: bom.version, note: input.note, version: { increment: 1 }, updatedAt: new Date(), lines: { create: snapshotLines(bom, input.plannedQuantity) } } }); await audit(tx, "Cập nhật lệnh tháo dỡ v1", String(id), userId); }); return this.getDisassembly(id); },
+  async createDisassembly(input: DisassemblyDraftInput, userId: number) {
+    const id = await prisma.$transaction(async tx => {
+      await validateWarehouses(tx, [input.sourceWarehouseId, input.recoveryWarehouseId]);
+      const sourceIds = input.outputs.map(x => x.packagingId);
+      if (await tx.productpackagings.count({ where: { id: { in: sourceIds } } }) !== new Set(sourceIds).size) throw new HttpError(422, "PACKAGING_NOT_FOUND", "Mã thành phẩm nguồn không tồn tại");
+      const now = new Date();
+      const codeValue = await resolveDocumentCode("disassembly", (input as any).code);
+      const snapshot = await snapshotMultiLines(tx, input.outputs);
+      await tx.$executeRawUnsafe(
+        `INSERT INTO disassembly_orders (code, orderDate, sourcePackagingId, plannedQuantity, sourceWarehouseId, recoveryWarehouseId, bomCode, bomVersion, note, createdBy, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, 'CATALOG-BOM', 1, ?, ?, NOW(3))`,
+        codeValue, dateValue(input.orderDate), input.outputs[0].packagingId,
+        Number(input.outputs.reduce((s, x) => s + Number(x.plannedQuantity || 0), 0)),
+        input.sourceWarehouseId, input.recoveryWarehouseId, input.note || "", userId,
+      );
+      const created: any[] = await tx.$queryRawUnsafe("SELECT id FROM disassembly_orders WHERE code = ? ORDER BY id DESC LIMIT 1", codeValue);
+      const rowId = Number(created[0]?.id || 0);
+      if (!rowId) throw new HttpError(500, "DISASSEMBLY_CREATE_FAILED", "Không tạo được lệnh tháo dỡ");
+      const row = { id: rowId, code: codeValue };
+      for (const line of snapshot) {
+        await tx.disassembly_order_lines.create({
+          data: {
+            orderId: rowId,
+            componentPackagingId: (line as any).componentPackagingId,
+            plannedQuantity: (line as any).plannedQuantity,
+            allocationWeight: (line as any).allocationWeight,
+            note: (line as any).note,
+          },
+        });
+      }
+      for (const output of input.outputs) {
+        await tx.$executeRawUnsafe(
+          "INSERT INTO disassembly_order_sources (orderId, sourcePackagingId, plannedQuantity, note) VALUES (?, ?, ?, ?)",
+          row.id, output.packagingId, Number(output.plannedQuantity || 0), output.note || "",
+        );
+      }
+      await audit(tx, "Tạo lệnh tháo dỡ v1", row.code, userId); return row.id;
+    }); return this.getDisassembly(id);
+  },
+  async updateDisassembly(id: number, input: DisassemblyUpdateInput, userId: number) {
+    await prisma.$transaction(async tx => {
+      const locked = await lockOrder(tx, "disassembly_orders", id, "DISASSEMBLY_V1"); verifyVersion(locked, input.version); if (locked.status !== "DRAFT") throw new HttpError(409, "INVALID_STATUS", "Chỉ sửa lệnh nháp");
+      await validateWarehouses(tx, [input.sourceWarehouseId, input.recoveryWarehouseId]);
+      const sourceIds = input.outputs.map(x => x.packagingId);
+      if (await tx.productpackagings.count({ where: { id: { in: sourceIds } } }) !== new Set(sourceIds).size) throw new HttpError(422, "PACKAGING_NOT_FOUND", "Mã thành phẩm nguồn không tồn tại");
+      await tx.$executeRawUnsafe("DELETE FROM disassembly_order_sources WHERE orderId = ?", id);
+      await tx.disassembly_order_lines.deleteMany({ where: { orderId: id } });
+      const snapshot = await snapshotMultiLines(tx, input.outputs);
+      await tx.disassembly_orders.update({
+        where: { id },
+        data: {
+          orderDate: dateValue(input.orderDate), sourcePackagingId: input.outputs[0].packagingId,
+          plannedQuantity: decimal(input.outputs.reduce((s, x) => s + Number(x.plannedQuantity || 0), 0)),
+          sourceWarehouseId: input.sourceWarehouseId, recoveryWarehouseId: input.recoveryWarehouseId,
+          note: input.note, version: { increment: 1 }, updatedAt: new Date(),
+          lines: { create: snapshot },
+        },
+      });
+      for (const output of input.outputs) {
+        await tx.$executeRawUnsafe(
+          "INSERT INTO disassembly_order_sources (orderId, sourcePackagingId, plannedQuantity, note) VALUES (?, ?, ?, ?)",
+          id, output.packagingId, Number(output.plannedQuantity || 0), output.note || "",
+        );
+      }
+      await audit(tx, "Cập nhật lệnh tháo dỡ v1", String(id), userId);
+    }); return this.getDisassembly(id);
+  },
   async postDisassembly(id: number, input: DisassemblyPostInput, userId: number) {
     await prisma.$transaction(async tx => { const locked = await lockOrder(tx, "disassembly_orders", id, "DISASSEMBLY_V1"); verifyVersion(locked, input.version); if (locked.status !== "DRAFT") throw new HttpError(409, "INVALID_STATUS", "Chỉ ghi sổ lệnh nháp"); const order = await tx.disassembly_orders.findUnique({ where: { id }, include: disassemblyInclude }); if (!order) throw new HttpError(404, "ORDER_NOT_FOUND", "Không tìm thấy lệnh"); verifyLinePayload(order.lines, input.lines); const timestamp = nowIso(), occurredAt = new Date(), day = timestamp.slice(0, 10), sourceBalance = await lockBalance(tx, order.sourcePackagingId, order.sourceWarehouseId); await ensureOpening(tx, order.sourcePackagingId, order.sourceWarehouseId, sourceBalance); if (sourceBalance < input.actualQuantity) throw new HttpError(409, "INSUFFICIENT_SOURCE", "Không đủ thành phẩm nguồn"); const sourceCost = await averageCost(tx, order.sourcePackagingId, order.sourceWarehouseId), sourceValue = sourceCost * input.actualQuantity;
       const issue = await inventoryDocument(tx, { code: `PX-${order.code}`, type: "EXPORT", warehouseId: order.sourceWarehouseId, note: `Xuất nguồn tháo dỡ ${order.code}`, sourceModule: "DISASSEMBLY_SOURCE_V1", userId, date: day }), receipt = await inventoryDocument(tx, { code: `PN-${order.code}`, type: "IMPORT", warehouseId: order.recoveryWarehouseId, note: `Nhập thu hồi ${order.code}`, sourceModule: "DISASSEMBLY_RECOVERY_V1", userId, date: day }); const sourceDetail = await tx.inventorytransactiondetails.create({ data: { transactionId: issue.id, packagingId: order.sourcePackagingId, quantity: input.actualQuantity, unitCost: decimal(sourceCost), totalValue: money(sourceValue), note: order.code, createdAt: timestamp, updatedAt: timestamp } }); await tx.productwarehouses.update({ where: { packagingId_warehouseId: { packagingId: order.sourcePackagingId, warehouseId: order.sourceWarehouseId } }, data: { stock_quantity: { decrement: input.actualQuantity }, updatedAt: timestamp } }); await tx.inventory_ledger.create({ data: { sourceType: "DISASSEMBLY_SOURCE", sourceId: id, sourceLineId: sourceDetail.id, documentCode: order.code, direction: "OUT", packagingId: order.sourcePackagingId, warehouseId: order.sourceWarehouseId, quantity: decimal(input.actualQuantity), unitCost: decimal(sourceCost), totalValue: money(sourceValue), occurredAt, createdBy: userId } });
@@ -83,6 +230,23 @@ export const assemblyService = {
       for (let index = 0; index < active.length; index++) { const payload = active[index], row = order.lines.find(x => x.id === payload.lineId)!, value = index === active.length - 1 ? sourceValue - allocated : Math.round(sourceValue * payload.actualQuantity * Math.max(Number(row.allocationWeight), 1) / scoreTotal * 100) / 100; allocated += value; const unitCost = value / payload.actualQuantity, balance = await lockBalance(tx, row.componentPackagingId, order.recoveryWarehouseId); await ensureOpening(tx, row.componentPackagingId, order.recoveryWarehouseId, balance); const detail = await tx.inventorytransactiondetails.create({ data: { transactionId: receipt.id, packagingId: row.componentPackagingId, quantity: payload.actualQuantity, unitCost: decimal(unitCost), totalValue: money(value), note: order.code, createdAt: timestamp, updatedAt: timestamp } }); await tx.productwarehouses.update({ where: { packagingId_warehouseId: { packagingId: row.componentPackagingId, warehouseId: order.recoveryWarehouseId } }, data: { stock_quantity: { increment: payload.actualQuantity }, updatedAt: timestamp } }); await tx.inventory_ledger.create({ data: { sourceType: "DISASSEMBLY_RECOVERY", sourceId: id, sourceLineId: row.id, documentCode: order.code, direction: "IN", packagingId: row.componentPackagingId, warehouseId: order.recoveryWarehouseId, quantity: decimal(payload.actualQuantity), unitCost: decimal(unitCost), totalValue: money(value), occurredAt, createdBy: userId } }); await tx.disassembly_order_lines.update({ where: { id: row.id }, data: { actualQuantity: decimal(payload.actualQuantity), lossQuantity: decimal(payload.lossQuantity), unitCost: decimal(unitCost), totalValue: money(value) } }); void detail; }
       for (const payload of input.lines.filter(x => x.actualQuantity === 0)) await tx.disassembly_order_lines.update({ where: { id: payload.lineId }, data: { actualQuantity: decimal(0), lossQuantity: decimal(payload.lossQuantity) } }); await tx.disassembly_order_document_links.createMany({ data: [{ orderId: id, linkType: "SOURCE_ISSUE", linkedId: BigInt(issue.id), linkedCode: issue.code }, { orderId: id, linkType: "RECOVERY_RECEIPT", linkedId: BigInt(receipt.id), linkedCode: receipt.code }] }); await tx.disassembly_orders.update({ where: { id }, data: { actualQuantity: decimal(input.actualQuantity), sourceUnitCost: decimal(sourceCost), sourceTotalValue: money(sourceValue), lossValue: money(Math.max(0, sourceValue - allocated)), status: "POSTED", postedAt: occurredAt, postedBy: userId, version: { increment: 1 }, updatedAt: occurredAt } }); await audit(tx, "Ghi sổ lệnh tháo dỡ v1", order.code, userId);
     }, { timeout: 30_000 }); return this.getDisassembly(id);
+  },
+  async linkInventory(kind: "ASSEMBLY" | "DISASSEMBLY", id: number, input: { linkType: string; linkedId: number; linkedCode?: string }, userId: number) {
+    const type = input.linkType === "INVENTORY_RECEIPT" ? "INVENTORY_RECEIPT" : "INVENTORY_ISSUE";
+    return prisma.$transaction(async tx => {
+      const table = kind === "ASSEMBLY" ? "assembly_orders" : "disassembly_orders";
+      const module = kind === "ASSEMBLY" ? "ASSEMBLY_V1" : "DISASSEMBLY_V1";
+      const locked = await lockOrder(tx, table, id, module);
+      if (locked.status !== "DRAFT") throw new HttpError(409, "INVALID_STATUS", "Chỉ liên kết phiếu khi lệnh còn nháp");
+      const linkTable = kind === "ASSEMBLY" ? "assembly_order_document_links" : "disassembly_order_document_links";
+      await tx.$executeRawUnsafe(
+        `INSERT INTO ${linkTable} (orderId, linkType, linkedId, linkedCode) VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE linkedId = VALUES(linkedId), linkedCode = VALUES(linkedCode)`,
+        id, type, BigInt(input.linkedId), input.linkedCode || "",
+      );
+      await audit(tx, "Liên kết phiếu kho lệnh lắp ráp/tháo dỡ", `${id} -> ${input.linkedCode || input.linkedId}`, userId);
+      return kind === "ASSEMBLY" ? this.getAssembly(id) : this.getDisassembly(id);
+    });
   },
   async cancel(kind: "ASSEMBLY" | "DISASSEMBLY", id: number, input: AssemblyCancelInput, userId: number) {
     await prisma.$transaction(async tx => { const isAssembly = kind === "ASSEMBLY", locked = await lockOrder(tx, isAssembly ? "assembly_orders" : "disassembly_orders", id, isAssembly ? "ASSEMBLY_V1" : "DISASSEMBLY_V1"); verifyVersion(locked, input.version); if (!['DRAFT', 'POSTED'].includes(locked.status)) throw new HttpError(409, "INVALID_STATUS", "Không thể hủy lệnh"); const timestamp = nowIso(), occurredAt = new Date(), day = timestamp.slice(0, 10);

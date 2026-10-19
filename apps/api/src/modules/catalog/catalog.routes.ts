@@ -1,8 +1,9 @@
 import { Router } from "express";
 import {
-  catalogListQuerySchema, catalogPackagingCreateSchema, catalogPackagingUpdateSchema,
-  catalogProductCreateSchema, catalogProductUpdateSchema, numericIdParamsSchema,
+  catalogBomReplaceSchema, catalogImportSchema, catalogListQuerySchema, catalogPackagingCreateSchema, catalogPackagingUpdateSchema,
+  catalogProductCreateSchema, catalogProductUpdateSchema, numericIdParamsSchema, priceBookItemParamsSchema,
   warehouseCreateSchema, warehouseUpdateSchema,
+  priceBookCreateSchema, priceBookUpdateSchema, priceBookItemSchema, priceBookBulkAddSchema,
 } from "@challenge/contracts";
 import { asyncHandler } from "../../common/async-handler";
 import { authenticateV1, requirePermission } from "../../common/authenticate";
@@ -21,9 +22,32 @@ catalogRouter.put    ("/warehouses/:id", requirePermission("catalog.manage"), va
 catalogRouter.delete ("/warehouses/:id", requirePermission("catalog.manage"), validateParams(numericIdParamsSchema), asyncHandler(warehouseController.delete));
 
 // Refs
+catalogRouter.get("/packaging-cost-prices", requirePermission("inventory.view"), asyncHandler(catalogController.listCostPrices));
+catalogRouter.get("/packaging-retail-prices", requirePermission("sales.view"), asyncHandler(catalogController.listRetailPrices));
+catalogRouter.get("/packagings",   requirePermission("catalog.view"),   asyncHandler(catalogController.listPackagings));
 catalogRouter.get("/low-stock",    requirePermission("catalog.view"),   asyncHandler(catalogController.listLowStock));
 
+// Customer Group Prices
+catalogRouter.get("/group-prices", requirePermission("catalog.view"), asyncHandler(catalogController.listGroupPrices));
+catalogRouter.post("/group-prices", requirePermission("catalog.manage"), asyncHandler(catalogController.upsertGroupPrice));
+
+// Price Books
+catalogRouter.get("/price-books", requirePermission("catalog.view"), asyncHandler(catalogController.listPriceBooks));
+catalogRouter.post("/price-books", requirePermission("catalog.manage"), validateBody(priceBookCreateSchema), asyncHandler(catalogController.createPriceBook));
+catalogRouter.get("/price-books/:id", requirePermission("catalog.view"), validateParams(numericIdParamsSchema), asyncHandler(catalogController.getPriceBook));
+catalogRouter.put("/price-books/:id", requirePermission("catalog.manage"), validateParams(numericIdParamsSchema), validateBody(priceBookUpdateSchema), asyncHandler(catalogController.updatePriceBook));
+catalogRouter.delete("/price-books/:id", requirePermission("catalog.manage"), validateParams(numericIdParamsSchema), asyncHandler(catalogController.deletePriceBook));
+catalogRouter.post("/price-books/:id/items", requirePermission("catalog.manage"), validateParams(numericIdParamsSchema), validateBody(priceBookItemSchema), asyncHandler(catalogController.upsertPriceBookItem));
+catalogRouter.delete("/price-books/:id/items/:packagingId", requirePermission("catalog.manage"), validateParams(priceBookItemParamsSchema), asyncHandler(catalogController.deletePriceBookItem));
+catalogRouter.get("/price-books/:id/items/:packagingId", requirePermission("catalog.view"), validateParams(priceBookItemParamsSchema), asyncHandler(catalogController.getPriceBookItem));
+catalogRouter.post("/price-books/:id/bulk-add", requirePermission("catalog.manage"), validateParams(numericIdParamsSchema), validateBody(priceBookBulkAddSchema), asyncHandler(catalogController.bulkAddPriceBookItems));
+
+// Product BOM
+catalogRouter.get("/product-boms/:id", requirePermission("catalog.view"), validateParams(numericIdParamsSchema), asyncHandler(catalogController.listBom));
+catalogRouter.post("/product-boms/replace", requirePermission("catalog.manage"), validateBody(catalogBomReplaceSchema), asyncHandler(catalogController.replaceBom));
+
 // Products
+catalogRouter.post("/products/import", requirePermission("catalog.manage"), validateBody(catalogImportSchema), asyncHandler(catalogController.importProducts));
 catalogRouter.get ("/products",     requirePermission("catalog.view"),   validateQuery(catalogListQuerySchema),       asyncHandler(catalogController.listProducts));
 catalogRouter.get ("/products/:id", requirePermission("catalog.view"),   validateParams(numericIdParamsSchema),       asyncHandler(catalogController.getProduct));
 catalogRouter.post("/products",     requirePermission("catalog.manage"), validateBody(catalogProductCreateSchema),    asyncHandler(catalogController.createProduct));

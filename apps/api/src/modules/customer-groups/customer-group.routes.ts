@@ -10,19 +10,33 @@ export const customerGroupRouter = Router();
 customerGroupRouter.use(authenticateV1);
 
 // GET all groups (tree structure)
-customerGroupRouter.get("/", requirePermission("catalog.view"), asyncHandler(async (_req, res) => {
+customerGroupRouter.get("/", requirePermission("customer.view"), asyncHandler(async (_req, res) => {
   const rows = await prisma.customer_groups.findMany({
     where: { isActive: 1 },
     orderBy: { displayOrder: "asc" },
     include: {
       children: { where: { isActive: 1 }, orderBy: { displayOrder: "asc" } },
+      priceBook: { select: { id: true, code: true, name: true } },
+    },
+  });
+  res.json({ success: true, message: "OK", data: rows });
+}));
+
+// GET teams (groups with isTeam = true)
+customerGroupRouter.get("/teams", requirePermission("customer.view"), asyncHandler(async (_req, res) => {
+  const rows = await prisma.customer_groups.findMany({
+    where: { isActive: 1, isTeam: true },
+    orderBy: { displayOrder: "asc" },
+    include: {
+      parent: { select: { id: true, code: true, name: true } },
+      priceBook: { select: { id: true, code: true, name: true } },
     },
   });
   res.json({ success: true, message: "OK", data: rows });
 }));
 
 // POST create group
-customerGroupRouter.post("/", requirePermission("catalog.manage"), validateBody(customerGroupCreateSchema), asyncHandler(async (req, res) => {
+customerGroupRouter.post("/", requirePermission("customer.manage"), validateBody(customerGroupCreateSchema), asyncHandler(async (req, res) => {
   const input = req.body;
   const existing = await prisma.customer_groups.findUnique({ where: { code: input.code } });
   if (existing) throw new HttpError(422, "GROUP_CODE_EXISTS", "Mã nhóm khách hàng đã tồn tại");
@@ -31,6 +45,8 @@ customerGroupRouter.post("/", requirePermission("catalog.manage"), validateBody(
       code: input.code,
       name: input.name,
       parentId: input.parentId ?? null,
+      priceBookId: input.priceBookId ?? null,
+      isTeam: input.isTeam ?? false,
       displayOrder: input.displayOrder ?? 0,
       isActive: input.isActive ? 1 : 0,
     },
@@ -39,7 +55,7 @@ customerGroupRouter.post("/", requirePermission("catalog.manage"), validateBody(
 }));
 
 // PUT update group
-customerGroupRouter.put("/:id", requirePermission("catalog.manage"), validateParams(numericIdParamsSchema), validateBody(customerGroupUpdateSchema), asyncHandler(async (req, res) => {
+customerGroupRouter.put("/:id", requirePermission("customer.manage"), validateParams(numericIdParamsSchema), validateBody(customerGroupUpdateSchema), asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   const input = req.body;
   const existing = await prisma.customer_groups.findUnique({ where: { id } });
@@ -55,6 +71,8 @@ customerGroupRouter.put("/:id", requirePermission("catalog.manage"), validatePar
       code: input.code,
       name: input.name,
       parentId: input.parentId ?? null,
+      priceBookId: input.priceBookId ?? null,
+      isTeam: input.isTeam ?? false,
       displayOrder: input.displayOrder ?? 0,
       isActive: input.isActive ? 1 : 0,
     },
@@ -63,7 +81,7 @@ customerGroupRouter.put("/:id", requirePermission("catalog.manage"), validatePar
 }));
 
 // DELETE group
-customerGroupRouter.delete("/:id", requirePermission("catalog.manage"), validateParams(numericIdParamsSchema), asyncHandler(async (req, res) => {
+customerGroupRouter.delete("/:id", requirePermission("customer.manage"), validateParams(numericIdParamsSchema), asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   const existing = await prisma.customer_groups.findUnique({ where: { id } });
   if (!existing) throw new HttpError(404, "GROUP_NOT_FOUND", "Không tìm thấy nhóm khách hàng");

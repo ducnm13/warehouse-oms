@@ -1,0 +1,11 @@
+ALTER TABLE warehouses
+  ADD COLUMN IF NOT EXISTS code VARCHAR(50) NULL,
+  ADD COLUMN IF NOT EXISTS address TEXT NULL,
+  ADD COLUMN IF NOT EXISTS isActive INT NOT NULL DEFAULT 1;
+
+UPDATE warehouses
+SET code = CONCAT('KHO', LPAD(id, 3, '0'))
+WHERE code IS NULL OR code = '';
+
+ALTER TABLE warehouses
+  ADD UNIQUE INDEX IF NOT EXISTS warehouses_code_unique (code);

@@ -33,4 +33,8 @@ export const purchaseController = {
     const user = auth(req);
     res.json({ success: true, message: "Đã hủy và đảo chứng từ", data: await purchaseService.cancel(id(req), req.body, user.userId) });
   },
+  async remove(req: Request, res: Response) {
+    const user = auth(req);
+    res.json({ success: true, message: "Đã xóa chứng từ mua hàng", data: await purchaseService.remove(id(req), Number(req.body.version), user.userId) });
+  },
 };

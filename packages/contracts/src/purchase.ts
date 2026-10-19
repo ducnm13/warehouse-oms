@@ -40,8 +40,6 @@ export const purchaseCancelSchema = purchaseActionSchema.extend({
   reason: z.string().trim().min(3).max(500),
 });
 
-export const numericIdParamsSchema = z.object({ id: z.coerce.number().int().positive() });
-
 export const purchaseListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),

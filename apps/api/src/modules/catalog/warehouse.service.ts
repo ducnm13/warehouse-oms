@@ -28,7 +28,7 @@ export const warehouseService = {
   },
 
   async create(input: WarehouseCreateInput) {
-    const existing = await prisma.warehouses.findUnique({ where: { code: input.code } });
+    const existing = await prisma.warehouses.findFirst({ where: { code: input.code } });
     if (existing) throw new HttpError(409, "WAREHOUSE_CODE_EXISTS", "Mã kho đã tồn tại");
 
     return prisma.warehouses.create({
@@ -48,7 +48,7 @@ export const warehouseService = {
     if (!warehouse) throw new HttpError(404, "WAREHOUSE_NOT_FOUND", "Không tìm thấy kho");
 
     if (input.code !== warehouse.code) {
-      const existing = await prisma.warehouses.findUnique({ where: { code: input.code } });
+      const existing = await prisma.warehouses.findFirst({ where: { code: input.code } });
       if (existing) throw new HttpError(409, "WAREHOUSE_CODE_EXISTS", "Mã kho đã tồn tại");
     }
 

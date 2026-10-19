@@ -6,9 +6,16 @@ export const salesLineSchema = z.object({
   unitPrice: z.coerce.number().min(0).max(999999999999),
   discountRate: z.coerce.number().min(0).max(100).default(0),
   note: z.string().trim().max(500).optional().default(""),
+  lineType: z.enum(["SALE", "PROMOTION"]).optional().default("SALE"),
+  promotionProgramId: z.coerce.number().int().positive().optional(),
+  promotionCode: z.string().trim().max(100).optional(),
+  promotionName: z.string().trim().max(255).optional(),
 });
 
+export const documentCodeInput = z.string().trim().max(20).optional().default("");
+
 export const salesDraftSchema = z.object({
+  code: documentCodeInput,
   orderDate: z.iso.date(),
   deliveryDate: z.union([z.iso.date(), z.literal("")]).optional(),
   dueDate: z.union([z.iso.date(), z.literal("")]).optional(),
@@ -20,13 +27,16 @@ export const salesDraftSchema = z.object({
   note: z.string().trim().max(1000).optional().default(""),
   details: z.array(salesLineSchema).min(1).max(500),
 }).superRefine((value, context) => {
-  const seen = new Set<number>();
-  value.details.forEach((line, index) => {
-    if (seen.has(line.packagingId)) context.addIssue({
-      code: "custom", path: ["details", index, "packagingId"], message: "Một quy cách không được nhập nhiều dòng",
+  const seenSale = new Map<number, string>();
+  value.details
+    .filter((line) => (line.lineType || "SALE") === "SALE")
+    .forEach((line) => {
+      const key = `${line.unitPrice}|${line.discountRate}`;
+      if (seenSale.has(line.packagingId) && seenSale.get(line.packagingId) !== key) context.addIssue({
+        code: "custom", path: ["details", 0, "packagingId"], message: "Một quy cách bán không được nhập nhiều dòng khác đơn giá hoặc chiết khấu",
+      });
+      seenSale.set(line.packagingId, key);
     });
-    seen.add(line.packagingId);
-  });
 });
 
 export const salesUpdateSchema = salesDraftSchema.extend({ version: z.coerce.number().int().positive() });
@@ -43,7 +53,7 @@ export const salesListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   search: z.string().trim().max(255).optional(),
-  status: z.enum(["DRAFT", "PENDING", "APPROVED", "REJECTED", "POSTED", "CANCELLED"]).optional(),
+  status: z.enum(["DRAFT", "POSTED", "CANCELLED"]).optional(),
 });
 
 export type SalesDraftInput = z.infer<typeof salesDraftSchema>;

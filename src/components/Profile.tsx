@@ -1,253 +1,365 @@
 import React, { useState } from "react";
 import {
-  User,
-  Lock,
-  KeyRound,
-  Shield,
-  Eye,
-  EyeOff,
-  CheckCircle2,
+	Camera,
+	CheckCircle2,
+	KeyRound,
+	Mail,
+	MapPin,
+	Phone,
+	Shield,
+	User as UserIcon,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "./ui/toast";
+import Button from "./ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import Badge from "./ui/badge";
+import { Field, FieldLabel, PasswordInput } from "./ui/input";
+
+const ROLE_LABELS: Record<string, string> = {
+	ADMIN: "Quản trị viên",
+	W_MANAGER: "Quản lý kho",
+	P_MANAGER: "Quản lý sản xuất",
+	S_SALES: "Nhân viên kinh doanh",
+	QD: "Kế toán",
+};
 
 export default function Profile() {
-  // Lấy thông tin user hiện tại từ localStorage
-  const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+	const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+	const [tab, setTab] = useState<"info" | "security">("info");
+	const [loading, setLoading] = useState(false);
+	const [avatar, setAvatar] = useState<string | null>(currentUser.avatarUrl || null);
+	const [avatarSaving, setAvatarSaving] = useState(false);
+	const fileRef = React.useRef<HTMLInputElement>(null);
 
-  const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState({
-    old: false,
-    new: false,
-    confirm: false,
-  });
-  const [formData, setFormData] = useState({
-    oldPassword: "",
-    newPassword: "",
-    confirmPassword: "",
-  });
+	const persistAvatar = (next: string | null) => {
+		try {
+			localStorage.setItem("user", JSON.stringify({ ...currentUser, avatarUrl: next }));
+		} catch {
+			// Bỏ qua khi localStorage đầy (ảnh data URL lớn)
+		}
+		setAvatar(next);
+	};
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
+	const handleAvatarFile = (file: File | undefined) => {
+		if (!file) return;
+		if (!file.type.startsWith("image/")) {
+			toast.error("Chỉ chọn file ảnh (PNG/JPG/GIF/WebP)");
+			return;
+		}
+		if (file.size > 2 * 1024 * 1024) {
+			toast.error("Ảnh quá lớn, chọn ảnh dưới 2MB");
+			return;
+		}
+		const reader = new FileReader();
+		reader.onload = () => persistAvatar(String(reader.result || ""));
+		reader.readAsDataURL(file);
+	};
 
-  const togglePasswordVisibility = (field: "old" | "new" | "confirm") => {
-    setShowPassword({ ...showPassword, [field]: !showPassword[field] });
-  };
+	const handleSaveAvatar = async () => {
+		setAvatarSaving(true);
+		try {
+			const res = await fetch("/api/users/me/avatar", {
+				method: "PUT",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${localStorage.getItem("token")}`,
+				},
+				body: JSON.stringify({ avatarUrl: avatar }),
+			});
+			const data = await res.json().catch(() => ({}));
+			if (!res.ok) throw new Error(data.error || "Lỗi khi lưu ảnh đại diện");
+			persistAvatar(data.avatarUrl || null);
+			toast.success("Đã cập nhật ảnh đại diện");
+			window.setTimeout(() => window.location.reload(), 800);
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : "Có lỗi xảy ra");
+		} finally {
+			setAvatarSaving(false);
+		}
+	};
 
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
+	const handleRemoveAvatar = async () => {
+		setAvatar(null);
+		setAvatarSaving(true);
+		try {
+			const res = await fetch("/api/users/me/avatar", {
+				method: "PUT",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${localStorage.getItem("token")}`,
+				},
+				body: JSON.stringify({ avatarUrl: null }),
+			});
+			if (!res.ok) throw new Error("Lỗi khi xóa ảnh đại diện");
+			persistAvatar(null);
+			toast.success("Đã gỡ ảnh đại diện");
+			window.setTimeout(() => window.location.reload(), 800);
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : "Có lỗi xảy ra");
+		} finally {
+			setAvatarSaving(false);
+		}
+	};
+	const [formData, setFormData] = useState({
+		oldPassword: "",
+		newPassword: "",
+		confirmPassword: "",
+	});
 
-    // Kiểm tra dữ liệu hợp lệ cơ bản
-    if (formData.newPassword.length < 6) {
-      toast.error("Mật khẩu mới phải có ít nhất 6 ký tự!");
-      return;
-    }
+	const handleChangePassword = async (e: React.FormEvent) => {
+		e.preventDefault();
+		if (formData.newPassword.length < 6) {
+			toast.error("Mật khẩu mới phải có ít nhất 6 ký tự!");
+			return;
+		}
+		if (formData.newPassword !== formData.confirmPassword) {
+			toast.error("Nhập lại mật khẩu mới không trùng khớp!");
+			return;
+		}
+		setLoading(true);
+		try {
+			const res = await fetch("/api/user/change-password", {
+				method: "PUT",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${localStorage.getItem("token")}`,
+				},
+				body: JSON.stringify({
+					oldPassword: formData.oldPassword,
+					newPassword: formData.newPassword,
+				}),
+			});
+			const data = await res.json();
+			if (res.ok) {
+				toast.success("Đổi mật khẩu thành công!");
+				setFormData({ oldPassword: "", newPassword: "", confirmPassword: "" });
+			} else {
+				toast.error(data.message || "Lỗi khi đổi mật khẩu");
+			}
+		} catch {
+			toast.error("Có lỗi xảy ra, vui lòng thử lại sau!");
+		} finally {
+			setLoading(false);
+		}
+	};
 
-    if (formData.newPassword !== formData.confirmPassword) {
-      toast.error("Nhập lại mật khẩu mới không trùng khớp!");
-      return;
-    }
+	return (
+		<div className="erp-page">
+			<div className="erp-page-header">
+				<div>
+					<h1>Hồ sơ cá nhân</h1>
+					<p>Thông tin tài khoản, vai trò và bảo mật đăng nhập</p>
+				</div>
+				<Badge tone="success">Đang hoạt động</Badge>
+			</div>
 
-    setLoading(false);
-    setLoading(true);
-    try {
-      const res = await fetch("/api/user/change-password", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-        body: JSON.stringify({
-          oldPassword: formData.oldPassword,
-          newPassword: formData.newPassword,
-        }),
-      });
+			<Card className="overflow-hidden !p-0">
+				<div className="relative h-32 bg-gradient-to-r from-[#465fff] via-[#3641f4] to-[#101828]">
+					<div
+						className="absolute inset-0 opacity-20"
+						style={{
+							backgroundImage:
+								"radial-gradient(circle at 20% 20%, white 1px, transparent 1px), radial-gradient(circle at 80% 30%, white 1px, transparent 1px)",
+							backgroundSize: "28px 28px",
+						}}
+					/>
+				</div>
+				<div className="flex flex-col gap-4 px-6 pb-6 md:flex-row md:items-end md:justify-between">
+					<div className="mt-10 flex items-end gap-4">
+						<div className="relative">
+							<div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl bg-white text-3xl font-bold text-[#465fff] shadow-lg ring-4 ring-white">
+								{avatar ? (
+									<img src={avatar} alt="Ảnh đại diện" className="h-full w-full object-cover" />
+								) : currentUser.fullName ? (
+									currentUser.fullName.charAt(0).toUpperCase()
+								) : (
+									"U"
+								)}
+							</div>
+							<button
+								type="button"
+								title="Đổi ảnh đại diện"
+								onClick={() => fileRef.current?.click()}
+								className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-[#101828] text-white shadow hover:bg-[#344054]"
+							>
+								<Camera size={13} />
+							</button>
+							<input
+								ref={fileRef}
+								type="file"
+								accept="image/png,image/jpeg,image/gif,image/webp"
+								className="hidden"
+								onChange={e => {
+									handleAvatarFile(e.target.files?.[0]);
+									e.target.value = "";
+								}}
+							/>
+						</div>
+						{(avatar || avatar !== (currentUser.avatarUrl || null)) && (
+							<div className="flex gap-2 pb-1">
+								{avatar !== (currentUser.avatarUrl || null) && (
+									<Button size="sm" variant="primary" disabled={avatarSaving} onClick={handleSaveAvatar}>
+										{avatarSaving ? "Đang lưu..." : "Lưu ảnh"}
+									</Button>
+								)}
+								{avatar && (
+									<Button size="sm" variant="outline" disabled={avatarSaving} onClick={handleRemoveAvatar}>
+										Gỡ ảnh
+									</Button>
+								)}
+							</div>
+						)}
+						<div className="pb-1">
+							<h2 className="text-xl font-bold tracking-tight text-[#101828]">
+								{currentUser.fullName || "Chưa cập nhật"}
+							</h2>
+							<p className="text-sm text-[#667085]">
+								@{currentUser.username || "username"}
+							</p>
+							<div className="mt-1.5 flex flex-wrap gap-1.5">
+								<Badge tone="brand">
+									{ROLE_LABELS[currentUser.role] ||
+										currentUser.role ||
+										"Nhân viên"}
+								</Badge>
+							</div>
+						</div>
+					</div>
+					<div className="flex gap-2">
+						<Button
+							variant={tab === "info" ? "primary" : "outline"}
+							size="sm"
+							onClick={() => setTab("info")}
+						>
+							<UserIcon size={15} /> Thông tin
+						</Button>
+						<Button
+							variant={tab === "security" ? "primary" : "outline"}
+							size="sm"
+							onClick={() => setTab("security")}
+						>
+							<KeyRound size={15} /> Bảo mật
+						</Button>
+					</div>
+				</div>
+			</Card>
 
-      const data = await res.json();
-
-      if (res.ok) {
-        toast.success("Đổi mật khẩu thành công!");
-        setFormData({ oldPassword: "", newPassword: "", confirmPassword: "" });
-      } else {
-        toast.error(data.message || "Lỗi khi đổi mật khẩu");
-      }
-    } catch (err) {
-      toast.error("Có lỗi xảy ra, vui lòng thử lại sau!");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-300 font-sans">
-      {/* TIÊU ĐỀ TRANG */}
-      <div>
-        <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tight">
-          HỒ SƠ CÁ NHÂN
-        </h2>
-        <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">
-          Quản lý thông tin tài khoản và bảo mật nâng cao
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* THẺ THÔNG TIN NHÂN VIÊN */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col items-center justify-center text-center space-y-4">
-          <div className="w-24 h-24 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-extrabold text-3xl shadow-inner border border-indigo-100/50">
-            {currentUser.fullName
-              ? currentUser.fullName.charAt(0).toUpperCase()
-              : "U"}
-          </div>
-          <div>
-            <h3 className="text-lg font-black text-slate-800">
-              {currentUser.fullName || "Chưa cập nhật"}
-            </h3>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mt-0.5 font-mono">
-              @{currentUser.username || "username"}
-            </p>
-          </div>
-
-          <div className="w-full pt-4 border-t border-slate-100 flex flex-col gap-2 text-left">
-            <div className="flex items-center gap-2.5 text-slate-600 bg-slate-50/50 p-2.5 rounded-xl border border-slate-100">
-              <Shield size={16} className="text-indigo-500 shrink-0" />
-              <div>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                  Chức vụ hệ thống
-                </p>
-                <p className="text-xs font-extrabold text-slate-700 uppercase mt-0.5">
-                  {currentUser.role || "Nhân viên"}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2.5 text-slate-600 bg-slate-50/50 p-2.5 rounded-xl border border-slate-100">
-              <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
-              <div>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                  Trạng thái tài khoản
-                </p>
-                <p className="text-xs font-extrabold text-emerald-600 uppercase mt-0.5">
-                  Đang hoạt động
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* FORM ĐỔI MẬT KHẨU */}
-        <div className="md:col-span-2 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-5">
-          <div className="border-b border-slate-100 pb-3 flex items-center gap-2">
-            <KeyRound size={18} className="text-indigo-500" />
-            <h4 className="text-sm font-black text-slate-800 uppercase tracking-wide">
-              Thay đổi mật khẩu thiết bị
-            </h4>
-          </div>
-
-          <form onSubmit={handleChangePassword} className="space-y-4">
-            {/* Mật khẩu cũ */}
-            <div>
-              <label className="mb-1.5 block text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                Mật khẩu hiện tại
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword.old ? "text" : "password"}
-                  name="oldPassword"
-                  value={formData.oldPassword}
-                  onChange={handleInputChange}
-                  required
-                  placeholder="••••••••"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 pl-10 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium text-slate-700"
-                />
-                <Lock
-                  size={16}
-                  className="absolute left-3.5 top-3.5 text-slate-400"
-                />
-                <button
-                  type="button"
-                  onClick={() => togglePasswordVisibility("old")}
-                  className="absolute right-3.5 top-3.5 text-slate-400 hover:text-slate-600 transition-colors"
-                >
-                  {showPassword.old ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            </div>
-
-            {/* Mật khẩu mới */}
-            <div>
-              <label className="mb-1.5 block text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                Mật khẩu mới (Tối thiểu 6 ký tự)
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword.new ? "text" : "password"}
-                  name="newPassword"
-                  value={formData.newPassword}
-                  onChange={handleInputChange}
-                  required
-                  placeholder="••••••••"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 pl-10 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium text-slate-700"
-                />
-                <KeyRound
-                  size={16}
-                  className="absolute left-3.5 top-3.5 text-slate-400"
-                />
-                <button
-                  type="button"
-                  onClick={() => togglePasswordVisibility("new")}
-                  className="absolute right-3.5 top-3.5 text-slate-400 hover:text-slate-600 transition-colors"
-                >
-                  {showPassword.new ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            </div>
-
-            {/* Xác nhận mật khẩu mới */}
-            <div>
-              <label className="mb-1.5 block text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                Nhập lại mật khẩu mới
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword.confirm ? "text" : "password"}
-                  name="confirmPassword"
-                  value={formData.confirmPassword}
-                  onChange={handleInputChange}
-                  required
-                  placeholder="••••••••"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 pl-10 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium text-slate-700"
-                />
-                <KeyRound
-                  size={16}
-                  className="absolute left-3.5 top-3.5 text-slate-400"
-                />
-                <button
-                  type="button"
-                  onClick={() => togglePasswordVisibility("confirm")}
-                  className="absolute right-3.5 top-3.5 text-slate-400 hover:text-slate-600 transition-colors"
-                >
-                  {showPassword.confirm ? (
-                    <EyeOff size={16} />
-                  ) : (
-                    <Eye size={16} />
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* Nút bấm Lưu */}
-            <div className="pt-2 flex justify-end">
-              <button
-                type="submit"
-                disabled={loading}
-                className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-black hover:bg-indigo-700 disabled:opacity-50 transition-all shadow-md shadow-indigo-100 uppercase text-xs tracking-wider"
-              >
-                {loading ? "Đang xử lý..." : "CẬP NHẬT MẬT KHẨU"}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
-  );
+			{tab === "info" ? (
+				<div className="grid gap-4 lg:grid-cols-3">
+					<Card>
+						<CardHeader>
+							<CardTitle>Thông tin liên hệ</CardTitle>
+						</CardHeader>
+						<CardContent className="space-y-3 text-sm">
+							<p className="flex items-center gap-2.5 text-[#344054]">
+								<Mail size={16} className="text-[#98a2b3]" />{" "}
+								{currentUser.email || "Chưa cập nhật email"}
+							</p>
+							<p className="flex items-center gap-2.5 text-[#344054]">
+								<Phone size={16} className="text-[#98a2b3]" />{" "}
+								{currentUser.phone || "Chưa cập nhật SĐT"}
+							</p>
+							<p className="flex items-center gap-2.5 text-[#344054]">
+								<MapPin size={16} className="text-[#98a2b3]" />{" "}
+								{currentUser.address || "Chưa cập nhật địa chỉ"}
+							</p>
+						</CardContent>
+					</Card>
+					<Card>
+						<CardHeader>
+							<CardTitle>Vai trò hệ thống</CardTitle>
+						</CardHeader>
+						<CardContent className="space-y-3">
+							<p className="flex items-center gap-2.5 rounded-lg bg-[#f9fafb] px-3 py-2.5 text-sm font-medium text-[#344054]">
+								<Shield size={16} className="text-[#465fff]" />{" "}
+								{ROLE_LABELS[currentUser.role] ||
+									currentUser.role ||
+									"Nhân viên"}
+							</p>
+							<p className="flex items-center gap-2.5 rounded-lg bg-[#ecfdf3] px-3 py-2.5 text-sm font-medium text-[#027a48]">
+								<CheckCircle2 size={16} /> Tài khoản đang hoạt động
+							</p>
+						</CardContent>
+					</Card>
+					<Card>
+						<CardHeader>
+							<CardTitle>Phiên đăng nhập</CardTitle>
+						</CardHeader>
+						<CardContent className="space-y-2 text-sm text-[#667085]">
+							<p>
+								Tên đăng nhập:{" "}
+								<b className="text-[#101828]">{currentUser.username || "-"}</b>
+							</p>
+							<p>
+								Mã người dùng:{" "}
+								<b className="text-[#101828]">#{currentUser.id || "-"}</b>
+							</p>
+							<p>Đổi mật khẩu định kỳ để bảo vệ kho và chứng từ.</p>
+						</CardContent>
+					</Card>
+				</div>
+			) : (
+				<Card>
+					<CardHeader>
+						<CardTitle>Đổi mật khẩu</CardTitle>
+					</CardHeader>
+					<CardContent>
+						<form
+							onSubmit={handleChangePassword}
+							className="grid max-w-2xl gap-4"
+						>
+							<Field>
+								<FieldLabel required>Mật khẩu hiện tại</FieldLabel>
+								<PasswordInput
+									required
+									name="oldPassword"
+									value={formData.oldPassword}
+									onChange={e =>
+										setFormData({ ...formData, oldPassword: e.target.value })
+									}
+									placeholder="••••••••"
+								/>
+							</Field>
+							<div className="grid gap-4 md:grid-cols-2">
+								<Field>
+									<FieldLabel required>
+										Mật khẩu mới (tối thiểu 6 ký tự)
+									</FieldLabel>
+									<PasswordInput
+										required
+										name="newPassword"
+										value={formData.newPassword}
+										onChange={e =>
+											setFormData({ ...formData, newPassword: e.target.value })
+										}
+										placeholder="••••••••"
+									/>
+								</Field>
+								<Field>
+									<FieldLabel required>Nhập lại mật khẩu mới</FieldLabel>
+									<PasswordInput
+										required
+										name="confirmPassword"
+										value={formData.confirmPassword}
+										onChange={e =>
+											setFormData({
+												...formData,
+												confirmPassword: e.target.value,
+											})
+										}
+										placeholder="••••••••"
+									/>
+								</Field>
+							</div>
+							<div className="flex justify-end">
+								<Button type="submit" variant="primary" disabled={loading}>
+									{loading ? "Đang xử lý..." : "Cập nhật mật khẩu"}
+								</Button>
+							</div>
+						</form>
+					</CardContent>
+				</Card>
+			)}
+		</div>
+	);
 }

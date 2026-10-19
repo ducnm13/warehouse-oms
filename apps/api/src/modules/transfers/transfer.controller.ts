@@ -31,4 +31,7 @@ export const transferController = {
   async cancel(req: Request<Record<string, string>, unknown, TransferCancelInput>, res: Response) {
     res.json({ success: true, message: "Đã hủy chuyển kho", data: await transferService.cancel(id(req), req.body, auth(req).userId) });
   },
+  async remove(req: Request, res: Response) {
+    res.json({ success: true, message: "Đã xóa phiếu chuyển kho", data: await transferService.remove(id(req), Number(req.body.version), auth(req).userId) });
+  },
 };

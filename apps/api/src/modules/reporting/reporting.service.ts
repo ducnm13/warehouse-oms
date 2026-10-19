@@ -1,4 +1,4 @@
-import type { InventorySummaryReportQuery, ItemLedgerReportQuery, OperationsReportQuery, ProductionVarianceReportQuery, SalesProfitReportQuery } from "@challenge/contracts";
+import type { InventorySummaryReportQuery, ItemLedgerReportQuery, OperationsReportQuery, ProductionOverviewReportQuery, ProductionVarianceReportQuery, SalesByCustomerReportQuery, SalesByProductReportQuery, SalesProfitReportQuery, TransferReportQuery } from "@challenge/contracts";
 import { HttpError } from "../../common/http-error";
 import { reportingRepository } from "./reporting.repository";
 
@@ -36,6 +36,23 @@ export const reportingService = {
       ...disassembly.map(row => ({ id: row.id, type: "DISASSEMBLY" as const, code: row.code, occurredAt: row.postedAt, itemName: `${row.source.products?.name} - ${row.source.name}`, plannedQuantity: n(row.plannedQuantity), actualQuantity: n(row.actualQuantity), inputValue: n(row.sourceTotalValue), outputValue: round(row.lines.reduce((sum, line) => sum + n(line.totalValue), 0)), lossQuantity: row.lines.reduce((sum, line) => sum + n(line.lossQuantity), 0) })),
     ].sort((a, b) => new Date(a.occurredAt || 0).getTime() - new Date(b.occurredAt || 0).getTime());
     return { rows, summary: rows.reduce((sum, row) => ({ orders: sum.orders + 1, plannedQuantity: sum.plannedQuantity + row.plannedQuantity, actualQuantity: sum.actualQuantity + row.actualQuantity, inputValue: sum.inputValue + row.inputValue, outputValue: sum.outputValue + row.outputValue, lossQuantity: sum.lossQuantity + row.lossQuantity }), { orders: 0, plannedQuantity: 0, actualQuantity: 0, inputValue: 0, outputValue: 0, lossQuantity: 0 }) };
+  },
+  async salesByCustomer(query: SalesByCustomerReportQuery) {
+    const rows = (await reportingRepository.salesByCustomer(query)).map(row => ({ customerId: row.customerId, customerCode: row.customerCode, customerName: row.customerName, groupId: row.groupId, groupName: row.groupName, orders: n(row.orders), grossSales: round(n(row.grossSales)), discountAmount: round(n(row.discountAmount)), netRevenue: round(n(row.netRevenue)), taxAmount: round(n(row.taxAmount)), cogs: round(n(row.cogs)), grossProfit: round(n(row.netRevenue) - n(row.cogs)), grossMarginPercent: n(row.netRevenue) ? round((n(row.netRevenue) - n(row.cogs)) / n(row.netRevenue) * 100) : 0 }));
+    return { rows, summary: rows.reduce((sum, row) => ({ orders: sum.orders + row.orders, grossSales: sum.grossSales + row.grossSales, discountAmount: sum.discountAmount + row.discountAmount, netRevenue: sum.netRevenue + row.netRevenue, taxAmount: sum.taxAmount + row.taxAmount, cogs: sum.cogs + row.cogs, grossProfit: sum.grossProfit + row.grossProfit }), { orders: 0, grossSales: 0, discountAmount: 0, netRevenue: 0, taxAmount: 0, cogs: 0, grossProfit: 0 }) };
+  },
+  async salesByProduct(query: SalesByProductReportQuery) {
+    const rows = (await reportingRepository.salesByProduct(query)).map(row => ({ packagingId: row.packagingId, sku: row.sku, packagingName: row.packagingName, unit: row.unit, productName: row.productName, quantity: n(row.quantity), grossSales: round(n(row.grossSales)), discountAmount: round(n(row.discountAmount)), netRevenue: round(n(row.netRevenue)), cogs: round(n(row.cogs)), grossProfit: round(n(row.netRevenue) - n(row.cogs)), grossMarginPercent: n(row.netRevenue) ? round((n(row.netRevenue) - n(row.cogs)) / n(row.netRevenue) * 100) : 0 }));
+    return { rows, summary: rows.reduce((sum, row) => ({ quantity: sum.quantity + row.quantity, grossSales: sum.grossSales + row.grossSales, discountAmount: sum.discountAmount + row.discountAmount, netRevenue: sum.netRevenue + row.netRevenue, cogs: sum.cogs + row.cogs, grossProfit: sum.grossProfit + row.grossProfit }), { quantity: 0, grossSales: 0, discountAmount: 0, netRevenue: 0, cogs: 0, grossProfit: 0 }) };
+  },
+  async productionOverview(query: ProductionOverviewReportQuery) {
+    const dates = range(query.from, query.to);
+    const rows = (await reportingRepository.productionOverview({ ...dates, warehouseId: query.warehouseId, search: query.search })).map(row => ({ packagingId: row.packagingId, sku: row.sku, packagingName: row.packagingName, unit: row.unit, productName: row.productName, orders: n(row.orders), plannedPacks: n(row.plannedPacks), actualPacks: n(row.actualPacks), powderKg: round(n(row.powderKg)) }));
+    return { rows, summary: rows.reduce((sum, row) => ({ plannedPacks: sum.plannedPacks + row.plannedPacks, actualPacks: sum.actualPacks + row.actualPacks, powderKg: round(sum.powderKg + row.powderKg) }), { plannedPacks: 0, actualPacks: 0, powderKg: 0 }) };
+  },
+  async transfers(query: TransferReportQuery) {
+    const rows = await reportingRepository.transfers(query);
+    return { rows, summary: (rows as any[]).reduce((sum: any, row: any) => ({ docs: sum.docs + 1, quantity: sum.quantity + n(row.quantity) }), { docs: 0, quantity: 0 }) };
   },
   async productionVariance(query: ProductionVarianceReportQuery) {
     const raw = await reportingRepository.productionVariance({ ...range(query.from, query.to), warehouseId: query.warehouseId, search: query.search });

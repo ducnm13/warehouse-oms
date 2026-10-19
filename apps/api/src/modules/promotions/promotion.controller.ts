@@ -9,5 +9,7 @@ export const promotionController = {
   async update(req: Request<Record<string,string>,unknown,PromotionUpdateInput>, res: Response) { res.json({ success: true, message: "Đã cập nhật chương trình", data: await promotionService.update(id(req), req.body, user(req)) }); },
   async activate(req: Request, res: Response) { res.json({ success: true, message: "Đã kích hoạt chương trình", data: await promotionService.action(id(req), Number(req.body.version), "ACTIVE", user(req)) }); },
   async deactivate(req: Request, res: Response) { res.json({ success: true, message: "Đã ngừng chương trình", data: await promotionService.action(id(req), Number(req.body.version), "INACTIVE", user(req)) }); },
+  async remove(req: Request, res: Response) { res.json({ success: true, message: "Đã xóa chương trình khuyến mãi", data: await promotionService.remove(id(req), user(req)) }); },
   async preview(req: Request<Record<string,string>,unknown,PromotionPreviewInput>, res: Response) { res.json({ success: true, message: "Đã tính khuyến mãi", data: await promotionService.preview(req.body) }); },
+  async usageSummary(req: Request, res: Response) { res.json({ success: true, message: "Lấy báo cáo hàng khuyến mãi thành công", data: await promotionService.usageSummary(String(req.query.from), String(req.query.to)) }); },
 };

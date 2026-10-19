@@ -1,8 +1,9 @@
 import { Prisma } from "@challenge/database";
-import type { SalesCancelInput, SalesDraftInput, SalesPaymentInput, SalesRejectInput, SalesUpdateInput } from "@challenge/contracts";
+import type { SalesCancelInput, SalesDraftInput, SalesPaymentInput, SalesUpdateInput } from "@challenge/contracts";
 import { HttpError } from "../../common/http-error";
 import { mapSalesDocument } from "./sales.mapper";
 import { prisma, salesInclude, salesRepository } from "./sales.repository";
+import { resolveDocumentCode } from "../../common/document-code";
 import { evaluatePromotions } from "../promotions/promotion.engine";
 
 const decimal = (value: number) => new Prisma.Decimal(value.toFixed(4));
@@ -52,8 +53,11 @@ const lineData = (line: ReturnType<typeof calculate>["details"][number]) => ({
 });
 
 async function withPromotions(input: SalesDraftInput) {
-  const gifts = await evaluatePromotions({ orderDate: input.orderDate, customerId: input.customerId, warehouseId: input.warehouseId, details: input.details.map(line => ({ packagingId: line.packagingId, quantity: line.quantity })) });
-  return { ...input, details: [...input.details.map(line => ({ ...line, lineType: "SALE" as const })), ...gifts] };
+  const saleDetails = input.details
+    .filter((line) => (line.lineType || "SALE") === "SALE")
+    .map((line) => ({ ...line, lineType: "SALE" as const }));
+  const gifts = await evaluatePromotions({ orderDate: input.orderDate, customerId: input.customerId, warehouseId: input.warehouseId, details: saleDetails.map(line => ({ packagingId: line.packagingId, quantity: line.quantity })) });
+  return { ...input, details: [...saleDetails, ...gifts] };
 }
 
 async function lockOrder(tx: any, id: number) {
@@ -100,10 +104,46 @@ export const salesService = {
     return mapSalesDocument(row);
   },
 
+  async packagingPrices(ids: number[], customerId?: number) {
+    if (!ids.length) return [];
+    let priceType = "SALE_3";
+    if (customerId) {
+      const customer = await prisma.customers.findUnique({
+        where: { id: customerId },
+        select: { groupId: true },
+      });
+      if (customer?.groupId) {
+        const groupPrice = await prisma.customer_group_prices.findUnique({
+          where: { customerGroupId: customer.groupId },
+          select: { priceType: true },
+        });
+        if (groupPrice) priceType = groupPrice.priceType;
+      }
+    }
+    const rows = await salesRepository.packagingPricesByType(ids, priceType);
+    return rows.map((row) => ({ packagingId: row.packagingId, priceType: row.priceType, price: Number(row.price || 0) }));
+  },
+
+  async deleteDraft(id: number, version: number, userId: number) {
+    return prisma.$transaction(async (tx) => {
+      const current = await lockOrder(tx, id);
+      assertVersion(current, version);
+      if (current.status !== "DRAFT") {
+        throw new HttpError(409, "SALES_NOT_DELETABLE", "Đơn đã ghi sổ phải hủy và đảo, không được xóa trực tiếp");
+      }
+      await tx.sales_document_links_v1.deleteMany({ where: { salesOrderId: id } });
+      await tx.promotion_usage_logs.deleteMany({ where: { salesOrderId: id } });
+      await tx.sales_order_details.deleteMany({ where: { orderId: id } });
+      await tx.sales_orders.delete({ where: { id } });
+      await tx.audit_logs.create({ data: { action: "Xóa chứng từ bán hàng v1", details: `Sales order ${id}`, userId, userName: String(userId), createdAt: nowIso() } });
+      return { id };
+    });
+  },
+
   async createDraft(input: SalesDraftInput, userId: number) {
     await validateMasterData(input);
     const totals = calculate(await withPromotions(input));
-    const code = `BH-${input.orderDate.replaceAll("-", "")}-${Date.now().toString().slice(-6)}`;
+    const code = await resolveDocumentCode("sales", (input as { code?: string }).code);
     const now = nowIso();
     const row = await prisma.sales_orders.create({
       data: {
@@ -124,7 +164,7 @@ export const salesService = {
     const totals = calculate(await withPromotions(input));
     return prisma.$transaction(async tx => {
       const current = await lockOrder(tx, id);
-      if (!["DRAFT", "REJECTED"].includes(current.status)) throw new HttpError(409, "SALES_NOT_EDITABLE", "Chỉ được sửa đơn nháp hoặc bị từ chối");
+      if (current.status !== "DRAFT") throw new HttpError(409, "SALES_NOT_EDITABLE", "Đơn đã ghi sổ phải bỏ ghi sổ trước khi sửa");
       assertVersion(current, input.version);
       await tx.sales_order_details.deleteMany({ where: { orderId: id } });
       const updated = await tx.sales_orders.update({
@@ -142,44 +182,10 @@ export const salesService = {
     });
   },
 
-  async submit(id: number, version: number, userId: number) {
-    return prisma.$transaction(async tx => {
-      const current = await lockOrder(tx, id);
-      if (!["DRAFT", "REJECTED"].includes(current.status)) throw new HttpError(409, "SALES_NOT_SUBMITTABLE", "Đơn không thể gửi duyệt ở trạng thái hiện tại");
-      assertVersion(current, version);
-      const updated = await tx.sales_orders.update({ where: { id }, data: { status: "PENDING", rejectionReason: null, version: { increment: 1 }, updatedAt: nowIso() }, include: salesInclude });
-      await tx.audit_logs.create({ data: { action: "Gửi duyệt bán hàng v1", details: updated.code, userId, userName: String(userId), createdAt: nowIso() } });
-      return mapSalesDocument(updated);
-    });
-  },
-
-  async approve(id: number, version: number, userId: number) {
-    return prisma.$transaction(async tx => {
-      const current = await lockOrder(tx, id);
-      if (current.status !== "PENDING") throw new HttpError(409, "SALES_NOT_PENDING", "Chỉ được duyệt đơn đang chờ duyệt");
-      assertVersion(current, version);
-      const now = nowIso();
-      const updated = await tx.sales_orders.update({ where: { id }, data: { status: "APPROVED", approvedBy: userId, approvedAt: now, version: { increment: 1 }, updatedAt: now }, include: salesInclude });
-      await tx.audit_logs.create({ data: { action: "Duyệt bán hàng v1", details: updated.code, userId, userName: String(userId), createdAt: now } });
-      return mapSalesDocument(updated);
-    });
-  },
-
-  async reject(id: number, input: SalesRejectInput, userId: number) {
-    return prisma.$transaction(async tx => {
-      const current = await lockOrder(tx, id);
-      if (current.status !== "PENDING") throw new HttpError(409, "SALES_NOT_PENDING", "Chỉ được từ chối đơn đang chờ duyệt");
-      assertVersion(current, input.version);
-      const updated = await tx.sales_orders.update({ where: { id }, data: { status: "REJECTED", rejectionReason: input.reason, version: { increment: 1 }, updatedAt: nowIso() }, include: salesInclude });
-      await tx.audit_logs.create({ data: { action: "Từ chối bán hàng v1", details: `${updated.code}: ${input.reason}`, userId, userName: String(userId), createdAt: nowIso() } });
-      return mapSalesDocument(updated);
-    });
-  },
-
   async post(id: number, version: number, userId: number) {
     return prisma.$transaction(async tx => {
       const current = await lockOrder(tx, id);
-      if (current.status !== "APPROVED") throw new HttpError(409, "SALES_NOT_APPROVED", "Chỉ được ghi sổ đơn đã duyệt");
+      if (current.status !== "DRAFT") throw new HttpError(409, "SALES_NOT_DRAFT", "Chỉ được ghi sổ đơn nháp");
       assertVersion(current, version);
       const document = await tx.sales_orders.findUnique({ where: { id }, include: salesInclude });
       if (!document) throw new HttpError(404, "SALES_NOT_FOUND", "Không tìm thấy chứng từ bán hàng");
@@ -205,7 +211,8 @@ export const salesService = {
           code: transactionCode, type: "EXPORT", transaction_date: document.orderDate, exit_date: document.orderDate,
           warehouseId: document.warehouseId, note: `Xuất bán theo ${document.code}`, reason: "Bán hàng",
           recipient: document.customers?.name || "Khách hàng", customerId: document.customerId,
-          createdBy: userId, createdAt: now, updatedAt: now,
+          createdBy: userId, createdAt: now, updatedAt: now, documentStatus: "POSTED", sourceModule: "SALE_V1",
+          postedAt: postedAt, postedBy: userId,
         },
       });
 
@@ -274,7 +281,7 @@ export const salesService = {
   async receivePayment(id: number, input: SalesPaymentInput, userId: number) {
     return prisma.$transaction(async tx => {
       const current = await lockOrder(tx, id);
-      if (current.status !== "FULFILLED") throw new HttpError(409, "SALES_NOT_POSTED", "Chỉ được thu tiền chứng từ đã ghi sổ");
+      if (!["POSTED", "FULFILLED"].includes(current.status)) throw new HttpError(409, "SALES_NOT_POSTED", "Chỉ được thu tiền chứng từ đã ghi sổ");
       assertVersion(current, input.version);
       const document = await tx.sales_orders.findUnique({ where: { id }, include: salesInclude });
       if (!document) throw new HttpError(404, "SALES_NOT_FOUND", "Không tìm thấy chứng từ bán hàng");
@@ -293,7 +300,7 @@ export const salesService = {
   async cancel(id: number, input: SalesCancelInput, userId: number) {
     return prisma.$transaction(async tx => {
       const current = await lockOrder(tx, id);
-      if (current.status !== "FULFILLED") throw new HttpError(409, "SALES_NOT_POSTED", "Chỉ được hủy chứng từ đã ghi sổ");
+      if (!["POSTED", "FULFILLED"].includes(current.status)) throw new HttpError(409, "SALES_NOT_POSTED", "Chỉ được hủy chứng từ đã ghi sổ");
       assertVersion(current, input.version);
       const document = await tx.sales_orders.findUnique({ where: { id }, include: salesInclude });
       if (!document) throw new HttpError(404, "SALES_NOT_FOUND", "Không tìm thấy chứng từ bán hàng");
@@ -371,6 +378,53 @@ export const salesService = {
         paidAmount: 0, paymentStatus: "UNPAID", version: { increment: 1 }, updatedAt: now,
       }, include: salesInclude });
       await tx.audit_logs.create({ data: { action: "Hủy bán hàng v1", details: `${document.code}: ${input.reason}`, userId, userName: String(userId), createdAt: now } });
+      return mapSalesDocument(updated);
+    }, { timeout: 30_000 });
+  },
+
+  async unpost(id: number, version: number, userId: number) {
+    return prisma.$transaction(async tx => {
+      const current = await lockOrder(tx, id);
+      if (!["POSTED", "FULFILLED"].includes(current.status)) throw new HttpError(409, "SALES_NOT_POSTED", "Chỉ được bỏ ghi sổ chứng từ đã ghi sổ");
+      assertVersion(current, version);
+      const document = await tx.sales_orders.findUnique({ where: { id }, include: salesInclude });
+      if (!document) throw new HttpError(404, "SALES_NOT_FOUND", "Không tìm thấy chứng từ bán hàng");
+      if (await tx.sales_returns.count({ where: { originalSalesOrderId: id, status: "POSTED" } })) throw new HttpError(409, "POSTED_RETURN_EXISTS", "Hãy hủy phiếu trả hàng đã ghi sổ trước khi bỏ ghi sổ");
+      if (Number(document.paidAmount || 0) > 0.001) throw new HttpError(409, "PAYMENT_EXISTS", "Hãy hủy các khoản thu tiền trước khi bỏ ghi sổ");
+      const now = nowIso();
+      const cancelledAt = new Date();
+      const links = document.sales_document_links_v1;
+      const issueLink = links.find(link => link.linkType === "INVENTORY_ISSUE");
+      if (issueLink) {
+        const issueTransaction = await tx.inventorytransactions.findUnique({ where: { id: Number(issueLink.linkedId) }, include: { inventorytransactiondetails: true } });
+        for (const line of document.sales_order_details) {
+          const original = await tx.inventory_ledger.findFirst({ where: { sourceType: "SALE", sourceId: id, sourceLineId: line.id, direction: "OUT" } });
+          await tx.productwarehouses.upsert({
+            where: { packagingId_warehouseId: { packagingId: line.packagingId, warehouseId: document.warehouseId } },
+            create: { packagingId: line.packagingId, warehouseId: document.warehouseId, stock_quantity: Number(line.quantity), updatedAt: now },
+            update: { stock_quantity: { increment: Number(line.quantity) }, updatedAt: now },
+          });
+          await tx.inventory_ledger.create({ data: {
+            sourceType: "SALE_UNPOST", sourceId: id, sourceLineId: line.id, documentCode: document.code, direction: "IN",
+            packagingId: line.packagingId, warehouseId: document.warehouseId, quantity: decimal(Number(line.quantity)),
+            unitCost: original?.unitCost || line.unitCost, totalValue: money(Math.abs(Number(original?.totalValue || line.costAmount || 0))),
+            reversalOfId: original?.id, occurredAt: cancelledAt, createdBy: userId,
+          } });
+        }
+        if (issueTransaction) {
+          await tx.inventorytransactiondetails.deleteMany({ where: { transactionId: issueTransaction.id } });
+          await tx.inventorytransactions.delete({ where: { id: issueTransaction.id } });
+        }
+      }
+      await tx.receivable_transactions.deleteMany({ where: { sourceType: "SALE", sourceId: id, entryType: "CHARGE" } });
+      await tx.sales_document_links_v1.deleteMany({ where: { salesOrderId: id, linkType: { in: ["INVENTORY_ISSUE", "RECEIVABLE_CHARGE"] } } });
+      await tx.promotion_usage_logs.deleteMany({ where: { salesOrderId: id } });
+      const updated = await tx.sales_orders.update({ where: { id }, data: {
+        status: "DRAFT", postedAt: null, postedBy: null, fulfilledAt: null,
+        inventoryTransactionId: null, paidAmount: 0, paymentStatus: "UNPAID",
+        version: { increment: 1 }, updatedAt: now,
+      }, include: salesInclude });
+      await tx.audit_logs.create({ data: { action: "Bỏ ghi sổ bán hàng v1", details: `${document.code}: khôi phục tồn kho`, userId, userName: String(userId), createdAt: now } });
       return mapSalesDocument(updated);
     }, { timeout: 30_000 });
   },

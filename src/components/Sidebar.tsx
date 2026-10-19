@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
 	LayoutDashboard,
 	ArrowRightLeft,
@@ -14,57 +15,62 @@ import {
 	Landmark,
 	Gift,
 	PackagePlus,
-	UserCog,
 	DatabaseZap,
 	BookOpen,
 	Settings,
+	Store,
 	ChevronDown,
 	Package,
 	BarChart3,
-	Boxes,
 	Warehouse,
+	Factory,
+	Tag,
+	ShieldCheck,
+	MessageCircle,
 } from "lucide-react";
 
 interface SidebarProps {
 	sidebarOpen: boolean;
 	setSidebarOpen: (arg: boolean) => void;
 	role?: string;
+	permissions?: string[];
 	onLogout: () => void;
-	activeItem: string;
-	setActiveItem: (item: string) => void;
 }
 
 const NavItem = ({
 	icon: Icon,
 	label,
-	id,
-	activeItem,
-	onClick,
+	path,
 	indent = false,
 }: {
 	icon: React.FC<any>;
 	label: string;
-	id: string;
-	activeItem: string;
-	onClick: (id: string) => void;
+	path: string;
 	indent?: boolean;
 }) => {
-	const active = activeItem === id;
+	const location = useLocation();
+	const navigate = useNavigate();
+	const active =
+		location.pathname === path || location.pathname.startsWith(path + "/");
+	const handleClick = () => {
+		navigate(path);
+	};
 	return (
 		<button
-			onClick={() => onClick(id)}
-			className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all duration-150
+			onClick={handleClick}
+			className={`group w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13.5px] font-medium transition-all duration-150
         ${indent ? "ml-3 pl-2 w-[calc(100%-12px)]" : ""}
         ${
 					active
-						? "bg-teal-500/15 text-teal-300 font-semibold"
-						: "text-slate-400 hover:bg-white/6 hover:text-slate-200"
+						? "bg-[#465fff]/15 text-[#b2ccff] font-semibold"
+						: "text-[#98a2b3] hover:bg-white/[.06] hover:text-white"
 				}`}
 		>
-			<Icon
-				size={indent ? 15 : 17}
-				className={active ? "text-teal-400" : "opacity-70"}
-			/>
+			<span
+				className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${active ? "bg-[#465fff] text-white" : "bg-white/5 text-[#98a2b3] group-hover:text-white"}`}
+			>
+				<Icon size={indent ? 15 : 17} />
+			</span>
 			{label}
 		</button>
 	);
@@ -79,29 +85,30 @@ const SectionLabel = ({ children }: { children: React.ReactNode }) => (
 const SubMenu = ({
 	icon: Icon,
 	label,
-	id,
-	activeItem,
+	path,
 	children,
 	defaultOpen = false,
 }: {
 	icon: React.FC<any>;
 	label: string;
-	id: string;
-	activeItem: string;
+	path: string;
 	children: React.ReactNode;
 	defaultOpen?: boolean;
 }) => {
-	const childActive =
-		typeof activeItem === "string" && activeItem.startsWith(id);
-	const [open, setOpen] = useState(defaultOpen || childActive);
+	const location = useLocation();
+	const [open, setOpen] = useState(
+		defaultOpen || location.pathname.startsWith(path),
+	);
 	return (
 		<div>
 			<button
 				onClick={() => setOpen(o => !o)}
-				className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all duration-150
-          ${childActive ? "text-slate-200" : "text-slate-400 hover:bg-white/6 hover:text-slate-200"}`}
+				className={`group w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13.5px] font-medium transition-all duration-150
+          ${location.pathname.startsWith(path) ? "text-white" : "text-[#98a2b3] hover:bg-white/[.06] hover:text-white"}`}
 			>
-				<Icon size={17} className={childActive ? "opacity-90" : "opacity-60"} />
+				<span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/5 text-[#98a2b3] transition-colors group-hover:text-white">
+					<Icon size={17} />
+				</span>
 				<span className="flex-1 text-left">{label}</span>
 				<ChevronDown
 					size={14}
@@ -109,9 +116,9 @@ const SubMenu = ({
 				/>
 			</button>
 			<div
-				className={`overflow-hidden transition-all duration-250 ${open ? "max-h-96 opacity-100" : "max-h-0 opacity-0"}`}
+				className={`overflow-hidden transition-all duration-250 ${open ? "max-h-[1600px] opacity-100" : "max-h-0 opacity-0"}`}
 			>
-				<div className="mt-0.5 ml-4 pl-3 border-l border-slate-700 space-y-0.5 py-1">
+				<div className="mt-0.5 ml-4 pl-3 border-l border-white/10 space-y-0.5 py-1">
 					{children}
 				</div>
 			</div>
@@ -119,13 +126,55 @@ const SubMenu = ({
 	);
 };
 
+const REPORT_DEFAULT_TAB = "INVENTORY";
+
+const ReportMenuGroup = ({
+	children,
+	label,
+}: {
+	children: React.ReactNode;
+	label: string;
+}) => (
+	<div className="mt-1 first:mt-0">
+		<p className="px-3 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
+			{label}
+		</p>
+		<div className="space-y-0.5">{children}</div>
+	</div>
+);
+
+const ReportMenuItem = ({ label, tab }: { label: string; tab: string }) => {
+	const location = useLocation();
+	const navigate = useNavigate();
+	const params = new URLSearchParams(location.search);
+	const current =
+		location.pathname === "/inventory-report"
+			? params.get("tab") || REPORT_DEFAULT_TAB
+			: "";
+	const active = current === tab;
+	return (
+		<button
+			onClick={() => navigate(`/inventory-report?tab=${tab}`)}
+			className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-150 ${
+				active
+					? "bg-[#465fff]/15 text-[#b2ccff] font-semibold"
+					: "text-[#98a2b3] hover:bg-white/[.06] hover:text-white"
+			}`}
+		>
+			<span
+				className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${active ? "bg-[#b2ccff]" : "bg-white/20"}`}
+			/>
+			{label}
+		</button>
+	);
+};
+
 export default function Sidebar({
 	sidebarOpen,
 	setSidebarOpen,
 	role,
+	permissions,
 	onLogout,
-	activeItem,
-	setActiveItem,
 }: SidebarProps) {
 	const sidebarRef = useRef<HTMLDivElement>(null);
 
@@ -142,11 +191,72 @@ export default function Sidebar({
 		return () => document.removeEventListener("mousedown", handle);
 	}, [sidebarOpen, setSidebarOpen]);
 
-	const click = (id: string) => {
-		setActiveItem(id);
-		setSidebarOpen(false);
+	// Ẩn mục menu khi người dùng không có quyền truy cập tương ứng.
+	// system.admin thấy tất cả.
+	const has = (perm?: string | string[]) => {
+		if (!role) return true;
+		const perms = permissions || [];
+		if (perms.includes("system.admin")) return true;
+		if (!perm) return false;
+		const list = Array.isArray(perm) ? perm : [perm];
+		return list.some(p => perms.includes(p));
 	};
-	const can = (roles: string[]) => !role || roles.includes(role);
+
+	// Bán hàng
+	const showSales = has("sales.view");
+	const showPromotions = has("promotion.view");
+	const showSalesReturns = has("sales.return.view");
+	const showCustomers = has("customer.view");
+	const showDebt = has("debt.view");
+	const showSalesSection =
+		showSales || showPromotions || showSalesReturns || showCustomers || showDebt;
+
+	// Bán hàng online
+	const showOnline = has("online.view");
+
+	// Mua hàng
+	const showPurchases = has("purchase.view");
+	const showSuppliers = has("purchase.view");
+	const showPurchaseSection = showPurchases || showSuppliers;
+
+	// Kho
+	const showWarehouses = has("inventory.view");
+	const showImport = has("inventory.view");
+	const showExport = has("inventory.view");
+	const showTransfers = has("transfer.view");
+	const showStocktake = has("inventory.stocktake");
+	const showCatalog = has("catalog.view");
+	// "Thiết lập bảng giá" và "Tồn kho đầu kỳ" không hiện với thủ kho (W_MANAGER)
+	const showPriceBooks = has("catalog.manage") && role !== "W_MANAGER";
+	const showOpening = has("inventory.opening") && role !== "W_MANAGER";
+	const showWarehouseSection =
+		showWarehouses ||
+		showImport ||
+		showExport ||
+		showTransfers ||
+		showStocktake ||
+		showCatalog ||
+		showPriceBooks ||
+		showOpening;
+
+	// Sản xuất
+	const showProduction = has("production.view");
+	// "Quản lý sản xuất" chỉ dành cho Quản lý sản xuất và ADMIN
+	const showProductionMgmt =
+		!!role && (role === "ADMIN" || role === "P_MANAGER");
+	const showAssembly = has("assembly.view");
+	const showProductionSection = showProduction || showProductionMgmt || showAssembly;
+
+	// Báo cáo
+	const showReports = has("report.view");
+
+	// Quản lý hệ thống
+	const showUsers = has("iam.manage");
+	const showRoles = has("iam.manage");
+	const showAuditLogs = has("system.admin");
+	const showCompany = has("company.manage");
+	const showManageSection =
+		showUsers || showRoles || showAuditLogs || showCompany;
 
 	return (
 		<>
@@ -162,214 +272,259 @@ export default function Sidebar({
 				ref={sidebarRef}
 				className={`
           fixed md:relative inset-y-0 left-0 z-50
-          w-[240px] h-full flex flex-col flex-shrink-0
+          w-[260px] h-full flex flex-col flex-shrink-0
           transform transition-transform duration-300 ease-in-out
           ${sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
         `}
-				style={{ background: "#0f172a", borderRight: "1px solid #1e293b" }}
+				style={{ background: "#0a20c7", borderRight: "1px solid #030E68" }}
 			>
 				{/* Logo */}
 				<div
-					className="h-[60px] flex items-center px-5 flex-shrink-0"
-					style={{ background: "#0c1526", borderBottom: "1px solid #1e293b" }}
+					className="h-16 flex items-center px-5 flex-shrink-0"
+					style={{ borderBottom: "1px solid #1d2939" }}
 				>
-					<div className="flex items-center justify-center">
-						<div className="w-full rounded-lg flex items-center justify-center">
-							<Boxes size={18} className="text-white" />
+					<div className="flex items-center gap-2.5 justify-center w-full">
+						<div className="w-30 flex items-center justify-center">
+							<img src="/public/images/logo2.png" alt="" />
 						</div>
+						{/* <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#465fff] text-lg font-bold text-white">
+							C
+						</span> */}
 						<div>
-							<p className="text-white font-bold text-[14px] leading-tight">
-								Challenge ERP
+							<p className="text-white font-semibold text-[14px] leading-tight tracking-tight">
+								ERP
 							</p>
-							<p className="text-slate-500 text-[10px]">v1.2</p>
+							<p className="text-[#667085] text-[11px]">v1.0.2</p>
 						</div>
 					</div>
 				</div>
 
 				{/* Nav */}
 				<nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5 custom-scrollbar">
-					{can(["ADMIN", "W_MANAGER", "P_MANAGER"]) && (
+					{has("dashboard.view") && (
 						<NavItem
 							icon={LayoutDashboard}
 							label="Tổng quan"
-							id="dashboard"
-							activeItem={activeItem}
-							onClick={click}
+							path="/dashboard"
 						/>
 					)}
 
 					{/* Bán hàng */}
-					{can(["ADMIN", "S_SALES", "W_MANAGER"]) && (
+					{showSalesSection && (
 						<>
 							<SectionLabel>Bán hàng</SectionLabel>
-							<NavItem
-								icon={ShoppingCart}
-								label="Đơn bán hàng"
-								id="sales-orders"
-								activeItem={activeItem}
-								onClick={click}
-							/>
-							<NavItem
-								icon={Gift}
-								label="Khuyến mãi"
-								id="promotions"
-								activeItem={activeItem}
-								onClick={click}
-							/>
-							<NavItem
-								icon={PackagePlus}
-								label="Trả hàng bán"
-								id="sales-returns"
-								activeItem={activeItem}
-								onClick={click}
-							/>
-							<NavItem
-								icon={Users}
-								label="Khách hàng"
-								id="customers"
-								activeItem={activeItem}
-								onClick={click}
-							/>
-							<NavItem
-								icon={Landmark}
-								label="Công nợ"
-								id="debt"
-								activeItem={activeItem}
-								onClick={click}
-							/>
+							{showSales && (
+								<NavItem
+									icon={ShoppingCart}
+									label="Đơn bán hàng"
+									path="/sales-orders"
+								/>
+							)}
+							{showPromotions && (
+								<NavItem icon={Gift} label="Khuyến mãi" path="/promotions" />
+							)}
+							{showSalesReturns && (
+								<NavItem
+									icon={PackagePlus}
+									label="Trả hàng bán"
+									path="/sales-returns"
+								/>
+							)}
+							{showCustomers && (
+								<NavItem icon={Users} label="Khách hàng" path="/customers" />
+							)}
+							{showDebt && (
+								<NavItem icon={Landmark} label="Công nợ" path="/debt" />
+							)}
+						</>
+					)}
+
+					{/* Bán hàng online (vai trò riêng) */}
+					{showOnline && (
+						<>
+							<SectionLabel>Bán hàng online</SectionLabel>
+							<NavItem icon={Store} label="Đơn online" path="/online-orders" />
 						</>
 					)}
 
 					{/* Mua hàng */}
-					{can(["ADMIN", "W_MANAGER", "QD"]) && (
+					{showPurchaseSection && (
 						<>
 							<SectionLabel>Mua hàng</SectionLabel>
-							<NavItem
-								icon={ShoppingBag}
-								label="Chứng từ mua hàng"
-								id="purchases"
-								activeItem={activeItem}
-								onClick={click}
-							/>
-							<NavItem
-								icon={Building2}
-								label="Nhà cung cấp"
-								id="suppliers"
-								activeItem={activeItem}
-								onClick={click}
-							/>
+							{showPurchases && (
+								<NavItem icon={ShoppingBag} label="Mua hàng" path="/purchases" />
+							)}
+							{showSuppliers && (
+								<NavItem
+									icon={Building2}
+									label="Nhà cung cấp"
+									path="/suppliers"
+								/>
+							)}
 						</>
 					)}
 
 					{/* Kho */}
-					{can(["ADMIN", "W_MANAGER", "P_MANAGER", "QD"]) && (
+					{showWarehouseSection && (
 						<>
 							<SectionLabel>Kho</SectionLabel>
-							<NavItem
-								icon={Warehouse}
-								label="Danh sách kho"
-								id="warehouses"
-								activeItem={activeItem}
-								onClick={click}
-							/>
-							<NavItem
-								icon={ArrowRightLeft}
-								label="Chuyển kho"
-								id="warehouse-transfers"
-								activeItem={activeItem}
-								onClick={click}
-							/>
-							<NavItem
-								icon={ClipboardList}
-								label="Kiểm kê"
-								id="stock-take"
-								activeItem={activeItem}
-								onClick={click}
-							/>
-							<NavItem
-								icon={BookOpen}
-								label="Danh mục hàng hóa"
-								id="products"
-								activeItem={activeItem}
-								onClick={click}
-							/>
-							<NavItem
-								icon={DatabaseZap}
-								label="Tồn kho đầu kỳ"
-								id="opening-inventory"
-								activeItem={activeItem}
-								onClick={click}
-							/>
+							{showWarehouses && (
+								<NavItem
+									icon={Warehouse}
+									label="Danh sách kho"
+									path="/warehouses"
+								/>
+							)}
+							{showImport && (
+								<NavItem
+									icon={Package}
+									label="Nhập kho"
+									path="/inventory-import"
+								/>
+							)}
+							{showExport && (
+								<NavItem
+									icon={Archive}
+									label="Xuất kho"
+									path="/inventory-export"
+								/>
+							)}
+							{showTransfers && (
+								<NavItem
+									icon={ArrowRightLeft}
+									label="Chuyển kho"
+									path="/warehouse-transfers"
+								/>
+							)}
+							{showStocktake && (
+								<NavItem
+									icon={ClipboardList}
+									label="Kiểm kê"
+									path="/stock-take"
+								/>
+							)}
+							{showCatalog && (
+								<NavItem
+									icon={BookOpen}
+									label="Danh mục hàng hóa"
+									path="/products"
+								/>
+							)}
+							{showPriceBooks && (
+								<NavItem
+									icon={Tag}
+									label="Thiết lập bảng giá"
+									path="/price-books"
+								/>
+							)}
+							{showOpening && (
+								<NavItem
+									icon={DatabaseZap}
+									label="Tồn kho đầu kỳ"
+									path="/opening-inventory"
+								/>
+							)}
 						</>
 					)}
 
 					{/* Sản xuất */}
-					{can(["ADMIN", "P_MANAGER", "QD"]) && (
+					{showProductionSection && (
 						<>
 							<SectionLabel>Sản xuất</SectionLabel>
-							<NavItem
-								icon={Settings2}
-								label="Lệnh sản xuất"
-								id="production"
-								activeItem={activeItem}
-								onClick={click}
-							/>
-							<NavItem
-								icon={ArrowRightLeft}
-								label="Lắp ráp & Tháo dỡ"
-								id="assembly"
-								activeItem={activeItem}
-								onClick={click}
-							/>
+							{showProduction && (
+								<NavItem
+									icon={Factory}
+									label="Lệnh sản xuất"
+									path="/production"
+								/>
+							)}
+							{showProductionMgmt && (
+								<NavItem
+									icon={Settings2}
+									label="Quản lý sản xuất"
+									path="/production-mgmt"
+								/>
+							)}
+							{showAssembly && (
+								<NavItem
+									icon={ArrowRightLeft}
+									label="Lắp ráp & Tháo dỡ"
+									path="/assembly"
+								/>
+							)}
 						</>
 					)}
 
 					{/* Báo cáo */}
-					{can(["ADMIN", "W_MANAGER", "P_MANAGER", "S_SALES", "QD"]) && (
+					{showReports && (
 						<>
 							<SectionLabel>Báo cáo</SectionLabel>
-							<NavItem
+							<SubMenu
 								icon={BarChart3}
-								label="Báo cáo tổng hợp"
-								id="inventory-report"
-								activeItem={activeItem}
-								onClick={click}
-							/>
+								label="Báo cáo"
+								path="/inventory-report"
+							>
+								<ReportMenuGroup label="Bán hàng">
+									<ReportMenuItem tab="SALES" label="Tổng quan" />
+									<ReportMenuItem tab="SALES_CUSTOMER" label="Theo KH / nhóm" />
+									<ReportMenuItem tab="SALES_PRODUCT" label="Theo sản phẩm" />
+								</ReportMenuGroup>
+								<ReportMenuGroup label="Lệnh sản xuất">
+									<ReportMenuItem tab="PROD_OVERVIEW" label="Tổng quan" />
+									<ReportMenuItem tab="VARIANCE" label="Định mức vs thực tế" />
+								</ReportMenuGroup>
+								<ReportMenuGroup label="Tồn kho">
+									<ReportMenuItem tab="INVENTORY" label="Chi tiết theo kho" />
+									<ReportMenuItem tab="LEDGER" label="Sổ chi tiết 1 mã" />
+								</ReportMenuGroup>
+								<ReportMenuGroup label="Đơn online">
+									<ReportMenuItem tab="ONLINE" label="Tổng quan online" />
+								</ReportMenuGroup>
+								<ReportMenuGroup label="Chuyển kho">
+									<ReportMenuItem
+										tab="TRANSFERS"
+										label="Tổng quan + chi tiết"
+									/>
+								</ReportMenuGroup>
+								<ReportMenuGroup label="Lắp ráp – Tháo dỡ">
+									<ReportMenuItem tab="OPERATIONS" label="Tổng quan chung" />
+									<ReportMenuItem tab="ASSEMBLY" label="Lắp ráp" />
+									<ReportMenuItem tab="DISASSEMBLY" label="Tháo dỡ" />
+								</ReportMenuGroup>
+								<ReportMenuGroup label="Khuyến mãi">
+									<ReportMenuItem tab="PROMO" label="Hàng khuyến mãi" />
+								</ReportMenuGroup>
+							</SubMenu>
 						</>
 					)}
 
+					{/* Tin nhắn nội bộ: mọi tài khoản đăng nhập đều dùng được */}
+					<NavItem icon={MessageCircle} label="Tin nhắn" path="/chat" />
+
 					{/* Quản lý */}
-					{can(["ADMIN"]) && (
+					{showManageSection && (
 						<>
 							<SectionLabel>Quản lý hệ thống</SectionLabel>
-							<NavItem
-								icon={Users}
-								label="Tài khoản"
-								id="users"
-								activeItem={activeItem}
-								onClick={click}
-							/>
-							<NavItem
-								icon={UserCog}
-								label="Nhân viên"
-								id="employees"
-								activeItem={activeItem}
-								onClick={click}
-							/>
-							<NavItem
-								icon={History}
-								label="Nhật ký hoạt động"
-								id="audit-logs"
-								activeItem={activeItem}
-								onClick={click}
-							/>
-							<NavItem
-								icon={Settings}
-								label="Cấu hình doanh nghiệp"
-								id="company-settings"
-								activeItem={activeItem}
-								onClick={click}
-							/>
+							{showUsers && (
+								<NavItem icon={Users} label="Tài khoản" path="/users" />
+							)}
+							{showRoles && (
+								<NavItem icon={ShieldCheck} label="Vai trò" path="/roles" />
+							)}
+							{showAuditLogs && (
+								<NavItem
+									icon={History}
+									label="Nhật ký hoạt động"
+									path="/audit-logs"
+								/>
+							)}
+							{showCompany && (
+								<NavItem
+									icon={Settings}
+									label="Cấu hình doanh nghiệp"
+									path="/company-settings"
+								/>
+							)}
 						</>
 					)}
 				</nav>

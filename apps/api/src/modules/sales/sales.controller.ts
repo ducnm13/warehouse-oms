@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import type { SalesCancelInput, SalesDraftInput, SalesPaymentInput, SalesRejectInput, SalesUpdateInput } from "@challenge/contracts";
+import type { SalesCancelInput, SalesDraftInput, SalesPaymentInput, SalesUpdateInput } from "@challenge/contracts";
 import { salesService } from "./sales.service";
 
 const id = (req: Request) => Number(req.params.id);
@@ -16,6 +16,14 @@ export const salesController = {
   async get(req: Request, res: Response) {
     res.json({ success: true, message: "Lấy chứng từ bán hàng thành công", data: await salesService.get(id(req)) });
   },
+  async packagingPrices(req: Request, res: Response) {
+    const ids = String(req.query.ids || "")
+      .split(",")
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value > 0);
+    const customerId = req.query.customerId ? Number(req.query.customerId) : undefined;
+    res.json({ success: true, message: "OK", data: await salesService.packagingPrices(ids, customerId) });
+  },
   async create(req: Request<Record<string, string>, unknown, SalesDraftInput>, res: Response) {
     const user = auth(req);
     res.status(201).json({ success: true, message: "Đã lưu nháp đơn bán hàng", data: await salesService.createDraft(req.body, user.userId) });
@@ -24,21 +32,17 @@ export const salesController = {
     const user = auth(req);
     res.json({ success: true, message: "Đã cập nhật đơn bán hàng", data: await salesService.updateDraft(id(req), req.body, user.userId) });
   },
-  async submit(req: Request, res: Response) {
+  async remove(req: Request, res: Response) {
     const user = auth(req);
-    res.json({ success: true, message: "Đã gửi đơn chờ duyệt", data: await salesService.submit(id(req), Number(req.body.version), user.userId) });
-  },
-  async approve(req: Request, res: Response) {
-    const user = auth(req);
-    res.json({ success: true, message: "Đã duyệt đơn bán hàng", data: await salesService.approve(id(req), Number(req.body.version), user.userId) });
-  },
-  async reject(req: Request<Record<string, string>, unknown, SalesRejectInput>, res: Response) {
-    const user = auth(req);
-    res.json({ success: true, message: "Đã từ chối đơn bán hàng", data: await salesService.reject(id(req), req.body, user.userId) });
+    res.json({ success: true, message: "Đã xóa chứng từ bán hàng", data: await salesService.deleteDraft(id(req), Number(req.body.version), user.userId) });
   },
   async post(req: Request, res: Response) {
     const user = auth(req);
     res.json({ success: true, message: "Đã ghi sổ, xuất kho và ghi nhận phải thu", data: await salesService.post(id(req), Number(req.body.version), user.userId) });
+  },
+  async unpost(req: Request, res: Response) {
+    const user = auth(req);
+    res.json({ success: true, message: "Đã bỏ ghi sổ và khôi phục tồn kho", data: await salesService.unpost(id(req), Number(req.body.version), user.userId) });
   },
   async payment(req: Request<Record<string, string>, unknown, SalesPaymentInput>, res: Response) {
     const user = auth(req);

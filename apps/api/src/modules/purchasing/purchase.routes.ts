@@ -13,3 +13,4 @@ purchaseRouter.post("/", requirePermission("purchase.create"), validateBody(purc
 purchaseRouter.put("/:id", requirePermission("purchase.create"), validateParams(numericIdParamsSchema), validateBody(purchaseUpdateSchema), asyncHandler(purchaseController.update));
 purchaseRouter.post("/:id/post", requirePermission("purchase.post"), validateParams(numericIdParamsSchema), validateBody(purchaseActionSchema), asyncHandler(purchaseController.post));
 purchaseRouter.post("/:id/cancel", requirePermission("purchase.post"), validateParams(numericIdParamsSchema), validateBody(purchaseCancelSchema), asyncHandler(purchaseController.cancel));
+purchaseRouter.post("/:id/delete", requirePermission("purchase.create"), validateParams(numericIdParamsSchema), validateBody(purchaseActionSchema), asyncHandler(purchaseController.remove));

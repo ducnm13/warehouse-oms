@@ -3,7 +3,7 @@ import jwt from "jsonwebtoken";
 import { prisma } from "@challenge/database";
 import { HttpError } from "./http-error";
 
-type AccessPayload = { sub?: string | number; username?: string; role?: string; type?: string };
+type AccessPayload = { sub?: string | number; id?: string | number; username?: string; role?: string; type?: string };
 
 export const authenticateV1: RequestHandler = async (req, _res, next) => {
   try {
@@ -12,8 +12,8 @@ export const authenticateV1: RequestHandler = async (req, _res, next) => {
       : null;
     if (!token) throw new HttpError(401, "AUTH_REQUIRED", "Vui lòng đăng nhập");
     const payload = jwt.verify(token, process.env.JWT_SECRET || "") as AccessPayload;
-    if (payload.type !== "access" || !payload.sub) throw new HttpError(401, "INVALID_ACCESS_TOKEN", "Access token không hợp lệ");
-    const userId = Number(payload.sub);
+    const userId = Number(payload.sub ?? payload.id);
+    if (!userId) throw new HttpError(401, "INVALID_ACCESS_TOKEN", "Access token không hợp lệ");
     const user = await prisma.users.findUnique({
       where: { id: userId },
       include: {

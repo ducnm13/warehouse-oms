@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const promotionProgramSchema = z.object({
-  code: z.string().trim().min(2).max(100).transform(value => value.toUpperCase()),
+  code: z.string().trim().max(80).optional().default("").transform(value => value.toUpperCase()),
   name: z.string().trim().min(2).max(255),
   startDate: z.iso.date(),
   endDate: z.iso.date(),
@@ -37,6 +37,10 @@ export const promotionPreviewSchema = z.object({
   warehouseId: z.coerce.number().int().positive(),
   details: z.array(z.object({ packagingId: z.coerce.number().int().positive(), quantity: z.coerce.number().positive() })).min(1).max(500),
 });
+export const promotionUsageQuerySchema = z.object({
+  from: z.iso.date(),
+  to: z.iso.date(),
+}).refine(value => value.from <= value.to, { path: ["to"], message: "Ngày kết thúc phải từ ngày bắt đầu trở đi" });
 
 export type PromotionProgramInput = z.infer<typeof promotionProgramSchema>;
 export type PromotionUpdateInput = z.infer<typeof promotionUpdateSchema>;

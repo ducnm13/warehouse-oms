@@ -1,0 +1,123 @@
+/* Hộp xác nhận dùng chung toàn app: giữa màn hình, animation spring. */
+.cfm-backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 10000;
+	display: grid;
+	place-items: center;
+	padding: 16px;
+	background: rgba(16, 24, 40, 0.5);
+	backdrop-filter: blur(2px);
+	animation: cfm-fade 0.2s ease-out;
+}
+.cfm-backdrop.cfm-leave {
+	animation: cfm-fade-out 0.18s ease-in forwards;
+}
+.cfm-card {
+	width: 400px;
+	max-width: calc(100vw - 32px);
+	background: #ffffff;
+	border-radius: 18px;
+	box-shadow:
+		0 0 0 1px rgba(16, 24, 40, 0.09),
+		0 24px 60px -12px rgba(16, 24, 40, 0.35);
+	padding: 22px;
+	animation: cfm-pop 0.35s cubic-bezier(0.34, 1.45, 0.64, 1);
+}
+.cfm-backdrop.cfm-leave .cfm-card {
+	animation: cfm-pop-out 0.18s ease-in forwards;
+}
+.cfm-icon {
+	width: 44px;
+	height: 44px;
+	border-radius: 14px;
+	display: grid;
+	place-items: center;
+	margin-bottom: 12px;
+}
+.cfm-icon.danger {
+	background: #fef3f2;
+	color: #d92d20;
+}
+.cfm-icon.primary {
+	background: #ecf3ff;
+	color: #465fff;
+}
+.cfm-title {
+	font-size: 16px;
+	font-weight: 800;
+	letter-spacing: -0.01em;
+	color: #101828;
+}
+.cfm-message {
+	margin-top: 6px;
+	font-size: 13.5px;
+	line-height: 1.55;
+	color: #475569;
+	white-space: pre-line;
+	overflow-wrap: anywhere;
+}
+.cfm-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 18px;
+}
+.cfm-card form {
+	margin-top: 12px;
+}
+.cfm-input {
+	width: 100%;
+	border: 1px solid #d0d5dd;
+	border-radius: 10px;
+	padding: 9px 12px;
+	font-size: 13.5px;
+	color: #101828;
+	background: #fff;
+	outline: none;
+	font-family: inherit;
+}
+.cfm-input:focus {
+	border-color: #465fff;
+	box-shadow: 0 0 0 3px rgba(70, 95, 255, 0.15);
+}
+textarea.cfm-input {
+	resize: vertical;
+	min-height: 72px;
+}
+.cfm-error {
+	margin-top: 6px;
+	font-size: 12.5px;
+	font-weight: 600;
+	color: #d92d20;
+}
+@keyframes cfm-fade {
+	from {
+		opacity: 0;
+	}
+}
+@keyframes cfm-fade-out {
+	to {
+		opacity: 0;
+	}
+}
+@keyframes cfm-pop {
+	from {
+		opacity: 0;
+		transform: translateY(14px) scale(0.92);
+	}
+}
+@keyframes cfm-pop-out {
+	to {
+		opacity: 0;
+		transform: translateY(8px) scale(0.96);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.cfm-backdrop,
+	.cfm-card,
+	.cfm-backdrop.cfm-leave,
+	.cfm-backdrop.cfm-leave .cfm-card {
+		animation-duration: 0.001ms !important;
+	}
+}

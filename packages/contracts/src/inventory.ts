@@ -28,6 +28,7 @@ export const inventoryDraftSchema = z.object({
 export const inventoryUpdateSchema = inventoryDraftSchema.extend({ version: z.coerce.number().int().positive() });
 export const inventoryActionSchema = z.object({ version: z.coerce.number().int().positive() });
 export const inventoryCancelSchema = inventoryActionSchema.extend({ reason: z.string().trim().min(3).max(500) });
+export const inventoryDeleteSchema = inventoryActionSchema;
 export const inventoryListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -35,6 +36,8 @@ export const inventoryListQuerySchema = z.object({
   status: z.enum(["DRAFT", "POSTED", "CANCELLED"]).optional(),
   type: z.enum(["IMPORT", "EXPORT"]).optional(),
   warehouseId: z.coerce.number().int().positive().optional(),
+  sourceModule: z.string().trim().max(50).optional(),
+  hideReversal: z.enum(["true", "false"]).optional().default("false"),
 });
 
 export const inventoryBalanceQuerySchema = z.object({
@@ -63,5 +66,6 @@ export const stocktakeListQuerySchema = z.object({
 export type InventoryDraftInput = z.infer<typeof inventoryDraftSchema>;
 export type InventoryUpdateInput = z.infer<typeof inventoryUpdateSchema>;
 export type InventoryCancelInput = z.infer<typeof inventoryCancelSchema>;
+export type InventoryDeleteInput = z.infer<typeof inventoryDeleteSchema>;
 export type StocktakeDraftInput = z.infer<typeof stocktakeDraftSchema>;
 export type StocktakeUpdateInput = z.infer<typeof stocktakeUpdateSchema>;

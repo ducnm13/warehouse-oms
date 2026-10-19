@@ -15,9 +15,11 @@ assemblyRouter.post("/orders", requirePermission("assembly.manage"), validateBod
 assemblyRouter.put("/orders/:id", requirePermission("assembly.manage"), validateParams(numericIdParamsSchema), validateBody(assemblyUpdateSchema), asyncHandler(assemblyController.updateAssembly));
 assemblyRouter.post("/orders/:id/post", requirePermission("assembly.post"), validateParams(numericIdParamsSchema), validateBody(assemblyPostSchema), asyncHandler(assemblyController.postAssembly));
 assemblyRouter.post("/orders/:id/cancel", requirePermission("assembly.cancel"), validateParams(numericIdParamsSchema), validateBody(assemblyCancelSchema), asyncHandler(assemblyController.cancelAssembly));
+assemblyRouter.post("/orders/:id/link-inventory", requirePermission("assembly.manage"), validateParams(numericIdParamsSchema), asyncHandler(assemblyController.linkAssemblyInventory));
 assemblyRouter.get("/disassembly-orders", requirePermission("assembly.view"), validateQuery(lifecycleListQuerySchema), asyncHandler(assemblyController.listDisassembly));
 assemblyRouter.get("/disassembly-orders/:id", requirePermission("assembly.view"), validateParams(numericIdParamsSchema), asyncHandler(assemblyController.getDisassembly));
 assemblyRouter.post("/disassembly-orders", requirePermission("assembly.manage"), validateBody(disassemblyDraftSchema), asyncHandler(assemblyController.createDisassembly));
 assemblyRouter.put("/disassembly-orders/:id", requirePermission("assembly.manage"), validateParams(numericIdParamsSchema), validateBody(disassemblyUpdateSchema), asyncHandler(assemblyController.updateDisassembly));
 assemblyRouter.post("/disassembly-orders/:id/post", requirePermission("assembly.post"), validateParams(numericIdParamsSchema), validateBody(disassemblyPostSchema), asyncHandler(assemblyController.postDisassembly));
 assemblyRouter.post("/disassembly-orders/:id/cancel", requirePermission("assembly.cancel"), validateParams(numericIdParamsSchema), validateBody(assemblyCancelSchema), asyncHandler(assemblyController.cancelDisassembly));
+assemblyRouter.post("/disassembly-orders/:id/link-inventory", requirePermission("assembly.manage"), validateParams(numericIdParamsSchema), asyncHandler(assemblyController.linkDisassemblyInventory));

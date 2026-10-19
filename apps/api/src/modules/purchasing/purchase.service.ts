@@ -3,6 +3,7 @@ import type { PurchaseCancelInput, PurchaseDraftInput, PurchaseUpdateInput } fro
 import { HttpError } from "../../common/http-error";
 import { mapPurchaseDocument } from "./purchase.mapper";
 import { prisma, purchaseInclude, purchaseRepository } from "./purchase.repository";
+import { nextDocumentCode } from "../../common/document-code";
 
 const decimal = (value: number) => new Prisma.Decimal(value.toFixed(4));
 const money = (value: number) => new Prisma.Decimal(value.toFixed(2));
@@ -62,7 +63,7 @@ export const purchaseService = {
     const supplier = await validateMasterData(input);
     const totals = calculate(input);
     const dueDate = input.dueDate || new Date(dateAtNoon(input.documentDate).getTime() + Number(supplier.paymentTermDays || 0) * 86400000).toISOString().slice(0, 10);
-    const code = `MH-${input.documentDate.replaceAll("-", "")}-${Date.now().toString().slice(-6)}`;
+    const code = await nextDocumentCode("purchase");
     const row = await purchaseRepository.create({
       code, documentDate: input.documentDate, dueDate, type: input.type,
       documentStatus: "DRAFT", paymentStatus: "UNPAID", paymentIntent: input.paymentIntent,
@@ -121,13 +122,22 @@ export const purchaseService = {
         }
         for (const [warehouseId, lines] of groups) {
           const txCode = `PN-${document.code}-${warehouseId}`;
+          const goodsAmount = Number(document.goodsAmount || 0);
+          const purchaseCost = Number(document.purchaseCost || 0);
           const inventoryTransaction = await tx.inventorytransactions.create({
             data: {
               code: txCode, type: "IMPORT", transaction_date: document.documentDate, entry_date: document.documentDate,
               warehouseId, note: `Nhập kho theo chứng từ ${document.code}`, recipient: document.suppliers.name,
-              reason: "Mua hàng v1", createdBy: userId, createdAt: now, updatedAt: now,
+              reason: "Mua hàng v1", sourceModule: "PURCHASE_V1", createdBy: userId, createdAt: now, updatedAt: now,
               inventorytransactiondetails: {
-                create: lines.map(line => ({ packagingId: line.packagingId, quantity: Number(line.quantity), note: document.code, createdAt: now, updatedAt: now })),
+                create: lines.map(line => {
+                  const quantity = Number(line.quantity);
+                  const lineAmount = Number(line.lineAmount || 0);
+                  const allocatedCost = goodsAmount > 0 ? purchaseCost * lineAmount / goodsAmount : 0;
+                  const inventoryValue = lineAmount + allocatedCost;
+                  const unitCost = quantity > 0 ? inventoryValue / quantity : 0;
+                  return { packagingId: line.packagingId, quantity, note: document.code, createdAt: now, updatedAt: now, unitCost: decimal(unitCost), totalValue: money(inventoryValue) };
+                }),
               },
             },
           });
@@ -325,5 +335,27 @@ export const purchaseService = {
       await tx.audit_logs.create({ data: { action: "Hủy mua hàng v1", details: `${document.code}: ${input.reason}`, userId, userName: String(userId), createdAt: now } });
       return mapPurchaseDocument(updated);
     }, { timeout: 30_000 });
+  },
+  async remove(id: number, version: number, userId: number) {
+    return prisma.$transaction(async tx => {
+      const locked = await tx.$queryRawUnsafe<any[]>("SELECT id,code,documentStatus,version FROM purchase_documents WHERE id=? FOR UPDATE", id);
+      const current = locked[0];
+      if (!current) throw new HttpError(404, "PURCHASE_NOT_FOUND", "Không tìm thấy chứng từ");
+      if (Number(current.version) !== version) throw new HttpError(409, "VERSION_CONFLICT", "Chứng từ đã được người khác cập nhật");
+      if (current.documentStatus === "DRAFT") {
+        // Nháp chưa phát sinh ledger → xóa cứng
+        await tx.purchase_document_links_v1.deleteMany({ where: { purchaseDocumentId: id } });
+        await tx.purchase_inventory_links.deleteMany({ where: { purchaseDocumentId: id } });
+        await tx.purchase_document_details.deleteMany({ where: { documentId: id } });
+        await tx.purchase_documents.delete({ where: { id } });
+      } else if (current.documentStatus === "CANCELLED") {
+        // Đã hủy có bút toán đảo liên quan → xóa mềm để giữ lịch sử kiểm tra
+        await tx.purchase_documents.update({ where: { id }, data: { deletedAt: new Date(), version: { increment: 1 }, updatedAt: nowIso() } });
+      } else {
+        throw new HttpError(409, "PURCHASE_NOT_DELETABLE", "Chỉ được xóa chứng từ ở trạng thái nháp hoặc đã hủy");
+      }
+      await tx.audit_logs.create({ data: { action: "Xóa chứng từ mua hàng v1", details: current.code, userId, userName: String(userId), createdAt: nowIso() } });
+      return { id };
+    });
   },
 };

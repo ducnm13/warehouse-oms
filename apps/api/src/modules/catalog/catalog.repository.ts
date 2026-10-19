@@ -21,6 +21,10 @@ export const catalogRepository = {
 
   findProductById: (id: number) => prisma.products.findUnique({ where: { id }, include: productInclude }),
 
+  findProductBySku: (sku: string) => prisma.products.findFirst({ where: { sku } }),
+
+  findPackagingBySku: (sku: string) => prisma.productpackagings.findFirst({ where: { sku, deletedAt: null } }),
+
   createProduct: (data: {
     name: string; sku?: string | null; category: string;
     description?: string | null; primaryUnit: string;
@@ -51,6 +55,28 @@ export const catalogRepository = {
   softDeletePackaging: (id: number) =>
     prisma.productpackagings.update({ where: { id }, data: { isActive: 0, deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString() } }),
 
+  replaceBom: async (productPackagingId: number, materials: Array<{ materialPackagingId: number; quantity: number; unit?: string }>) => {
+    await prisma.$executeRawUnsafe("DELETE FROM product_boms WHERE productPackagingId = ?", productPackagingId);
+    for (const item of materials) {
+      await prisma.$executeRawUnsafe(
+        "INSERT INTO product_boms (productPackagingId, materialPackagingId, quantity, unit) VALUES (?, ?, ?, ?)",
+        productPackagingId,
+        item.materialPackagingId,
+        item.quantity,
+        item.unit || "kg",
+      );
+    }
+    return prisma.$queryRawUnsafe(
+      `SELECT b.id, b.productPackagingId, b.materialPackagingId, b.quantity, b.unit,
+              p.name materialName, p.sku materialSku, p.unit materialUnit
+       FROM product_boms b
+       LEFT JOIN productpackagings p ON p.id = b.materialPackagingId
+       WHERE b.productPackagingId = ?
+       ORDER BY b.id ASC`,
+      productPackagingId,
+    );
+  },
+
   // Prices
   upsertPrice: (packagingId: number, priceType: string, price: number) =>
     prisma.product_prices.upsert({
@@ -62,6 +88,40 @@ export const catalogRepository = {
   listWarehouses: () => prisma.warehouses.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
 
   // Low-stock packagings (tồn < min_stock)
+  listCostPrices: () =>
+    prisma.product_prices.findMany({
+      where: { priceType: "COST", isActive: 1 },
+      select: { packagingId: true, price: true },
+    }),
+
+  listRetailPrices: () =>
+    prisma.product_prices.findMany({
+      where: { priceType: "SALE_3", isActive: 1 },
+      select: { packagingId: true, price: true },
+    }),
+
+  listBomByOutput: (productPackagingId: number) =>
+    prisma.$queryRawUnsafe(
+      `SELECT b.id, b.productPackagingId, b.materialPackagingId, b.quantity, b.unit,
+              p.name materialName, p.sku materialSku, p.unit materialUnit
+       FROM product_boms b
+       LEFT JOIN productpackagings p ON p.id = b.materialPackagingId
+       WHERE b.productPackagingId = ?
+       ORDER BY b.id ASC`,
+      productPackagingId,
+    ),
+
+  listPackagings: (where: object, take: number) =>
+    prisma.productpackagings.findMany({
+      where: { deletedAt: null, ...where },
+      take,
+      orderBy: { name: "asc" },
+      include: {
+        products: { select: { id: true, name: true, category: true, sku: true } },
+        warehouse: { select: { id: true, name: true } },
+      },
+    }),
+
   listLowStock: () => prisma.$queryRaw<any[]>`
     SELECT pp.id, pp.name packagingName, pp.sku, pp.unit, pp.min_stock,
            p.name productName, p.category,
@@ -75,4 +135,18 @@ export const catalogRepository = {
     ORDER BY stockQty ASC
     LIMIT 50
   `,
+
+  listGroupPrices: () =>
+    prisma.customer_group_prices.findMany({
+      include: { customerGroup: { select: { id: true, code: true, name: true } } },
+      orderBy: { customerGroup: { displayOrder: "asc" } },
+    }),
+
+  upsertGroupPrice: (input: { customerGroupId: number; priceType: string }) =>
+    prisma.customer_group_prices.upsert({
+      where: { customerGroupId: input.customerGroupId },
+      create: { customerGroupId: input.customerGroupId, priceType: input.priceType },
+      update: { priceType: input.priceType },
+      include: { customerGroup: { select: { id: true, code: true, name: true } } },
+    }),
 };

@@ -2,6 +2,7 @@ import type { SalesReturnCancelInput, SalesReturnDraftInput, SalesReturnUpdateIn
 import { HttpError } from "../../common/http-error";
 import { mapSalesReturn } from "./sales-return.mapper";
 import { Prisma, prisma, salesReturnInclude, salesReturnRepository } from "./sales-return.repository";
+import { nextDocumentCode } from "../../common/document-code";
 
 const decimal = (value: number) => new Prisma.Decimal(value.toFixed(4));
 const money = (value: number) => new Prisma.Decimal(value.toFixed(2));
@@ -109,7 +110,7 @@ export const salesReturnService = {
 
   async create(input: SalesReturnDraftInput, userId: number) {
     const calculation = await build(input);
-    const code = `TH-${input.returnDate.replaceAll("-", "")}-${Date.now().toString().slice(-6)}`;
+    const code = await nextDocumentCode("sales_return");
     const now = new Date();
     const row = await prisma.sales_returns.create({
       data: {

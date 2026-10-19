@@ -14,11 +14,13 @@ import "react-datepicker/dist/react-datepicker.css";
 import { vi } from "date-fns/locale/vi";
 // Đăng ký ngôn ngữ tiếng Việt cho lịch
 registerLocale("vi", vi);
-import toast from "react-hot-toast";
+import toast from "../components/ui/toast";
+import { confirm } from "../components/ui/confirm";
 import { useReactToPrint } from "react-to-print";
 import { Transaction, Product, Warehouse, User, Customer } from "../types";
 import { formatDate } from "../lib/utils";
 import { InventoryDocument } from "../components/InventoryDocument";
+import NumberInput from "../components/NumberInput";
 
 // Hàm chuẩn hóa Date sang chuỗi YYYY-MM để lọc dữ liệu tháng
 const formatToYYYYMM = (date: Date | null) => {
@@ -245,12 +247,12 @@ const MaterialTransactions = () => {
   });
 
   const handleDeleteTransaction = async (id: number, code: string) => {
-    if (
-      !window.confirm(
-        `Bạn có chắc chắn muốn xóa phiếu "${code}"? Tồn kho sẽ được khôi phục tự động về trạng thái trước khi lập phiếu này.`,
-      )
-    )
-      return;
+		if (
+			!(await confirm(
+				`Bạn có chắc chắn muốn xóa phiếu "${code}"? Tồn kho sẽ được khôi phục tự động về trạng thái trước khi lập phiếu này.`,
+			))
+		)
+			return;
 
     try {
       const res = await fetch(`/api/transactions/${id}`, {
@@ -876,17 +878,16 @@ const MaterialTransactions = () => {
                               <label className="mb-1 block text-[10px] font-bold text-gray-400 uppercase">
                                 Số lượng
                               </label>
-                              <input
-                                type="number"
-                                step="any"
+                              <NumberInput
                                 value={detail.quantity}
-                                onChange={(e) => {
+                                onChange={v => {
                                   const newDetails = [...details];
-                                  newDetails[idx].quantity =
-                                    parseFloat(e.target.value) || 0;
+                                  newDetails[idx].quantity = v;
                                   setDetails(newDetails);
                                 }}
-                                className="w-full rounded border border-gray-200 bg-white p-2 text-xs outline-none focus:border-primary font-bold"
+                                min={0.0001}
+                                decimals={3}
+                                className="w-full"
                               />
                             </div>
                             <div className="col-span-2 mt-2">

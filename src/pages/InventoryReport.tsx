@@ -5,7 +5,7 @@ import { saveAs } from "file-saver";
 
 import { Product, ProductPackaging } from "../types";
 import { formatNumber } from "../lib/utils";
-import toast from "react-hot-toast";
+import toast from "../components/ui/toast";
 
 import DatePicker, { registerLocale } from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";

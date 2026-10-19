@@ -15,3 +15,6 @@ export * from "./employee";
 export * from "./opening-inventory";
 export * from "./catalog";
 export * from "./customer-group";
+export * from "./online";
+export * from "./iam";
+export * from "./chat";

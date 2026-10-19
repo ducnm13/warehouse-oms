@@ -10,7 +10,8 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "../components/ui/toast";
+import { confirm } from "../components/ui/confirm";
 import { Product } from "../types";
 import { cn, formatNumber } from "../lib/utils";
 
@@ -47,13 +48,13 @@ const Materials = ({ isArchive = false }: { isArchive?: boolean }) => {
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (
-      !window.confirm(
-        "Bạn có chắc chắn muốn xóa vật tư này? Thao tác này không thể hoàn tác.",
-      )
-    )
-      return;
+	const handleDelete = async (id: number) => {
+		if (
+			!(await confirm(
+				"Bạn có chắc chắn muốn xóa vật tư này? Thao tác này không thể hoàn tác.",
+			))
+		)
+			return;
     try {
       const res = await fetch(`/api/products/${id}`, {
         method: "DELETE",

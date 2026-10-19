@@ -19,7 +19,11 @@ export const validateBody = (schema: ZodType): RequestHandler => (req, _res, nex
 const validatePart = (schema: ZodType, part: "query" | "params"): RequestHandler => (req, _res, next) => {
   const result = schema.safeParse(req[part]);
   if (result.success) {
-    (req as unknown as Record<string, unknown>)[part] = result.data;
+    // Giữ lại các param khác trên URL (VD: :messageId) — chỉ body mới strip key lạ
+    (req as unknown as Record<string, unknown>)[part] =
+      part === "params"
+        ? { ...((req[part] as unknown as Record<string, unknown>) || {}), ...(result.data as Record<string, unknown>) }
+        : result.data;
     return next();
   }
   const fieldErrors: Record<string, string[]> = {};

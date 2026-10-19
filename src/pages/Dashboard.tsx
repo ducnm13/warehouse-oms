@@ -27,7 +27,7 @@ import { Transaction, Product } from "../types";
 import DatePicker, { registerLocale } from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { vi } from "date-fns/locale/vi";
-import toast from "react-hot-toast"; // <--- Thư viện quan trọng để nút chạy được
+import toast from "../components/ui/toast"; // <--- Thư viện quan trọng để nút chạy được
 
 // Đăng ký ngôn ngữ tiếng Việt
 registerLocale("vi", vi);
@@ -432,13 +432,13 @@ const Dashboard = ({ setActiveItem }: DashboardProps) => {
               </div>
             </div>
 
-            <div className="flex-1 w-full">
+            <div className="flex-1 w-full" style={{ minHeight: 260, height: 260 }}>
               {chartData.length === 0 ? (
-                <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs font-bold uppercase tracking-widest">
+                <div className="w-full flex items-center justify-center text-gray-400 text-xs font-bold uppercase tracking-widest" style={{ minHeight: 260, height: 260 }}>
                   Không có dữ liệu trong tháng này
                 </div>
               ) : (
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height={260} minWidth={0} minHeight={240}>
                   <ReBarChart
                     data={chartData}
                     layout="vertical"
@@ -535,9 +535,9 @@ const Dashboard = ({ setActiveItem }: DashboardProps) => {
                     (pk.stock || 0) <= (pk.min_stock || 0),
                 )
                 .sort((a, b) => (a.stock || 0) - (b.stock || 0))
-                .map((item, idx) => (
+                .map((item) => (
                   <div
-                    key={idx}
+                    key={`${item.productSku || item.productName}-${item.name}`}
                     className="flex items-center justify-between p-3 rounded-xl border border-dashed border-red-100 bg-red-50/20 hover:bg-red-50 transition-colors"
                   >
                     <div className="flex items-center">
@@ -647,9 +647,9 @@ const Dashboard = ({ setActiveItem }: DashboardProps) => {
                 </tr>
               </thead>
               <tbody>
-                {productionStats.items.map((item, idx) => (
+                {productionStats.items.map((item) => (
                   <tr
-                    key={idx}
+                    key={`${item.sku || item.name}-${item.packagingName || ""}`}
                     className="border-b border-gray-50 hover:bg-gray-50/30 transition-colors"
                   >
                     <td className="py-4 px-4">

@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Edit, Trash2, Warehouse, Search, Save, X, MapPin } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "../components/ui/toast";
+import { confirm } from "../components/ui/confirm";
 import { apiV1 } from "../lib/apiV1";
 
 interface WarehouseItem {
@@ -29,10 +30,17 @@ export default function WarehousesManager() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<WarehouseItem | null>(null);
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    code: string;
+    name: string;
+    type: "MAIN" | "SUB" | "RECEIVING" | "SHIPPING" | "PRODUCTION";
+    location: string;
+    address: string;
+    isActive: boolean;
+  }>({
     code: "",
     name: "",
-    type: "MAIN" as const,
+    type: "MAIN",
     location: "",
     address: "",
     isActive: true,
@@ -177,11 +185,11 @@ export default function WarehousesManager() {
                             <Edit size={16} />
                           </button>
                           <button
-                            onClick={() => {
-                              if (window.confirm(`Bạn có chắc muốn xóa kho "${w.name}"?`)) {
-                                deleteMutation.mutate(w.id);
-                              }
-                            }}
+								onClick={async () => {
+									if (await confirm(`Bạn có chắc muốn xóa kho "${w.name}"?`)) {
+										deleteMutation.mutate(w.id);
+									}
+								}}
                             className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                             title="Xóa kho"
                           >
