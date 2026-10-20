@@ -21,6 +21,7 @@ import NumberInput from "../components/NumberInput";
 import DocumentActions from "../components/DocumentActions";
 import { InventoryDocument } from "../components/InventoryDocument";
 import { buildCompanyPrintProfile } from "../lib/printTemplate";
+import { finishedGoodsWarehouseId } from "../lib/warehouse-defaults";
 import {
 	formatDate,
 	formatNumber,
@@ -506,7 +507,7 @@ export default function Transactions({
 		setType(nextType);
 		setEditing(null);
 		setForm({
-			...emptyForm(references.data?.warehouses[0]?.id),
+			...emptyForm(finishedGoodsWarehouseId(references.data?.warehouses)),
 			type: nextType,
 		});
 		setLines([emptyLine()]);
@@ -1459,7 +1460,7 @@ export default function Transactions({
 							</button>
 							<button
 								onClick={handlePrintReport}
-								className="px-10 py-2 bg-indigo-600 text-white rounded-lg font-black hover:bg-indigo-700 transition-all shadow-lg uppercase text-[10px] tracking-widest flex items-center gap-2"
+								className="erp-btn erp-btn-primary !px-6 uppercase tracking-widest text-[10px]"
 							>
 								<Printer size={16} /> In phiếu ngay
 							</button>

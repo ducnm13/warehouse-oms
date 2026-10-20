@@ -170,18 +170,18 @@ export default function SearchableSelect({
           if (open) closeMenu();
           else setOpen(true);
         }}
-        className={`flex w-full items-center justify-between gap-2 rounded border px-2 py-1.5 text-left text-sm transition-colors ${
+        className={`flex min-h-10 w-full items-center justify-between gap-2 rounded-[14px] border px-3.5 py-2 text-left text-[13.5px] transition-colors ${
           disabled
-            ? "cursor-not-allowed bg-slate-100 text-slate-400"
+            ? "cursor-not-allowed border-[#e0e5f2] bg-[#f4f7fe] text-[#a3aed0]"
             : selected
-              ? "border-slate-300 bg-white text-slate-800 hover:border-teal-500"
-              : "border-slate-300 bg-white text-slate-400 hover:border-teal-500"
+              ? "border-[#e0e5f2] bg-white text-[#2b3674] hover:border-[#a3aed0]"
+              : "border-[#e0e5f2] bg-white text-[#a3aed0] hover:border-[#a3aed0]"
         }`}
       >
         <span className="min-w-0 flex-1 truncate">
           {selected ? selected.label : placeholder}
         </span>
-        <span className="flex shrink-0 items-center gap-1 text-slate-400">
+        <span className="flex shrink-0 items-center gap-1 text-[#a3aed0]">
           {selected && !required && !disabled && (
             <span
               role="button"
@@ -190,7 +190,7 @@ export default function SearchableSelect({
                 event.stopPropagation();
                 onChange(0);
               }}
-              className="rounded p-0.5 hover:bg-slate-100 hover:text-slate-600"
+              className="rounded-md p-0.5 hover:bg-[#e9e3ff] hover:text-[#422afb]"
             >
               <X size={13} />
             </span>
@@ -211,10 +211,10 @@ export default function SearchableSelect({
             maxHeight: 320,
             zIndex: 9999,
           }}
-          className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl"
+          className="overflow-hidden rounded-[14px] border border-[#e0e5f2] bg-white shadow-[14px_17px_40px_4px_rgba(112,144,176,0.18)]"
         >
-          <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-2.5 py-2">
-            <Search size={14} className="shrink-0 text-slate-400" />
+          <div className="flex items-center gap-2 border-b border-[#e9edf7] bg-[#f9fbff] px-3 py-2.5">
+            <Search size={14} className="shrink-0 text-[#a3aed0]" />
             <input
               ref={searchRef}
               value={keyword}
@@ -229,7 +229,7 @@ export default function SearchableSelect({
                 }
               }}
               placeholder="Nhập từ khóa, Enter/Tab để chọn dòng đầu tiên..."
-              className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
+              className="w-full bg-transparent text-[13.5px] text-[#2b3674] outline-none placeholder:text-[#a3aed0]"
             />
           </div>
           <div className="max-h-72 overflow-auto overscroll-contain py-1">
@@ -240,13 +240,13 @@ export default function SearchableSelect({
                   onChange(0);
                   closeMenu();
                 }}
-                className="block w-full px-3 py-2 text-left text-sm italic text-slate-400 hover:bg-slate-50"
+                className="block w-full px-3.5 py-2.5 text-left text-[13.5px] italic text-[#a3aed0] hover:bg-[#f4f7fe]"
               >
                 {placeholder}
               </button>
             )}
             {filtered.length === 0 ? (
-              <div className="px-3 py-5 text-center text-xs text-slate-400">
+              <div className="px-3 py-5 text-center text-xs text-[#a3aed0]">
                 Không tìm thấy kết quả phù hợp
               </div>
             ) : (
@@ -258,19 +258,19 @@ export default function SearchableSelect({
                     onChange(option.value);
                     closeMenu(autoAdvance);
                   }}
-                  className={`block w-full px-3 py-2 text-left text-sm transition-colors hover:bg-teal-50 ${
-                    option.value === value ? "bg-teal-50 font-semibold text-teal-700" : "text-slate-700"
+                  className={`block w-full px-3.5 py-2.5 text-left text-[13.5px] transition-colors hover:bg-[#f4f7fe] ${
+                    option.value === value ? "bg-[#f2efff] font-semibold text-[#422afb]" : "text-[#2b3674]"
                   }`}
                 >
                   <div className="truncate">{option.label}</div>
                   {option.subLabel && (
-                    <div className="truncate text-xs text-slate-400">{option.subLabel}</div>
+                    <div className="truncate text-xs text-[#a3aed0]">{option.subLabel}</div>
                   )}
                 </button>
               ))
             )}
           </div>
-          <div className="border-t border-slate-100 bg-slate-50 px-3 py-1.5 text-[11px] text-slate-400">
+          <div className="border-t border-[#e9edf7] bg-[#f9fbff] px-3.5 py-2 text-[11px] text-[#a3aed0]">
             {filtered.length} kết quả
           </div>
         </div>,

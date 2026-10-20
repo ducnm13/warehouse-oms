@@ -1419,7 +1419,7 @@ export default function ProductionManagement({
 								{canActual && manage && (
 									<button
 										type="button"
-										className="erp-btn erp-btn-primary !bg-emerald-700"
+										className="erp-btn erp-btn-post"
 										onClick={handleChot}
 										disabled={completeMutation.isPending || totalActual <= 0}
 									>
@@ -1645,7 +1645,7 @@ export default function ProductionManagement({
 							</button>
 							<button
 								onClick={handlePrintReport}
-								className="px-10 py-2 bg-indigo-600 text-white rounded-lg font-black hover:bg-indigo-700 transition-all shadow-lg uppercase text-[10px] tracking-widest flex items-center gap-2"
+								className="erp-btn erp-btn-primary !px-6 uppercase tracking-widest text-[10px]"
 							>
 								<Printer size={16} /> In
 							</button>

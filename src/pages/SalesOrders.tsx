@@ -525,7 +525,7 @@ export default function SalesOrders() {
 										<td>
 											<button
 												onClick={() => setSelected(o)}
-												className="font-semibold text-emerald-700 hover:underline"
+												className="font-semibold text-[#422afb] hover:underline"
 											>
 												{o.code}
 											</button>

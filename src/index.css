@@ -1,7 +1,9 @@
-@import url("https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,1..1000&family=Montserrat:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Playfair+Display+SC:ital,wght@0,400;0,700;0,900;1,400;1,700;1,900&display=swap");
+/* @import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Google+Sans+Flex:opsz,wght@6..144,1..1000&family=Montserrat:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Playfair+Display+SC:ital,wght@0,400;0,700;0,900;1,400;1,700;1,900&display=swap"); */
+
+@import url("https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,1..1000&family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap");
 @import "tailwindcss";
 
-/* ─── Design Tokens ────────────────────────────────────────────────────────────── */
+/* ─── Design Tokens (Horizon UI) ──────────────────────────────────────────────── */
 @theme {
 	--font-sans:
 		"Google Sans Flex", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
@@ -9,35 +11,47 @@
 	--font-mono: ui-monospace, SFMono-Regular, "Cascadia Code", monospace;
 
 	/* Brand */
-	--color-primary: #465fff;
-	--color-primary-dark: #3641f4;
-	--color-primary-light: #ecf3ff;
-	--color-primary-hover: #3b4be8;
+	--color-primary: #422afb;
+	--color-primary-dark: #3311db;
+	--color-primary-light: #e9e3ff;
+	--color-primary-hover: #3311db;
 
 	/* Surface */
-	--color-body: #f9fafb;
+	--color-body: #f4f7fe;
 	--color-surface: #ffffff;
-	--color-surface-hover: #f9fafb;
+	--color-surface-hover: #f4f7fe;
 
 	/* Sidebar */
-	/* --color-sidebar: #57369d; */
-	--color-sidebar: #101828;
-	--color-sidebar-item: #1d2939;
-	--color-sidebar-text: #98a2b3;
-	--color-sidebar-text-active: #b2ccff;
+	--color-sidebar: #ffffff;
+	--color-sidebar-item: #f4f7fe;
+	--color-sidebar-text: #a3aed0;
+	--color-sidebar-text-active: #2b3674;
 
-	/* Gray scale */
-	--color-gray-25: #fcfcfd;
-	--color-gray-50: #f9fafb;
-	--color-gray-100: #f2f4f7;
-	--color-gray-200: #eaecf0;
-	--color-gray-300: #d0d5dd;
-	--color-gray-400: #98a2b3;
-	--color-gray-500: #667085;
-	--color-gray-600: #475569;
-	--color-gray-700: #344054;
-	--color-gray-800: #1e293b;
-	--color-gray-900: #101828;
+	/* Gray scale (Horizon secondaryGray) */
+	--color-gray-25: #fcfdff;
+	--color-gray-50: #f4f7fe;
+	--color-gray-100: #eef2fb;
+	--color-gray-200: #e0e5f2;
+	--color-gray-300: #d0dcfb;
+	--color-gray-400: #a3aed0;
+	--color-gray-500: #8f9bba;
+	--color-gray-600: #707eae;
+	--color-gray-700: #4b5675;
+	--color-gray-800: #2b3674;
+	--color-gray-900: #1b2559;
+
+	/* Slate scale mapped to Horizon secondaryGray */
+	--color-slate-50: #f4f7fe;
+	--color-slate-100: #eef2fb;
+	--color-slate-200: #e0e5f2;
+	--color-slate-300: #d0dcfb;
+	--color-slate-400: #a3aed0;
+	--color-slate-500: #8f9bba;
+	--color-slate-600: #707eae;
+	--color-slate-700: #4b5675;
+	--color-slate-800: #2b3674;
+	--color-slate-900: #1b2559;
+	--color-slate-950: #11047a;
 
 	/* Status colors - semantic */
 	--color-status-draft-bg: #f2f4f7;
@@ -90,8 +104,8 @@
 	--color-unpaid-border: #fecaca;
 
 	/* Semantic action colors */
-	--color-action-primary: #465fff;
-	--color-action-primary-hover: #3641f4;
+	--color-action-primary: #422afb;
+	--color-action-primary-hover: #3311db;
 	--color-action-danger: #dc2626;
 	--color-action-danger-hover: #b91c1c;
 	--color-action-warning: #d97706;
@@ -115,7 +129,9 @@ body {
 	@apply font-sans bg-body text-slate-800 antialiased;
 	font-size: 13.5px;
 	line-height: 1.5;
-	background: var(--color-ta-50);
+	letter-spacing: -0.2px;
+	background: var(--color-body);
+	color: #2b3674;
 }
 
 /* ─── ERP Shell (layout wrapper) ─────────────────────────────────────────────── */
@@ -174,94 +190,61 @@ body {
 	animation: erp-app-loading-spin 0.85s linear infinite;
 }
 
-/* ─── Sidebar (TailAdmin dark) ───────────────────────────────────────────────── */
+/* ─── Sidebar (Horizon UI light) ─────────────────────────────────────────────── */
 .erp-shell aside {
-	background: var(--color-sidebar) !important;
-	border-right: 1px solid #1d2939 !important;
-	width: 260px !important;
-	box-shadow: none !important;
+	background: #ffffff !important;
+	border-right: 0 !important;
+	width: 270px !important;
+	box-shadow: 14px 17px 40px 4px rgba(112, 144, 176, 0.12) !important;
 	flex-shrink: 0;
 }
 
 /* Logo area */
 .erp-shell aside > div:first-of-type {
-	height: 64px !important;
+	height: 80px !important;
 	background: transparent !important;
-	border-bottom: 1px solid #1d2939 !important;
+	border-bottom: 1px solid #e6ecfa !important;
 }
 
 /* Nav padding */
 .erp-shell aside nav {
-	padding: 12px !important;
+	padding: 16px 14px !important;
 }
 
 /* Section label */
 .erp-shell aside nav > p {
-	color: #667085 !important;
+	color: #a3aed0 !important;
 	font-size: 10px !important;
 	font-weight: 700 !important;
-	letter-spacing: 0.08em !important;
+	letter-spacing: 0.1em !important;
 }
 
 /* Nav buttons default */
 .erp-shell aside nav button:not(.sidebar-active) {
-	color: #98a2b3 !important;
-	border-radius: 8px !important;
+	color: #545454 !important;
+	border-radius: 12px !important;
 	font-size: 13.5px !important;
 	font-weight: 500 !important;
 }
 .erp-shell aside nav button:not(.sidebar-active):hover {
-	background: rgba(255, 255, 255, 0.06) !important;
-	color: #fff !important;
-}
-
-/* Active nav item (TailAdmin brand pill) */
-.erp-shell aside nav .bg-indigo-50 {
-	background: rgba(70, 95, 255, 0.16) !important;
-	color: #b2ccff !important;
-}
-.erp-shell aside nav .text-indigo-700,
-.erp-shell aside nav .text-indigo-600,
-.erp-shell aside nav .text-indigo-500 {
-	color: #b2ccff !important;
-}
-.erp-shell aside nav .text-slate-800 {
-	color: #e4e7ec !important;
-}
-.erp-shell aside nav .text-slate-500 {
-	color: #98a2b3 !important;
-}
-.erp-shell aside nav .text-slate-400 {
-	color: #667085 !important;
-}
-.erp-shell aside nav .border-slate-100 {
-	border-color: #1d2939 !important;
-}
-.erp-shell aside nav .hover\:bg-slate-50:hover {
-	background: rgba(255, 255, 255, 0.06) !important;
-}
-.erp-shell aside nav .hover\:text-slate-800:hover {
-	color: #fff !important;
+	background: #f4f7fe !important;
+	color: #2b3674 !important;
 }
 
 /* Sidebar footer */
 .erp-shell aside > div:last-child {
 	background: transparent !important;
-	border-top: 1px solid #1d2939 !important;
-	color: #667085 !important;
+	border-top: 1px solid #e6ecfa !important;
+	color: #a3aed0 !important;
 }
 
-/* Sub-menu divider */
-.erp-shell aside nav .bg-slate-100\/60 {
-	background: rgba(255, 255, 255, 0.04) !important;
-}
-
-/* ─── Header (TailAdmin topbar) ──────────────────────────────────────────────── */
+/* ─── Header (Horizon UI floating navbar) ───────────────────────────────────── */
 header.sticky {
-	background: rgba(255, 255, 255, 0.9) !important;
-	backdrop-filter: blur(12px);
-	border-bottom: 1px solid #eaecf0 !important;
-	height: 60px !important;
+	background: rgba(255, 255, 255, 0.72) !important;
+	backdrop-filter: blur(20px);
+	border-bottom: 1px solid rgba(230, 236, 250, 0.9) !important;
+	box-shadow: 0 4px 24px rgba(112, 144, 176, 0.08);
+	height: 72px !important;
 }
 
 /* ─── Page Structure ─────────────────────────────────────────────────────────── */
@@ -280,15 +263,15 @@ header.sticky {
 	gap: 12px;
 }
 .erp-page-header h1 {
-	font-size: 20px;
+	font-size: 30px;
 	font-weight: 700;
-	color: #0f172a;
-	letter-spacing: -0.01em;
+	color: #1b2559;
+	letter-spacing: -0.5px;
 }
 .erp-page-header p {
-	margin-top: 2px;
-	font-size: 12.5px;
-	color: #64748b;
+	margin-top: 4px;
+	font-size: 14px;
+	color: #a3aed0;
 }
 
 /* ─── Unified form controls ──────────────────────────────────────────────────── */
@@ -302,12 +285,12 @@ header.sticky {
 .erp-modal select,
 .erp-modal textarea {
 	width: 100%;
-	min-height: 38px;
-	padding: 8px 12px;
-	border: 1px solid #cbd5e1;
-	border-radius: 8px;
+	min-height: 40px;
+	padding: 9px 14px;
+	border: 1px solid #e0e5f2;
+	border-radius: 14px;
 	background: #fff;
-	color: #0f172a;
+	color: #2b3674;
 	font-size: 13.5px;
 	line-height: 1.45;
 	outline: none;
@@ -327,8 +310,8 @@ header.sticky {
 .erp-modal select {
 	appearance: none;
 	background-image:
-		linear-gradient(45deg, transparent 50%, #64748b 50%),
-		linear-gradient(135deg, #64748b 50%, transparent 50%);
+		linear-gradient(45deg, transparent 50%, #a3aed0 50%),
+		linear-gradient(135deg, #a3aed0 50%, transparent 50%);
 	background-position:
 		calc(100% - 18px) 50%,
 		calc(100% - 13px) 50%;
@@ -349,7 +332,7 @@ header.sticky {
 	input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):hover,
 .erp-modal select:hover,
 .erp-modal textarea:hover {
-	border-color: #94a3b8;
+	border-color: #a3aed0;
 }
 .erp-page
 	input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
@@ -364,7 +347,7 @@ header.sticky {
 .erp-modal select:focus,
 .erp-modal textarea:focus {
 	border-color: var(--color-primary);
-	box-shadow: 0 0 0 3px rgba(14, 164, 114, 0.12);
+	box-shadow: none;
 	background: #fff;
 }
 .erp-page input::placeholder,
@@ -373,7 +356,7 @@ header.sticky {
 .erp-page textarea::placeholder,
 .erp-card textarea::placeholder,
 .erp-modal textarea::placeholder {
-	color: #94a3b8;
+	color: #a3aed0;
 }
 .erp-page input:disabled,
 .erp-page select:disabled,
@@ -384,8 +367,8 @@ header.sticky {
 .erp-modal input:disabled,
 .erp-modal select:disabled,
 .erp-modal textarea:disabled {
-	background: #f1f5f9;
-	color: #94a3b8;
+	background: #f4f7fe;
+	color: #a3aed0;
 	cursor: not-allowed;
 }
 .erp-page input[type="checkbox"],
@@ -412,56 +395,56 @@ header.sticky {
 	gap: 6px;
 	font-size: 13px;
 	font-weight: 600;
-	color: #334155;
+	color: #2b3674;
 }
 .erp-page label small,
 .erp-card label small,
 .erp-modal label small {
 	font-size: 11.5px;
 	font-weight: 400;
-	color: #64748b;
+	color: #a3aed0;
 }
 
-/* ─── Card (TailAdmin surface) ───────────────────────────────────────────────── */
+/* ─── Card (Horizon UI surface) ─────────────────────────────────────────────── */
 .erp-card {
 	background: #fff;
-	border: 1px solid #eaecf0;
-	border-radius: 12px;
-	box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+	border: 0;
+	border-radius: 20px;
+	box-shadow: 14px 17px 40px 4px rgba(112, 144, 176, 0.08);
 }
 
 /* ─── Stat / KPI Card ────────────────────────────────────────────────────────── */
 .erp-stat {
 	display: flex;
 	align-items: center;
-	gap: 14px;
+	gap: 16px;
 	padding: 20px;
 	background: #fff;
-	border: 1px solid #eaecf0;
-	border-radius: 12px;
-	box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+	border: 0;
+	border-radius: 20px;
+	box-shadow: 14px 17px 40px 4px rgba(112, 144, 176, 0.08);
 }
 .erp-stat > svg {
 	flex-shrink: 0;
 	box-sizing: content-box;
-	padding: 10px;
-	border-radius: 6px;
-	background: var(--color-primary-light);
+	padding: 12px;
+	border-radius: 50%;
+	background: #f4f7fe;
 	color: var(--color-primary);
 }
 .erp-stat span {
 	display: block;
-	color: #64748b;
+	color: #a3aed0;
 	font-size: 12px;
 	font-weight: 500;
 }
 .erp-stat strong {
 	display: block;
-	margin-top: 4px;
-	color: #0f172a;
-	font-size: 18px;
+	margin-top: 2px;
+	color: #1b2559;
+	font-size: 20px;
 	font-weight: 700;
-	letter-spacing: -0.02em;
+	letter-spacing: -0.5px;
 }
 
 /* ─── Buttons ────────────────────────────────────────────────────────────────── */
@@ -470,22 +453,22 @@ header.sticky {
 	align-items: center;
 	justify-content: center;
 	gap: 6px;
-	min-height: 36px;
-	padding: 7px 14px;
-	border: 1px solid #d0d5dd;
-	border-radius: 8px;
+	min-height: 38px;
+	padding: 8px 16px;
+	border: 1px solid #e0e5f2;
+	border-radius: 16px;
 	background: #fff;
-	color: #344054;
-	font-weight: 500;
+	color: #2b3674;
+	font-weight: 600;
 	font-size: 13px;
 	cursor: pointer;
 	transition: all 0.15s;
 	white-space: nowrap;
-	box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+	box-shadow: 0 4px 12px rgba(112, 144, 176, 0.08);
 }
 .erp-btn:hover:not(:disabled) {
-	background: #f9fafb;
-	border-color: #98a2b3;
+	background: #f4f7fe;
+	border-color: #d0dcfb;
 }
 .erp-btn:active:not(:disabled) {
 	transform: scale(0.98);
@@ -494,11 +477,18 @@ header.sticky {
 	opacity: 0.5;
 	cursor: not-allowed;
 }
+.erp-btn-sm {
+	min-height: 30px;
+	padding: 4px 10px;
+	border-radius: 10px;
+	font-size: 12px;
+}
 
 .erp-btn-primary {
 	background: var(--color-primary);
 	border-color: var(--color-primary);
 	color: #fff;
+	box-shadow: 0 8px 20px rgba(66, 42, 251, 0.25);
 }
 .erp-btn-primary:hover:not(:disabled) {
 	background: var(--color-primary-dark);
@@ -542,10 +532,10 @@ header.sticky {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 30px;
-	height: 30px;
-	border-radius: 6px;
-	color: #64748b;
+	width: 32px;
+	height: 32px;
+	border-radius: 12px;
+	color: #707eae;
 	cursor: pointer;
 	transition: all 0.12s;
 	border: none;
@@ -555,8 +545,8 @@ header.sticky {
 	color: currentColor;
 }
 .erp-icon-btn:hover:not(:disabled) {
-	background: #f1f5f9;
-	color: #0f172a;
+	background: #f4f7fe;
+	color: #2b3674;
 }
 .erp-icon-btn.text-emerald-600 {
 	color: #059669;
@@ -614,7 +604,7 @@ header.sticky {
 	justify-content: flex-end;
 	gap: 10px;
 	padding: 12px 16px;
-	border-bottom: 1px solid #e2e8f0;
+	border-bottom: 1px solid #e9edf7;
 	overflow-x: auto;
 	scrollbar-width: thin;
 }
@@ -628,19 +618,18 @@ header.sticky {
 	gap: 8px;
 	width: 280px;
 	max-width: 35vw;
-	height: 34px;
+	height: 38px;
 	margin-left: auto;
-	padding: 0 10px;
-	border: 1px solid #cbd5e1;
-	border-radius: 7px;
-	background: #f8fafc;
-	color: #64748b;
+	padding: 0 12px;
+	border: 1px solid transparent;
+	border-radius: 16px;
+	background: #f4f7fe;
+	color: #a3aed0;
 	transition: 0.15s;
 }
 .erp-search:focus-within {
 	border-color: var(--color-primary);
 	background: #fff;
-	box-shadow: 0 0 0 3px rgba(14, 164, 114, 0.1);
 }
 .erp-search input {
 	flex: 1;
@@ -650,19 +639,19 @@ header.sticky {
 	padding: 0 !important;
 	outline: 0;
 	font-size: 13px;
-	color: #0f172a;
+	color: #2b3674;
 }
 
 .erp-toolbar select,
 .erp-toolbar input[type="month"],
 .erp-toolbar input[type="date"] {
-	height: 34px;
+	height: 38px;
 	max-width: 220px;
-	padding: 0 10px;
-	border: 1px solid #cbd5e1;
-	border-radius: 7px;
-	background-color: #f8fafc;
-	color: #334155;
+	padding: 0 12px;
+	border: 1px solid #e0e5f2;
+	border-radius: 14px;
+	background-color: #fff;
+	color: #2b3674;
 	font-size: 13px;
 	font-weight: 500;
 	outline: none;
@@ -674,8 +663,8 @@ header.sticky {
 	-moz-appearance: none;
 	padding-right: 30px;
 	background-image:
-		linear-gradient(45deg, transparent 50%, #64748b 50%),
-		linear-gradient(135deg, #64748b 50%, transparent 50%);
+		linear-gradient(45deg, transparent 50%, #a3aed0 50%),
+		linear-gradient(135deg, #a3aed0 50%, transparent 50%);
 	background-position:
 		calc(100% - 17px) 50%,
 		calc(100% - 12px) 50%;
@@ -686,7 +675,6 @@ header.sticky {
 .erp-toolbar input[type="month"]:focus,
 .erp-toolbar input[type="date"]:focus {
 	border-color: var(--color-primary);
-	box-shadow: 0 0 0 3px rgba(14, 164, 114, 0.1);
 	background: #fff;
 }
 
@@ -702,38 +690,38 @@ header.sticky {
 	overflow: visible;
 }
 .erp-table th {
-	padding: 9px 14px;
-	border-bottom: 1px solid #e2e8f0;
-	background: #f8fafc;
-	color: #475569;
+	padding: 10px 14px;
+	border-bottom: 1px solid #e9edf7;
+	background: transparent;
+	color: #a3aed0;
 	font-size: 11.5px;
-	font-weight: 600;
+	font-weight: 700;
 	text-align: left;
 	white-space: nowrap;
 	text-transform: uppercase;
-	letter-spacing: 0.04em;
+	letter-spacing: 0.06em;
 }
 .erp-table td {
-	padding: 10px 14px;
-	border-bottom: 1px solid #f1f5f9;
+	padding: 12px 14px;
+	border-bottom: 1px solid #e9edf7;
 	vertical-align: middle;
-	color: #1e293b;
+	color: #2b3674;
 }
 .erp-table tbody tr:last-child td {
 	border-bottom: 0;
 }
 .erp-table tbody tr:hover td {
-	background: #f8fffe;
+	background: #f9fbff;
 }
 .erp-table small {
 	display: block;
 	margin-top: 2px;
-	color: #94a3b8;
+	color: #a3aed0;
 	font-size: 11.5px;
 }
 .erp-table b {
-	font-weight: 600;
-	color: #0f172a;
+	font-weight: 700;
+	color: #1b2559;
 }
 
 /* ─── Badge ──────────────────────────────────────────────────────────────────── */
@@ -741,10 +729,10 @@ header.sticky {
 	display: inline-flex;
 	align-items: center;
 	gap: 4px;
-	padding: 2px 9px;
-	border-radius: 99px;
-	font-size: 11px;
-	font-weight: 600;
+	padding: 5px 11px;
+	border-radius: 10px;
+	font-size: 10.5px;
+	font-weight: 700;
 	white-space: nowrap;
 }
 
@@ -841,9 +829,9 @@ header.sticky {
 	justify-content: center;
 	gap: 10px;
 	padding: 14px;
-	border-top: 1px solid #f1f5f9;
+	border-top: 1px solid #e9edf7;
 	font-size: 13px;
-	color: #64748b;
+	color: #a3aed0;
 }
 
 /* ─── Modal / Right Drawer ─────────────────────────────────────────────────────── */
@@ -865,11 +853,11 @@ header.sticky {
 	height: 100vh;
 	max-height: 100vh;
 	overflow: hidden;
-	border-radius: 0;
+	border-radius: 24px 0 0 24px;
 	background: #fff;
 	box-shadow:
-		-25px 0 60px rgba(15, 23, 42, 0.25),
-		0 0 0 1px rgba(15, 23, 42, 0.05);
+		-25px 0 60px rgba(27, 37, 89, 0.18),
+		0 0 0 1px rgba(112, 144, 176, 0.08);
 }
 
 .erp-modal-header {
@@ -879,29 +867,29 @@ header.sticky {
 	display: flex;
 	align-items: flex-start;
 	justify-content: space-between;
-	padding: 18px 22px 16px;
-	border-bottom: 1px solid #f1f5f9;
+	padding: 20px 24px 16px;
+	border-bottom: 1px solid #e9edf7;
 	background: #fff;
 }
 .erp-modal-header h2 {
-	font-size: 17px;
+	font-size: 20px;
 	font-weight: 700;
-	color: #0f172a;
-	letter-spacing: -0.01em;
+	color: #1b2559;
+	letter-spacing: -0.5px;
 }
 .erp-modal-header p {
 	margin-top: 3px;
-	color: #64748b;
-	font-size: 12.5px;
+	color: #a3aed0;
+	font-size: 13px;
 }
 .erp-modal-header > button {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 30px;
-	height: 30px;
-	border-radius: 7px;
-	color: #64748b;
+	width: 32px;
+	height: 32px;
+	border-radius: 12px;
+	color: #707eae;
 	transition: 0.12s;
 	flex-shrink: 0;
 	margin-left: 12px;
@@ -910,8 +898,8 @@ header.sticky {
 	cursor: pointer;
 }
 .erp-modal-header > button:hover {
-	background: #f1f5f9;
-	color: #0f172a;
+	background: #f4f7fe;
+	color: #2b3674;
 }
 .sales-order-drawer {
 	width: min(100%, 82rem);
@@ -942,7 +930,7 @@ header.sticky {
 	background: transparent;
 }
 .erp-modal-body::-webkit-scrollbar-thumb {
-	background: #cbd5e1;
+	background: #d0dcfb;
 	border-radius: 99px;
 }
 
@@ -950,10 +938,10 @@ header.sticky {
 	display: flex;
 	justify-content: flex-end;
 	gap: 8px;
-	padding: 14px 22px;
-	border-top: 1px solid #e2e8f0;
-	background: #f8fafc;
-	border-radius: 0;
+	padding: 14px 24px;
+	border-top: 1px solid #e9edf7;
+	background: #f9fbff;
+	border-radius: 0 0 0 24px;
 }
 
 /* Form fields inside modal */
@@ -961,20 +949,20 @@ header.sticky {
 	display: flex;
 	flex-direction: column;
 	gap: 5px;
-	font-size: 12px;
+	font-size: 12.5px;
 	font-weight: 600;
-	color: #475569;
+	color: #2b3674;
 }
 
 .erp-modal input,
 .erp-modal select,
 .erp-modal textarea {
-	min-height: 34px;
-	padding: 6px 10px;
-	border: 1px solid #cbd5e1;
-	border-radius: 7px;
+	min-height: 40px;
+	padding: 9px 14px;
+	border: 1px solid #e0e5f2;
+	border-radius: 14px;
 	background: #fff;
-	color: #0f172a;
+	color: #2b3674;
 	font-size: 13px;
 	font-family: inherit;
 	outline: none;
@@ -984,11 +972,10 @@ header.sticky {
 .erp-modal select:focus,
 .erp-modal textarea:focus {
 	border-color: var(--color-primary);
-	box-shadow: 0 0 0 3px rgba(14, 164, 114, 0.12);
 }
 .erp-modal input::placeholder,
 .erp-modal textarea::placeholder {
-	color: #94a3b8;
+	color: #a3aed0;
 }
 
 .erp-modal textarea {
@@ -1003,19 +990,19 @@ header.sticky {
 	word-break: break-word;
 }
 .bom-material-table .bom-code-cell {
-	border-right: 1px solid #e2e8f0;
-	background: #f8fafc;
+	border-right: 1px solid #e9edf7;
+	background: #f9fbff;
 }
 .bom-material-table .bom-name-cell small {
 	display: block;
 	margin-top: 2px;
-	color: #94a3b8;
+	color: #a3aed0;
 }
 
 /* ─── Divider ────────────────────────────────────────────────────────────────── */
 .erp-divider {
 	height: 1px;
-	background: #f1f5f9;
+	background: #e9edf7;
 	margin: 0;
 }
 
@@ -1026,7 +1013,7 @@ header.sticky {
 	align-items: center;
 	justify-content: center;
 	padding: 60px 20px;
-	color: #94a3b8;
+	color: #a3aed0;
 	text-align: center;
 	gap: 10px;
 }
@@ -1129,8 +1116,11 @@ header.sticky {
 	background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-	background: #cbd5e1;
+	background: #d0dcfb;
 	border-radius: 99px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+	background: #a3aed0;
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -1168,9 +1158,9 @@ header.sticky {
 }
 .react-datepicker {
 	font-family: inherit !important;
-	border: 1px solid #e2e8f0 !important;
-	border-radius: 10px !important;
-	box-shadow: 0 10px 25px rgba(15, 23, 42, 0.12) !important;
+	border: 1px solid #e0e5f2 !important;
+	border-radius: 16px !important;
+	box-shadow: 14px 17px 40px 4px rgba(112, 144, 176, 0.16) !important;
 	padding: 6px !important;
 }
 .react-datepicker__header {
@@ -1179,18 +1169,18 @@ header.sticky {
 }
 .react-datepicker__current-month {
 	font-weight: 700 !important;
-	color: #0f172a !important;
+	color: #1b2559 !important;
 	font-size: 14px !important;
 }
 .react-datepicker__day--selected,
 .react-datepicker__day--keyboard-selected {
 	background: var(--color-primary) !important;
 	color: #fff !important;
-	border-radius: 6px !important;
+	border-radius: 10px !important;
 }
 .react-datepicker__day:hover {
-	border-radius: 6px !important;
-	background: #f0fdf4 !important;
+	border-radius: 10px !important;
+	background: #f4f7fe !important;
 }
 .react-datepicker__month-container {
 	width: 300px !important;
@@ -1212,8 +1202,8 @@ header.sticky {
 	justify-content: center;
 }
 .react-datepicker__month-text:hover {
-	background: #f0fdf4 !important;
-	color: #0c8b60 !important;
+	background: #f4f7fe !important;
+	color: #422afb !important;
 }
 .react-datepicker__month-text--selected,
 .react-datepicker__month-text--keyboard-selected {

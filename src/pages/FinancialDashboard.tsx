@@ -21,7 +21,12 @@ import {
 } from "recharts";
 import toast from "../components/ui/toast";
 import { useMemo } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import {
+	Card,
+	CardContent,
+	CardHeader,
+	CardTitle,
+} from "../components/ui/card";
 import Badge from "../components/ui/badge";
 import { formatNumber } from "../lib/utils";
 
@@ -60,17 +65,17 @@ const initial: Data = {
 	lowStock: [],
 };
 export default function FinancialDashboard() {
-	console.debug('[FinancialDashboard] component rendered');
+	console.debug("[FinancialDashboard] component rendered");
 	const [data, setData] = useState<Data>(initial),
 		[loading, setLoading] = useState(true);
 	useEffect(() => {
 		const token = localStorage.getItem("token");
-		console.debug('[FinancialDashboard] token from localStorage:', token);
+		console.debug("[FinancialDashboard] token from localStorage:", token);
 		fetch("/api/dashboard/financial", {
 			headers: { Authorization: `Bearer ${token}` },
 		})
 			.then(async r => {
-				console.debug('[FinancialDashboard] response status:', r.status);
+				console.debug("[FinancialDashboard] response status:", r.status);
 				const d = await r.json();
 				if (!r.ok) throw new Error(d.error);
 				setData(d);
@@ -97,15 +102,23 @@ export default function FinancialDashboard() {
 			const [year, month] = String(item.monthKey || "").split("-");
 			return {
 				...item,
-				label: month && year ? `T${Number(month)}/${year.slice(2)}` : item.monthKey,
+				label:
+					month && year ? `T${Number(month)}/${year.slice(2)}` : item.monthKey,
 				profit: Number(item.revenue || 0) - Number(item.expense || 0),
 			};
 		});
 	}, [data.monthly]);
-	const chartTotal = useMemo(() => chartData.reduce((sum, item) => ({
-		revenue: sum.revenue + Number(item.revenue || 0),
-		expense: sum.expense + Number(item.expense || 0),
-	}), { revenue: 0, expense: 0 }), [chartData]);
+	const chartTotal = useMemo(
+		() =>
+			chartData.reduce(
+				(sum, item) => ({
+					revenue: sum.revenue + Number(item.revenue || 0),
+					expense: sum.expense + Number(item.expense || 0),
+				}),
+				{ revenue: 0, expense: 0 },
+			),
+		[chartData],
+	);
 	return (
 		<div className="erp-page">
 			<div className="erp-page-header">
@@ -136,47 +149,99 @@ export default function FinancialDashboard() {
 							<CardHeader>
 								<div>
 									<CardTitle>Doanh thu và chi phí 6 tháng gần nhất</CardTitle>
-									<p className="mt-1 text-[12.5px] text-[#667085]">
+									<p className="mt-1 text-[12.5px] text-[#a3aed0]">
 										So sánh doanh thu, chi phí và lợi nhuận theo tháng
 									</p>
 								</div>
 								<div className="flex flex-wrap items-center gap-2">
-									<Badge tone="success">Doanh thu {formatNumber(chartTotal.revenue)} ₫</Badge>
-									<Badge tone="error">Chi phí {formatNumber(chartTotal.expense)} ₫</Badge>
+									<Badge tone="success">
+										Doanh thu {formatNumber(chartTotal.revenue)} ₫
+									</Badge>
+									<Badge tone="error">
+										Chi phí {formatNumber(chartTotal.expense)} ₫
+									</Badge>
 								</div>
 							</CardHeader>
 							<CardContent>
 								<div className="flex flex-wrap items-center gap-4 pb-3 text-[12.5px] font-medium text-[#475467]">
-									<span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-[#465fff]" /> Doanh thu</span>
-									<span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-[#12b76a]" /> Chi phí</span>
-									<span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-[#f79009]" /> Lợi nhuận</span>
+									<span className="inline-flex items-center gap-1.5">
+										<span className="h-2.5 w-2.5 rounded-full bg-[#422afb]" />{" "}
+										Doanh thu
+									</span>
+									<span className="inline-flex items-center gap-1.5">
+										<span className="h-2.5 w-2.5 rounded-full bg-[#12b76a]" />{" "}
+										Chi phí
+									</span>
+									<span className="inline-flex items-center gap-1.5">
+										<span className="h-2.5 w-2.5 rounded-full bg-[#f79009]" />{" "}
+										Lợi nhuận
+									</span>
 								</div>
 								<div className="h-80">
 									{chartData.length ? (
 										<ResponsiveContainer width="100%" height="100%">
-											<BarChart data={chartData} barCategoryGap="28%" margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-												<CartesianGrid stroke="#eaecf0" strokeDasharray="4 4" vertical={false} />
-												<XAxis dataKey="label" tickLine={false} axisLine={{ stroke: "#eaecf0" }} tick={{ fontSize: 12, fill: "#667085" }} />
+											<BarChart
+												data={chartData}
+												barCategoryGap="28%"
+												margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
+											>
+												<CartesianGrid
+													stroke="#e9edf7"
+													strokeDasharray="4 4"
+													vertical={false}
+												/>
+												<XAxis
+													dataKey="label"
+													tickLine={false}
+													axisLine={{ stroke: "#e9edf7" }}
+													tick={{ fontSize: 12, fill: "#a3aed0" }}
+												/>
 												<YAxis
 													tickLine={false}
 													axisLine={false}
 													width={56}
-													tick={{ fontSize: 12, fill: "#667085" }}
+													tick={{ fontSize: 12, fill: "#a3aed0" }}
 													tickFormatter={v => `${Math.round(v / 1000000)}tr`}
 												/>
 												<Tooltip
 													cursor={{ fill: "rgba(70,95,255,0.08)" }}
-													contentStyle={{ borderRadius: 12, border: "1px solid #eaecf0", boxShadow: "0 12px 32px -8px rgba(16,24,40,.18)", fontSize: 12 }}
-													formatter={(v: any, name: any) => [`${formatNumber(Number(v))} ₫`, name]}
+													contentStyle={{
+														borderRadius: 12,
+														border: "1px solid #e9edf7",
+														boxShadow: "0 12px 32px -8px rgba(16,24,40,.18)",
+														fontSize: 12,
+													}}
+													formatter={(v: any, name: any) => [
+														`${formatNumber(Number(v))} ₫`,
+														name,
+													]}
 													labelStyle={{ fontWeight: 600, marginBottom: 4 }}
 												/>
-												<Bar dataKey="revenue" name="Doanh thu" fill="#465fff" radius={[6, 6, 0, 0]} maxBarSize={28} />
-												<Bar dataKey="expense" name="Chi phí" fill="#12b76a" radius={[6, 6, 0, 0]} maxBarSize={28} />
-												<Bar dataKey="profit" name="Lợi nhuận" fill="#f79009" radius={[6, 6, 0, 0]} maxBarSize={28} />
+												<Bar
+													dataKey="revenue"
+													name="Doanh thu"
+													fill="#422afb"
+													radius={[6, 6, 0, 0]}
+													maxBarSize={28}
+												/>
+												<Bar
+													dataKey="expense"
+													name="Chi phí"
+													fill="#12b76a"
+													radius={[6, 6, 0, 0]}
+													maxBarSize={28}
+												/>
+												<Bar
+													dataKey="profit"
+													name="Lợi nhuận"
+													fill="#f79009"
+													radius={[6, 6, 0, 0]}
+													maxBarSize={28}
+												/>
 											</BarChart>
 										</ResponsiveContainer>
 									) : (
-										<div className="flex h-full items-center justify-center rounded-lg bg-[#f9fafb] text-sm text-[#98a2b3]">
+										<div className="flex h-full items-center justify-center rounded-lg bg-[#f4f7fe] text-sm text-[#a3aed0]">
 											Chưa có dữ liệu 6 tháng gần nhất
 										</div>
 									)}
@@ -228,9 +293,7 @@ export default function FinancialDashboard() {
 								{data.lowStock.map(x => (
 									<tr key={x.id}>
 										<td>{x.sku}</td>
-										<td>
-											{x.productName} - {x.packagingName}
-										</td>
+										<td>{x.productName}</td>
 										<td className="text-right font-bold">
 											{formatNumber(Number(x.stock || 0))}
 										</td>

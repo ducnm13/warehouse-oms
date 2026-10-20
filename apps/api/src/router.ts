@@ -19,6 +19,7 @@ import { customerGroupRouter } from "./modules/customer-groups/customer-group.ro
 import { onlineRouter } from "./modules/online/online.routes";
 import { iamRouter } from "./modules/iam/iam.routes";
 import { chatRouter } from "./modules/chat/chat.routes";
+import { devtoolsRouter } from "./modules/devtools/devtools.routes";
 import { documentCodePrefixes, nextDocumentCode } from "./common/document-code";
 import { asyncHandler } from "./common/async-handler";
 
@@ -45,6 +46,7 @@ v1Router.use("/customer-groups", customerGroupRouter);
 v1Router.use("/online", onlineRouter);
 v1Router.use("/iam", iamRouter);
 v1Router.use("/chat", chatRouter);
+v1Router.use("/devtools", devtoolsRouter);
 v1Router.get("/next-code/:scope", authenticateV1, asyncHandler(async (req: any, res: any) => {
   if (!documentCodePrefixes[req.params.scope]) {
     res.status(400).json({ success: false, message: "Phạm vi mã không hợp lệ", data: null });

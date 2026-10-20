@@ -97,15 +97,15 @@ export default function OnlineReport() {
 						{chartData.length ? (
 							<ResponsiveContainer width="100%" height="100%">
 								<BarChart data={chartData} barCategoryGap="28%" margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-									<CartesianGrid stroke="#eaecf0" strokeDasharray="4 4" vertical={false} />
-									<XAxis dataKey="label" tickLine={false} axisLine={{ stroke: "#eaecf0" }} tick={{ fontSize: 12, fill: "#667085" }} />
-									<YAxis tickLine={false} axisLine={false} width={56} tick={{ fontSize: 12, fill: "#667085" }} tickFormatter={v => `${Math.round(v / 1000000)}tr`} />
-									<Tooltip cursor={{ fill: "rgba(70,95,255,0.08)" }} contentStyle={{ borderRadius: 12, border: "1px solid #eaecf0", fontSize: 12 }} formatter={(v: any) => [`${formatNumber(Number(v))} ₫`, "Doanh thu"]} />
-									<Bar dataKey="revenue" name="Doanh thu" fill="#465fff" radius={[6, 6, 0, 0]} maxBarSize={28} />
+									<CartesianGrid stroke="#e9edf7" strokeDasharray="4 4" vertical={false} />
+									<XAxis dataKey="label" tickLine={false} axisLine={{ stroke: "#e9edf7" }} tick={{ fontSize: 12, fill: "#a3aed0" }} />
+									<YAxis tickLine={false} axisLine={false} width={56} tick={{ fontSize: 12, fill: "#a3aed0" }} tickFormatter={v => `${Math.round(v / 1000000)}tr`} />
+									<Tooltip cursor={{ fill: "rgba(70,95,255,0.08)" }} contentStyle={{ borderRadius: 12, border: "1px solid #e9edf7", fontSize: 12 }} formatter={(v: any) => [`${formatNumber(Number(v))} ₫`, "Doanh thu"]} />
+									<Bar dataKey="revenue" name="Doanh thu" fill="#422afb" radius={[6, 6, 0, 0]} maxBarSize={28} />
 								</BarChart>
 							</ResponsiveContainer>
 						) : (
-							<div className="flex h-full items-center justify-center rounded-lg bg-[#f9fafb] text-sm text-[#98a2b3]">
+							<div className="flex h-full items-center justify-center rounded-lg bg-[#f4f7fe] text-sm text-[#a3aed0]">
 								{monthly.isLoading ? "Đang tải dữ liệu..." : "Chưa có dữ liệu"}
 							</div>
 						)}

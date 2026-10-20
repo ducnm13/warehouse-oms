@@ -506,7 +506,7 @@ const MaterialTransactions = () => {
         <div>
           <button
             onClick={openCreateModal}
-            className="flex items-center gap-2 rounded bg-primary py-2 px-4 text-sm font-bold text-white hover:bg-opacity-90 transition-all shadow-sm whitespace-nowrap"
+            className="erp-btn erp-btn-primary"
           >
             <Plus size={16} /> LẬP PHIẾU MỚI
           </button>
@@ -815,7 +815,7 @@ const MaterialTransactions = () => {
                       <button
                         type="button"
                         onClick={handleAddDetail}
-                        className="text-xs bg-primary/10 text-primary px-3 py-1 rounded-full font-bold hover:bg-primary hover:text-white transition-all"
+                        className="text-xs bg-[#e9e3ff] text-[#422afb] px-3 py-1.5 rounded-[10px] font-bold hover:bg-[#422afb] hover:text-white transition-all"
                       >
                         + THÊM DÒNG
                       </button>
@@ -928,7 +928,7 @@ const MaterialTransactions = () => {
                   </button>
                   <button
                     type="submit"
-                    className="px-8 py-2 bg-primary text-white rounded-lg font-bold hover:bg-opacity-90 transition-all shadow-md uppercase text-xs tracking-wider"
+                    className="erp-btn erp-btn-primary uppercase tracking-widest text-[10px]"
                   >
                     Lưu phiếu
                   </button>
@@ -1043,13 +1043,13 @@ const MaterialTransactions = () => {
               <div className="flex justify-end gap-4 mt-8 no-print">
                 <button
                   onClick={() => openPreview(viewTransaction)}
-                  className="flex items-center gap-2 px-6 py-2 border rounded-lg font-bold text-indigo-700 hover:bg-indigo-50 border-indigo-200 transition-colors uppercase text-xs"
+                  className="erp-btn uppercase tracking-widest text-[10px]"
                 >
                   <Printer size={18} /> XEM TRƯỚC VÀ IN
                 </button>
                 <button
                   onClick={() => setIsDetailModalOpen(false)}
-                  className="px-6 py-2 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-900 transition-colors uppercase text-xs"
+                  className="erp-btn erp-btn-primary uppercase tracking-widest text-[10px]"
                 >
                   ĐÓNG
                 </button>
@@ -1079,7 +1079,7 @@ const MaterialTransactions = () => {
                 </button>
                 <button
                   onClick={handlePrint}
-                  className="px-10 py-2 bg-indigo-600 text-white rounded-lg font-black hover:bg-indigo-700 transition-all shadow-lg uppercase text-[10px] tracking-widest flex items-center gap-2"
+                  className="erp-btn erp-btn-primary !px-6 uppercase tracking-widest text-[10px]"
                 >
                   <Printer size={16} /> IN PHIẾU NGAY
                 </button>

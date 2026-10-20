@@ -4,7 +4,6 @@ import { HttpError } from "../../common/http-error";
 import { mapSalesDocument } from "./sales.mapper";
 import { prisma, salesInclude, salesRepository } from "./sales.repository";
 import { resolveDocumentCode } from "../../common/document-code";
-import { evaluatePromotions } from "../promotions/promotion.engine";
 
 const decimal = (value: number) => new Prisma.Decimal(value.toFixed(4));
 const money = (value: number) => new Prisma.Decimal(value.toFixed(2));
@@ -51,14 +50,6 @@ const lineData = (line: ReturnType<typeof calculate>["details"][number]) => ({
   promotionCode: line.promotionCode || null,
   promotionName: line.promotionName || null,
 });
-
-async function withPromotions(input: SalesDraftInput) {
-  const saleDetails = input.details
-    .filter((line) => (line.lineType || "SALE") === "SALE")
-    .map((line) => ({ ...line, lineType: "SALE" as const }));
-  const gifts = await evaluatePromotions({ orderDate: input.orderDate, customerId: input.customerId, warehouseId: input.warehouseId, details: saleDetails.map(line => ({ packagingId: line.packagingId, quantity: line.quantity })) });
-  return { ...input, details: [...saleDetails, ...gifts] };
-}
 
 async function lockOrder(tx: any, id: number) {
   const rows = await tx.$queryRawUnsafe("SELECT id,status,version FROM sales_orders WHERE id=? FOR UPDATE", id) as any[];
@@ -142,7 +133,7 @@ export const salesService = {
 
   async createDraft(input: SalesDraftInput, userId: number) {
     await validateMasterData(input);
-    const totals = calculate(await withPromotions(input));
+    const totals = calculate(input);
     const code = await resolveDocumentCode("sales", (input as { code?: string }).code);
     const now = nowIso();
     const row = await prisma.sales_orders.create({
@@ -161,7 +152,7 @@ export const salesService = {
 
   async updateDraft(id: number, input: SalesUpdateInput, userId: number) {
     await validateMasterData(input);
-    const totals = calculate(await withPromotions(input));
+    const totals = calculate(input);
     return prisma.$transaction(async tx => {
       const current = await lockOrder(tx, id);
       if (current.status !== "DRAFT") throw new HttpError(409, "SALES_NOT_EDITABLE", "Đơn đã ghi sổ phải bỏ ghi sổ trước khi sửa");

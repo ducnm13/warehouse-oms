@@ -301,7 +301,7 @@ export default function Purchases() {
 									<tr key={d.id}>
 										<td>
 											<button
-												className="font-semibold text-emerald-700"
+												className="font-bold text-[#422afb] hover:underline"
 												onClick={() => setSelected(d)}
 											>
 												{d.code}
@@ -715,7 +715,7 @@ export default function Purchases() {
 									{selected.details.map(d => (
 										<tr key={d.id}>
 											<td>
-												{d.productName} - {d.packagingName}
+												{d.productName}
 												<small>{d.sku}</small>
 											</td>
 											<td>{d.warehouseName || "-"}</td>

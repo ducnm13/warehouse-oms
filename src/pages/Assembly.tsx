@@ -477,7 +477,7 @@ quantity: Number(Number(line.quantity || 0).toFixed(3)),
 							<tr key={row.id}>
 								<td>
 									<button
-										className="font-bold text-indigo-700"
+										className="font-bold text-[#422afb] hover:underline"
 										onClick={() => viewOrder(row)}
 									>
 										{row.code}
@@ -546,14 +546,14 @@ quantity: Number(Number(line.quantity || 0).toFixed(3)),
 					<>
 						<button
 							type="button"
-							className="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+							className="erp-btn"
 							onClick={() => setOpen(false)}
 						>
 							Hủy
 						</button>
 						<button
 							type="button"
-							className="rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+							className="erp-btn erp-btn-primary"
 							disabled={save.isPending}
 							onClick={() => save.mutate()}
 						>
@@ -821,7 +821,7 @@ quantity: Number(Number(line.quantity || 0).toFixed(3)),
 						{selected && ["DRAFT"].includes(selected.status) && !(selected.links || []).some((link: any) => link.linkType === "INVENTORY_ISSUE") && (
 							<button
 								type="button"
-								className="rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+								className="erp-btn erp-btn-primary"
 								onClick={() => {
 									openDraft(
 										selected,
@@ -840,7 +840,7 @@ quantity: Number(Number(line.quantity || 0).toFixed(3)),
 						{selected && ["DRAFT"].includes(selected.status) && !(selected.links || []).some((link: any) => link.linkType === "INVENTORY_RECEIPT") && (
 							<button
 								type="button"
-								className="rounded bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+								className="erp-btn erp-btn-primary"
 								onClick={() => {
 									const outputs = selected.outputs?.length
 										? selected.outputs
@@ -871,7 +871,7 @@ quantity: Number(Number(line.quantity || 0).toFixed(3)),
 						)}
 						<button
 							type="button"
-							className="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+							className="erp-btn"
 							onClick={() => setSelected(null)}
 						>
 							Đóng
@@ -969,8 +969,8 @@ quantity: Number(Number(line.quantity || 0).toFixed(3)),
 				onClose={() => setVoucherDraft(null)}
 				footer={(
 					<>
-						<button type="button" className="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50" onClick={() => setVoucherDraft(null)}>Đóng</button>
-						<button type="button" className="rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50" disabled={savingVoucher} onClick={() => void confirmDraftToInventory()}>{savingVoucher ? "Đang lưu phiếu..." : "Lưu phiếu"}</button>
+						<button type="button" className="erp-btn" onClick={() => setVoucherDraft(null)}>Đóng</button>
+						<button type="button" className="erp-btn erp-btn-primary" disabled={savingVoucher} onClick={() => void confirmDraftToInventory()}>{savingVoucher ? "Đang lưu phiếu..." : "Lưu phiếu"}</button>
 					</>
 				)}
 			>

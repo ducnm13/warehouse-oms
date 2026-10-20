@@ -102,6 +102,10 @@ export const debtService = {
           s.orderDate paymentDate,s.paymentMethod method,s.paidAmount amount,s.totalAmount
         FROM sales_orders s JOIN customers c ON c.id=s.customerId
         WHERE s.status IN ('POSTED','FULFILLED') AND COALESCE(s.paidAmount,0) > 0.005
+        AND NOT EXISTS (
+          SELECT 1 FROM payment_receipt_allocations a JOIN payment_receipts r ON r.id=a.paymentReceiptId
+          WHERE a.salesOrderId=s.id AND r.status <> 'CANCELLED'
+        )
         ${query.search ? "AND (s.code LIKE ? OR c.code LIKE ? OR c.name LIKE ?)" : ""}
         ORDER BY s.id DESC LIMIT 100`, ...(query.search ? [`%${query.search}%`, `%${query.search}%`, `%${query.search}%`] : []));
       for (const payment of salePayments) {

@@ -14,6 +14,7 @@ import toast from "../components/ui/toast";
 import { prompt } from "../components/ui/confirm";
 import { apiV1, legacyApi } from "../lib/apiV1";
 import { formatDate, formatNumber } from "../lib/utils";
+import { finishedGoodsWarehouseId } from "../lib/warehouse-defaults";
 import PrintPreview from "../components/PrintPreview";
 import {
 	fillGenericDocument,
@@ -179,7 +180,7 @@ export default function SalesReturns() {
 	const create = () => {
 		setEditing(null);
 		setOrderId(0);
-		setWarehouseId(references.data?.warehouses[0]?.id || 0);
+		setWarehouseId(finishedGoodsWarehouseId(references.data?.warehouses));
 		setReturnDate(today());
 		setReason("");
 		setLines([]);
@@ -271,7 +272,7 @@ export default function SalesReturns() {
 									<tr key={document.id}>
 										<td>
 											<button
-												className="font-bold text-indigo-700"
+												className="font-bold text-[#422afb] hover:underline"
 												onClick={() => setSelected(document)}
 											>
 												{document.code}

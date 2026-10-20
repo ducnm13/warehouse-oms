@@ -49,7 +49,6 @@ import {
 	applyCompanyHeader,
 	buildCompanyPrintProfile,
 	numberToVietnameseWords,
-	type CompanyPrintProfile,
 } from "../lib/printTemplate";
 
 const headerSchema = z.object({
@@ -901,12 +900,12 @@ export default function SalesOrdersV1() {
 				);
 				return;
 			}
-		if (
-			await confirm(
-				`Xóa vĩnh viễn đơn test ${document.code} ở trạng thái ${statusMeta[document.status as V1Status].label}?`,
+			if (
+				await confirm(
+					`Xóa vĩnh viễn đơn test ${document.code} ở trạng thái ${statusMeta[document.status as V1Status].label}?`,
+				)
 			)
-		)
-			deleteMutation.mutate(document);
+				deleteMutation.mutate(document);
 			return;
 		}
 		if (
@@ -1060,145 +1059,15 @@ export default function SalesOrdersV1() {
 		toast.success("Đã xuất đơn hàng theo file mẫu");
 	};
 
-	const printOrderFromTemplate = async (order: SalesOrder) => {
-		const workbook = await buildOrderWorkbook(order);
-		if (!workbook) return;
-		const companyResponse = await apiV1<any>("/api/v1/company").catch(
-			() => null,
-		);
-		const company = buildCompanyPrintProfile(companyResponse?.data || null);
-		const html = await workbookToPrintableHtml(workbook, order, company);
-		const printWindow = window.open("", "_blank", "width=1024,height=768");
-		if (!printWindow) {
-			toast.error("Trình duyệt đã chặn cửa sổ in, vui lòng cho phép popup");
-			return;
-		}
-		printWindow.document.open();
-		printWindow.document.write(html);
-		printWindow.document.close();
-		printWindow.focus();
-		window.setTimeout(() => {
-			printWindow.print();
-		}, 300);
-	};
-
-	const workbookToPrintableHtml = async (
-		workbook: ExcelJS.Workbook,
-		order: SalesOrder,
-		company: CompanyPrintProfile | null,
-	) => {
-		const htmlEsc = (value: unknown) =>
-			String(value ?? "")
-				.replace(/&/g, "&amp;")
-				.replace(/</g, "&lt;")
-				.replace(/>/g, "&gt;")
-				.replace(/"/g, "&quot;");
-		const signerNameAbove = (code: string) => {
-			if (!company?.printSettings?.printSignerNames) return "";
-			const signature = company.signatures?.find(item => item.code === code);
-			let name =
-				signature && signature.isActive !== false
-					? signature.signerName || ""
-					: "";
-			if (
-				!name &&
-				code === "PREPARER" &&
-				company.printSettings.preparerFromLoggedInUser !== false
-			) {
-				try {
-					name =
-						JSON.parse(localStorage.getItem("user") || "{}").fullName || "";
-				} catch {
-					name = "";
-				}
-			}
-			return name ? `<br/><b>${htmlEsc(name)}</b>` : "";
-		};
-		const customerGroup =
-			references.data?.customers.find(
-				customer => customer.id === order.customerId,
-			)?.groupName || "";
-		const rate = order.subtotal > 0 ? order.taxAmount / order.subtotal : 0;
-		const cellText = (value: any): string => {
-			if (value === null || value === undefined) return "";
-			if (typeof value === "object") {
-				if (Array.isArray(value.richText))
-					return value.richText.map((part: any) => part.text).join("");
-				if (value.text !== undefined) return String(value.text);
-				if (value.result !== undefined) return cellText(value.result);
-				if (value.formula !== undefined) return "";
-				return "";
-			}
-			if (typeof value === "number") return formatNumber(value);
-			return String(value);
-		};
-		const worksheet = workbook.worksheets[0];
-		const merged = new Map<
-			number,
-			Array<{ min: number; max: number; text: string }>
-		>();
-		for (const range of Object.keys((worksheet as any)._merges || {})) {
-			const match = String(range).match(/([A-Z]+)(\d+):([A-Z]+)(\d+)/);
-			if (!match) continue;
-			const colToNumber = (col: string) =>
-				col.split("").reduce((sum, ch) => sum * 26 + ch.charCodeAt(0) - 64, 0);
-			const rowNumber = Number(match[2]);
-			const min = colToNumber(match[1]);
-			const max = colToNumber(match[3]);
-			const text = cellText(worksheet.getCell(`${match[1]}${rowNumber}`).value);
-			if (!merged.has(rowNumber)) merged.set(rowNumber, []);
-			merged.get(rowNumber)?.push({ min, max, text });
-		}
-		const bodyRows: string[] = [];
-		worksheet.eachRow({ includeEmpty: true }, row => {
-			if (row.number < 5 || row.number > 39) return;
-			const rowMerges = merged.get(row.number) || [];
-			const covered = new Set<number>();
-			const parts: string[] = [];
-			for (const item of rowMerges) {
-				for (let column = item.min; column <= item.max; column++)
-					covered.add(column);
-				parts.push(
-					`<td colspan="${item.max - item.min + 1}">${item.text}</td>`,
-				);
-			}
-			for (let column = 1; column <= 14; column++) {
-				if (covered.has(column)) continue;
-				parts.push(`<td>${cellText(row.getCell(column).value)}</td>`);
-			}
-			bodyRows.push(`<tr>${parts.join("")}</tr>`);
-		});
-		return `<!doctype html><html lang="vi"><head><meta charset="utf-8" /><title>Đơn đặt hàng ${order.code}</title>
-			<style>body{font-family:Arial,sans-serif;padding:20px;color:#111}.company{text-align:center;line-height:1.35}.company h2{font-size:17px;margin:0}.company p{margin:2px 0;font-size:12px}.title{text-align:center;font-size:22px;font-weight:800;margin:12px 0;font-family:"Times New Roman",serif}.meta{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;font-size:12.5px;margin-bottom:10px}table.items{width:100%;border-collapse:collapse;font-size:11.5px}table.items td,table.items th{border:1px solid #111;padding:5px;vertical-align:top}table.items th{background:#f2f2f2;text-align:center}.right{text-align:right}.center{text-align:center}.summary{margin-top:8px;font-size:12.5px}.sign{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:18px;text-align:center;font-size:12px}@media print{@page{size:A4 landscape;margin:8mm}body{padding:0}}</style>
-			</head><body>
-			<div class="company"><h2>${htmlEsc(company?.name ? String(company.name).toUpperCase() : "CÔNG TY TNHH SẢN XUẤT THƯƠNG MẠI DỊCH VỤ CHALLENGE")}</h2>${company?.address ? `<p>Trụ sở chính: ${htmlEsc(company.address)}</p>` : ""}<p>${company?.website ? `Website: ${htmlEsc(company.website)}` : ""}${company?.phone ? ` - ĐT: ${htmlEsc(company.phone)}` : ""}</p></div>
-			<div class="title">ĐƠN ĐẶT HÀNG</div>
-			<div class="meta"><div>Ngày đặt hàng: <b>${formatDate(order.orderDate)}</b></div><div>Số phiếu: <b>${order.code}</b></div><div>Khách hàng: <b>${order.customerName || ""}</b></div><div>Số điện thoại: <b>${order.customerPhone || ""}</b></div><div>Loại hình khách hàng: <b>${customerGroup}</b></div><div>Địa chỉ xuất HĐ: <b>${order.customerAddress || ""}</b></div><div>Địa chỉ giao hàng: <b>${order.customerAddress || ""}</b></div><div>Mã số thuế: <b>${order.customerTaxCode || ""}</b></div><div>Người đặt hàng: <b>${order.creatorName || ""}</b></div><div>Thời gian giao hàng: <b>${order.deliveryDate ? formatDate(order.deliveryDate) : ""}</b></div></div>
-			<table class="items"><thead><tr><th>STT</th><th>Mã hàng hóa</th><th>Tên hàng hóa</th><th>Quy cách</th><th>ĐVT</th><th>Số lượng</th><th>Số lượng hàng hỗ trợ</th><th>Sản phẩm hỗ trợ</th><th>Giá bán trước VAT</th><th>Giá bán sau VAT</th><th>Thành tiền</th><th>Chiết khấu</th><th>Thành tiền sau CK</th><th>Ghi chú</th></tr></thead><tbody>
-			${order.details
-				.map((line, index) => {
-					const fullName = [line.productName, line.packagingName]
-						.filter(Boolean)
-						.join(" - ");
-					const beforeVat = line.unitPrice * (1 + rate);
-					return `<tr><td class="center">${index + 1}</td><td>${line.sku || ""}</td><td>${fullName}</td><td>${line.packagingName || ""}</td><td class="center">${line.unit || ""}</td><td class="right">${formatNumber(line.quantity)}</td><td class="right">${line.lineType === "PROMOTION" ? formatNumber(line.quantity) : ""}</td><td>${line.lineType === "PROMOTION" ? fullName : ""}</td><td class="right">${formatNumber(line.unitPrice)}</td><td class="right">${formatNumber(beforeVat)}</td><td class="right">${formatNumber(line.unitPrice * line.quantity)}</td><td class="right">${formatNumber(line.discountRate / 100)}</td><td class="right">${formatNumber(line.lineTotal || 0)}</td><td>${line.note || ""}</td></tr>`;
-				})
-				.join("")}
-			</tbody></table>
-			<div class="summary">Cộng tiền hàng: <b>${formatNumber(order.subtotal)} ₫</b><br/>VAT (${(rate * 100).toLocaleString("vi-VN")}%): <b>${formatNumber(order.taxAmount)} ₫</b><br/>Tổng tiền hàng sau VAT: <b>${formatNumber(order.totalAmount)} ₫</b><br/>Số tiền (bằng chữ): <b>${numberToVietnameseWords(order.totalAmount)}</b><br/>Đơn giá trên đã gồm ${(rate * 100).toLocaleString("vi-VN")}% VAT và chiết khấu thương mại.</div>
-			<div class="sign"><div>ĐẠI DIỆN KHÁCH HÀNG<br/>(Ký, ghi họ tên)</div><div>NGƯỜI LẬP<br/>(Ký, ghi họ tên)${signerNameAbove("PREPARER")}</div><div>Kế Toán<br/>(Ký, ghi họ tên)${signerNameAbove("CHIEF_ACCOUNTANT")}</div><div>${htmlEsc(company?.name ? String(company.name).toUpperCase() : "CÔNG TY TNHH SẢN XUẤT THƯƠNG MẠI DỊCH VỤ CHALLENGE")}<br/>(Ký, ghi họ tên)${signerNameAbove("DIRECTOR")}</div></div>
-			<script>window.onafterprint = () => window.close();<\/script></body></html>`;
-	};
-
 	return (
 		<div className="erp-page">
 			<div className="erp-page-header">
 				<div>
 					<h1>Bán hàng</h1>
-				<p>
-					Các chứng từ bán hàng, xuất kho và ghi nhận công nợ. Lập đơn nháp
-					rồi ghi sổ trực tiếp.
-				</p>
+					<p>
+						Các chứng từ bán hàng, xuất kho và ghi nhận công nợ. Lập đơn nháp
+						rồi ghi sổ trực tiếp.
+					</p>
 				</div>
 				<Button
 					variant="primary"
@@ -1311,7 +1180,7 @@ export default function SalesOrdersV1() {
 									>
 										<td>
 											<button
-												className="font-semibold text-emerald-700"
+												className="font-bold text-[#422afb] hover:underline"
 												onClick={async () => {
 													setSelected(order);
 													setInventoryIssues([]);
@@ -1389,23 +1258,23 @@ export default function SalesOrdersV1() {
 												>
 													<FileSpreadsheet size={17} />
 												</button>
-											{order.status === "DRAFT" && (
-												<>
-													<button
-														className="erp-icon-btn"
-														title="Sửa"
-														onClick={() => openEdit(order)}
-													>
-														<Edit size={16} />
-													</button>
-													<button
-														className="erp-btn erp-btn-post py-1.5"
-														onClick={() => runAction(order, "post")}
-													>
-														Ghi sổ <ChevronRight size={15} />
-													</button>
-												</>
-											)}
+												{order.status === "DRAFT" && (
+													<>
+														<button
+															className="erp-icon-btn"
+															title="Sửa"
+															onClick={() => openEdit(order)}
+														>
+															<Edit size={16} />
+														</button>
+														<button
+															className="erp-btn erp-btn-post py-1.5"
+															onClick={() => runAction(order, "post")}
+														>
+															Ghi sổ <ChevronRight size={15} />
+														</button>
+													</>
+												)}
 												{order.status !== "POSTED" &&
 													order.status !== "CANCELLED" && (
 														<button
@@ -1417,7 +1286,7 @@ export default function SalesOrdersV1() {
 															<Trash2 size={16} />
 														</button>
 													)}
-											{order.status === "POSTED" && (
+												{order.status === "POSTED" && (
 													<>
 														{order.paymentStatus !== "PAID" && (
 															<button
@@ -1431,12 +1300,12 @@ export default function SalesOrdersV1() {
 															className="erp-btn erp-btn-unpost py-1.5"
 															title="Bỏ ghi sổ để khôi phục tồn kho rồi sửa"
 															disabled={actionMutation.isPending}
-														onClick={async () => {
-															if (
-																await confirm(
-																	`Bỏ ghi sổ ${order.code} để khôi phục tồn kho và sửa lại?`,
-																)
-															) {
+															onClick={async () => {
+																if (
+																	await confirm(
+																		`Bỏ ghi sổ ${order.code} để khôi phục tồn kho và sửa lại?`,
+																	)
+																) {
 																	actionMutation.mutate({
 																		document: order,
 																		action: "unpost",
@@ -1509,38 +1378,44 @@ export default function SalesOrdersV1() {
 											placeholder={nextSalesCode.data || "BH00001"}
 										/>
 									</label>
-								<label>
-									Ngày đơn
-									<DateInput
-										value={form.watch("orderDate") || ""}
-										onChange={value =>
-											form.setValue("orderDate", value, { shouldValidate: true })
-										}
-									/>
-									<small className="text-red-500">
-										{form.formState.errors.orderDate?.message}
-									</small>
-								</label>
-								<label>
-									Ngày giao
-									<DateInput
-										value={form.watch("deliveryDate") || ""}
-										placeholder="Theo ngày đơn"
-										onChange={value =>
-											form.setValue("deliveryDate", value, { shouldValidate: true })
-										}
-									/>
-								</label>
-								<label>
-									Hạn thanh toán
-									<DateInput
-										value={form.watch("dueDate") || ""}
-										placeholder="Không thời hạn"
-										onChange={value =>
-											form.setValue("dueDate", value, { shouldValidate: true })
-										}
-									/>
-								</label>
+									<label>
+										Ngày đơn
+										<DateInput
+											value={form.watch("orderDate") || ""}
+											onChange={value =>
+												form.setValue("orderDate", value, {
+													shouldValidate: true,
+												})
+											}
+										/>
+										<small className="text-red-500">
+											{form.formState.errors.orderDate?.message}
+										</small>
+									</label>
+									<label>
+										Ngày giao
+										<DateInput
+											value={form.watch("deliveryDate") || ""}
+											placeholder="Theo ngày đơn"
+											onChange={value =>
+												form.setValue("deliveryDate", value, {
+													shouldValidate: true,
+												})
+											}
+										/>
+									</label>
+									<label>
+										Hạn thanh toán
+										<DateInput
+											value={form.watch("dueDate") || ""}
+											placeholder="Không thời hạn"
+											onChange={value =>
+												form.setValue("dueDate", value, {
+													shouldValidate: true,
+												})
+											}
+										/>
+									</label>
 									<label>
 										Khách hàng
 										<div className="flex gap-2">
@@ -1830,15 +1705,6 @@ export default function SalesOrdersV1() {
 								<button
 									type="button"
 									className="erp-btn"
-									onClick={() =>
-										selected && void printOrderFromTemplate(selected)
-									}
-								>
-									<Printer size={15} /> In
-								</button>
-								<button
-									type="button"
-									className="erp-btn"
 									onClick={() => setOpen(false)}
 								>
 									Hủy
@@ -2038,7 +1904,7 @@ export default function SalesOrdersV1() {
 											}
 										>
 											<td>
-												{line.productName} - {line.packagingName}
+												{line.productName}
 												<small>
 													{line.sku}
 													{line.lineType === "PROMOTION" &&
@@ -2096,9 +1962,7 @@ export default function SalesOrdersV1() {
 															(line: any, lineIndex: number) => (
 																<tr key={line.id || lineIndex}>
 																	<td>
-																		<b>
-																			{line.productName} - {line.packagingName}
-																		</b>
+																		<b>{line.productName}</b>
 																		<small>{line.sku}</small>
 																	</td>
 																	<td className="text-right">
@@ -2244,7 +2108,7 @@ export default function SalesOrdersV1() {
 									</p>
 								)}
 							</div>
-						{selected.cancelReason && (
+							{selected.cancelReason && (
 								<div className="rounded bg-red-50 p-3 text-red-700">
 									Lý do hủy: {selected.cancelReason}
 								</div>
@@ -2271,12 +2135,12 @@ export default function SalesOrdersV1() {
 									type="button"
 									className="erp-btn erp-btn-unpost"
 									disabled={actionMutation.isPending}
-											onClick={async () => {
-												if (
-													await confirm(
-														`Bỏ ghi sổ ${selected.code} để khôi phục tồn kho và sửa lại?`,
-													)
-												) {
+									onClick={async () => {
+										if (
+											await confirm(
+												`Bỏ ghi sổ ${selected.code} để khôi phục tồn kho và sửa lại?`,
+											)
+										) {
 											actionMutation.mutate(
 												{ document: selected, action: "unpost" },
 												{
@@ -2294,7 +2158,7 @@ export default function SalesOrdersV1() {
 									Bỏ ghi sổ
 								</button>
 							)}
-						{selected.status === "DRAFT" && (
+							{selected.status === "DRAFT" && (
 								<button
 									type="button"
 									className="erp-btn erp-btn-post"
@@ -2304,7 +2168,7 @@ export default function SalesOrdersV1() {
 									<CheckCircle2 size={15} /> Ghi sổ
 								</button>
 							)}
-						{selected.status === "DRAFT" && (
+							{selected.status === "DRAFT" && (
 								<button
 									type="button"
 									className="erp-btn"
@@ -2806,7 +2670,7 @@ export default function SalesOrdersV1() {
 							</button>
 							<button
 								onClick={handlePrintReport}
-								className="px-10 py-2 bg-indigo-600 text-white rounded-lg font-black hover:bg-indigo-700 transition-all shadow-lg uppercase text-[10px] tracking-widest flex items-center gap-2"
+								className="erp-btn erp-btn-primary !px-6 uppercase tracking-widest text-[10px]"
 							>
 								<Printer size={16} /> In đơn ngay
 							</button>

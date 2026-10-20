@@ -265,7 +265,7 @@ function CustomerGroups() {
                 setModalOpen(null);
                 setEditingGroup(null);
               }}
-              className="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              className="erp-btn"
             >
               Hủy
             </button>
@@ -279,7 +279,7 @@ function CustomerGroups() {
                   ) as HTMLFormElement | null
                 )?.requestSubmit()
               }
-              className="inline-flex items-center gap-2 rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+              className="erp-btn erp-btn-primary"
             >
               <Save size={14} /> {saving ? 'Đang lưu...' : modalOpen === 'create' ? 'Thêm nhóm' : 'Cập nhật'}
             </button>

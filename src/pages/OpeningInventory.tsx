@@ -596,7 +596,7 @@ export default function OpeningInventory() {
 									<tr key={doc.id}>
 										<td>
 											<button
-												className="font-semibold text-indigo-600 hover:underline"
+												className="font-semibold text-[#422afb] hover:underline"
 												onClick={() => setViewDoc(doc)}
 											>
 												{doc.code}
@@ -831,7 +831,7 @@ export default function OpeningInventory() {
 								Đóng
 							</button>
 							<button
-								className="erp-btn bg-red-600 text-white hover:bg-red-700"
+								className="erp-btn erp-btn-danger"
 								disabled={!cancelReason.trim() || cancel.isPending}
 								onClick={() => cancel.mutate(cancelTarget!)}
 							>

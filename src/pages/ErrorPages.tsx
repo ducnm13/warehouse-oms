@@ -14,13 +14,13 @@ function ErrorShell({ code, title, description, onHome, onBack, icon }: ErrorPag
 	return (
 		<div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-white">
 			<div className="absolute inset-0 bg-black/50" />
-			<div className="relative w-full max-w-xl rounded-2xl border border-[#eaecf0] bg-white p-10 text-center shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25)]">
-				<div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#ecf3ff] text-[#465fff]">
+			<div className="relative w-full max-w-xl rounded-2xl border border-[#e9edf7] bg-white p-10 text-center shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25)]">
+				<div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#e9e3ff] text-[#422afb]">
 					{icon}
 				</div>
-				<p className="text-6xl font-extrabold tracking-tight text-[#101828]">{code}</p>
-				<h1 className="mt-3 text-xl font-bold text-[#101828]">{title}</h1>
-				<p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-[#667085]">{description}</p>
+				<p className="text-6xl font-extrabold tracking-tight text-[#1b2559]">{code}</p>
+				<h1 className="mt-3 text-xl font-bold text-[#1b2559]">{title}</h1>
+				<p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-[#a3aed0]">{description}</p>
 				<div className="mt-6 flex flex-wrap justify-center gap-2.5">
 					{onBack && (
 						<Button variant="outline" onClick={onBack}>
@@ -83,8 +83,8 @@ export function PermissionDeniedPage({ onHome, onBack }: { onHome: () => void; o
 				<div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-[#dc6803] shadow-sm">
 					<AlertTriangle size={26} />
 				</div>
-				<h1 className="text-lg font-bold text-[#101828]">Không có quyền truy cập</h1>
-				<p className="mx-auto mt-2 max-w-md text-sm text-[#667085]">Tài khoản của bạn thiếu quyền cho chức năng này. Liên hệ quản trị viên để được phân quyền phù hợp.</p>
+				<h1 className="text-lg font-bold text-[#1b2559]">Không có quyền truy cập</h1>
+				<p className="mx-auto mt-2 max-w-md text-sm text-[#a3aed0]">Tài khoản của bạn thiếu quyền cho chức năng này. Liên hệ quản trị viên để được phân quyền phù hợp.</p>
 				<div className="mt-5 flex flex-wrap justify-center gap-2.5">
 					{onBack && <Button variant="outline" onClick={onBack}><ArrowLeft size={16} /> Quay lại</Button>}
 					<Button variant="primary" onClick={onHome}><Home size={16} /> Về trang tổng quan</Button>

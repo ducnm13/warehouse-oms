@@ -764,15 +764,15 @@ export default function CatalogProducts({
 							</Button>
 						</div>
 						{addMenuOpen && (
-							<div className="absolute right-0 z-50 mt-1.5 w-52 overflow-hidden rounded-xl border border-[#eaecf0] bg-white shadow-[0_12px_32px_-8px_rgba(16,24,40,0.18)]">
+							<div className="absolute right-0 z-50 mt-1.5 w-52 overflow-hidden rounded-xl border border-[#e9edf7] bg-white shadow-[0_12px_32px_-8px_rgba(16,24,40,0.18)]">
 								<button
-									className="flex w-full items-center gap-2.5 px-4 py-3 text-left text-sm font-medium text-[#344054] hover:bg-[#f9fafb]"
+									className="flex w-full items-center gap-2.5 px-4 py-3 text-left text-sm font-medium text-[#2b3674] hover:bg-[#f4f7fe]"
 									onClick={() => {
 										setAddMenuOpen(false);
 										onOpenImport?.();
 									}}
 								>
-									<Upload size={15} className="text-[#465fff]" /> Nhập từ Excel
+									<Upload size={15} className="text-[#422afb]" /> Nhập từ Excel
 								</button>
 							</div>
 						)}
@@ -889,12 +889,12 @@ export default function CatalogProducts({
 											}
 										>
 											<div
-												className={`p-2 rounded-lg flex-shrink-0 ${isHidden ? "bg-slate-100" : "bg-[#ecf3ff]"}`}
+												className={`p-2 rounded-lg flex-shrink-0 ${isHidden ? "bg-slate-100" : "bg-[#e9e3ff]"}`}
 											>
 												<Package
 													size={16}
 													className={
-														isHidden ? "text-slate-400" : "text-[#465fff]"
+														isHidden ? "text-slate-400" : "text-[#422afb]"
 													}
 												/>
 											</div>
@@ -1234,7 +1234,7 @@ export default function CatalogProducts({
 									</span>
 									<button
 										type="button"
-										className="text-xs font-semibold text-emerald-600 hover:text-emerald-700"
+										className="text-xs font-semibold text-[#422afb] hover:underline"
 										onClick={() =>
 											setProductForm({
 												...productForm,
@@ -1254,7 +1254,7 @@ export default function CatalogProducts({
 								{/* <button
 									type="button"
 									title="Trợ giúp"
-									className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+									className="erp-icon-btn"
 								>
 									?
 								</button> */}
@@ -1262,7 +1262,7 @@ export default function CatalogProducts({
 									type="button"
 									title="Đóng"
 									onClick={() => setProductModal(null)}
-									className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+									className="erp-icon-btn"
 								>
 									<X size={18} />
 								</button>
@@ -1741,7 +1741,7 @@ export default function CatalogProducts({
 												</p>
 												<button
 													type="button"
-													className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+													className="erp-btn erp-btn-sm"
 													onClick={() =>
 														setProductForm({
 															...productForm,
@@ -1918,7 +1918,7 @@ export default function CatalogProducts({
 																		<td className="px-3 py-2 text-center">
 																			<button
 																				type="button"
-																				className="rounded border border-slate-300 px-2 py-1 text-red-500 hover:bg-red-50"
+																				className="erp-icon-btn !h-7 !w-7 text-red-500"
 																				onClick={() =>
 																					setProductForm({
 																						...productForm,
@@ -1948,7 +1948,7 @@ export default function CatalogProducts({
 								<button
 									type="button"
 									onClick={() => setProductModal(null)}
-									className="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+									className="erp-btn"
 								>
 									Hủy
 								</button>
@@ -1960,14 +1960,14 @@ export default function CatalogProducts({
 											: updateProduct.mutate();
 									}}
 									disabled={createProduct.isPending || updateProduct.isPending}
-									className="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+									className="erp-btn"
 								>
 									Cất
 								</button> */}
 								<button
 									type="submit"
 									disabled={createProduct.isPending || updateProduct.isPending}
-									className="inline-flex items-center gap-2 rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+									className="erp-btn erp-btn-primary"
 								>
 									<Save size={14} />{" "}
 									{createProduct.isPending || updateProduct.isPending
@@ -1999,7 +1999,7 @@ export default function CatalogProducts({
 								<button
 									type="button"
 									title="Trợ giúp"
-									className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+									className="erp-icon-btn"
 								>
 									?
 								</button>
@@ -2007,7 +2007,7 @@ export default function CatalogProducts({
 									type="button"
 									title="Đóng"
 									onClick={() => setPkgModal(null)}
-									className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+									className="erp-icon-btn"
 								>
 									<X size={18} />
 								</button>
@@ -2182,7 +2182,7 @@ export default function CatalogProducts({
 								<button
 									type="button"
 									onClick={() => setPkgModal(null)}
-									className="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+									className="erp-btn"
 								>
 									Hủy
 								</button>
@@ -2190,14 +2190,14 @@ export default function CatalogProducts({
 									type="button"
 									onClick={() => savePkg.mutate()}
 									disabled={savePkg.isPending}
-									className="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+									className="erp-btn"
 								>
 									Cất
 								</button>
 								<button
 									type="submit"
 									disabled={savePkg.isPending}
-									className="inline-flex items-center gap-2 rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+									className="erp-btn erp-btn-primary"
 								>
 									<Save size={14} /> {savePkg.isPending ? "Đang lưu..." : "Lưu"}
 								</button>

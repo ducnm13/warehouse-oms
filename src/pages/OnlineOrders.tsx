@@ -684,13 +684,13 @@ const OnlineOrders = () => {
 						onClick={() => setTab(key)}
 						className={`relative px-4 py-2.5 text-sm font-semibold transition-colors ${
 							tab === key
-								? "text-emerald-700"
-								: "text-slate-500 hover:text-slate-800"
+								? "text-[#422afb]"
+								: "text-[#a3aed0] hover:text-[#2b3674]"
 						}`}
 					>
 						{label}
 						{tab === key && (
-							<span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-emerald-600" />
+							<span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-[#422afb]" />
 						)}
 					</button>
 				))}
@@ -746,7 +746,7 @@ const OnlineOrders = () => {
 										className={`rounded-md px-3 py-1 text-xs font-bold transition-colors ${
 											revenueMode === mode
 												? "bg-white text-emerald-700 shadow"
-												: "text-slate-500 hover:text-slate-800"
+												: "text-[#a3aed0] hover:text-[#2b3674]"
 										}`}
 									>
 										{mode === "days" ? "7 ngày" : "12 tháng"}
@@ -799,7 +799,7 @@ const OnlineOrders = () => {
 									type="button"
 									title="Mã mới"
 									onClick={() => fetchNextOrderCode()}
-									className="shrink-0 rounded border border-slate-300 bg-white px-3 py-2 text-slate-600 hover:bg-slate-50"
+									className="erp-btn !px-3"
 								>
 									<RefreshCw size={15} />
 								</button>
@@ -964,7 +964,7 @@ const OnlineOrders = () => {
 					<button
 						type="submit"
 						disabled={saving}
-						className="w-full rounded bg-emerald-600 px-4 py-3 text-base font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+						className="erp-btn erp-btn-primary w-full py-3 text-base"
 					>
 						{saving ? "Đang lưu..." : "Lưu đơn hàng"}
 					</button>

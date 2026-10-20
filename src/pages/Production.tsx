@@ -28,6 +28,10 @@ import {
 	formatProductName,
 } from "../lib/utils";
 import { buildCompanyPrintProfile } from "../lib/printTemplate";
+import {
+	finishedGoodsWarehouseId,
+	materialWarehouseId as findMaterialWarehouseId,
+} from "../lib/warehouse-defaults";
 import type { Product, ProductionOrderV1, User, Warehouse } from "../types";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
@@ -450,10 +454,9 @@ export default function Production({
 		}
 		const costMap = refs.data?.costMap || new Map<number, number>();
 		// Phiếu xuất NVL: mặc định chọn kho nguyên liệu (nếu có), ngược lại lấy kho của lệnh
-		const materialWarehouseId =
-			refs.data?.warehouses
-				.find(w => w.name.toLowerCase().includes("nguyên liệu"))
-				?.id || 0;
+		const materialWarehouseId = findMaterialWarehouseId(
+			refs.data?.warehouses,
+		);
 		const draft = {
 			productionOrderId: order.id,
 			productionOrderCode: order.code,
@@ -522,14 +525,8 @@ export default function Production({
 		openInventoryDraft(order, "IMPORT");
 
 	// Kho mặc định cho lệnh mới: ưu tiên kho thành phẩm, nếu không có thì lấy kho đầu tiên
-	const defaultWarehouseId = () => {
-		const warehouses = refs.data?.warehouses || [];
-		return (
-			warehouses.find(w => w.name.toLowerCase().includes("thành phẩm"))?.id ||
-			warehouses[0]?.id ||
-			0
-		);
-	};
+	const defaultWarehouseId = () =>
+		finishedGoodsWarehouseId(refs.data?.warehouses);
 	const create = () => {
 		setEditing(null);
 		setCode(nextCode.data || "LSX00001");
@@ -690,7 +687,7 @@ export default function Production({
 								<tr key={d.id}>
 									<td>
 										<button
-											className="font-bold text-indigo-700"
+											className="font-bold text-[#422afb] hover:underline"
 											onClick={() => setSelected(d)}
 										>
 											{d.code}
@@ -1225,7 +1222,7 @@ export default function Production({
 							</button>
 							<button
 								onClick={handlePrintReport}
-								className="px-10 py-2 bg-indigo-600 text-white rounded-lg font-black hover:bg-indigo-700 transition-all shadow-lg uppercase text-[10px] tracking-widest flex items-center gap-2"
+								className="erp-btn erp-btn-primary !px-6 uppercase tracking-widest text-[10px]"
 							>
 								<Printer size={16} /> In
 							</button>

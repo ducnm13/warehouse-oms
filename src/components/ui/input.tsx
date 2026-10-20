@@ -10,12 +10,10 @@ import {
 import { cn } from "../../lib/utils";
 
 export const inputClass =
-	"h-11 w-full rounded-lg border border-[#d0d5dd] bg-white px-4 text-sm text-[#101828] shadow-[0_1px_2px_rgba(16,24,40,0.05)] outline-none transition placeholder:text-[#98a2b3] hover:border-[#98a2b3] focus:border-[#465fff] focus:ring-4 focus:ring-[#465fff]/10 disabled:cursor-not-allowed disabled:bg-[#f2f4f7] disabled:text-[#98a2b3]";
+	"h-10 w-full rounded-[14px] border border-[#e0e5f2] bg-white px-3.5 text-[13.5px] text-[#2b3674] outline-none transition placeholder:text-[#a3aed0] hover:border-[#a3aed0] focus:border-[#422afb] disabled:cursor-not-allowed disabled:bg-[#f4f7fe] disabled:text-[#a3aed0]";
 
-export const inputErrorClass =
-	"border-[#f04438] focus:border-[#f04438] focus:ring-[#f04438]/10";
-export const inputSuccessClass =
-	"border-[#12b76a] focus:border-[#12b76a] focus:ring-[#12b76a]/10";
+export const inputErrorClass = "border-[#f04438] focus:border-[#f04438]";
+export const inputSuccessClass = "border-[#12b76a] focus:border-[#12b76a]";
 
 export function Field({
 	className,
@@ -37,7 +35,7 @@ export function FieldLabel({
 }: React.LabelHTMLAttributes<HTMLLabelElement> & { required?: boolean }) {
 	return (
 		<label
-			className={cn("block text-sm font-medium text-[#344054]", className)}
+			className={cn("block text-sm font-medium text-[#2b3674]", className)}
 			{...props}
 		>
 			{children}
@@ -50,7 +48,7 @@ export function FieldHint({
 	className,
 	...props
 }: React.HTMLAttributes<HTMLParagraphElement>) {
-	return <p className={cn("text-xs text-[#667085]", className)} {...props} />;
+	return <p className={cn("text-xs text-[#a3aed0]", className)} {...props} />;
 }
 
 export function FieldError({
@@ -91,7 +89,7 @@ export function Select({
 			</select>
 			<ChevronDown
 				size={16}
-				className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[#667085]"
+				className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[#a3aed0]"
 			/>
 		</div>
 	);
@@ -117,7 +115,7 @@ export function SearchInput({
 		<div className="relative">
 			<Search
 				size={17}
-				className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#98a2b3]"
+				className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#a3aed0]"
 			/>
 			<input className={cn(inputClass, "pl-10", className)} {...props} />
 		</div>
@@ -137,23 +135,23 @@ export function InputGroup({
 	return (
 		<div
 			className={cn(
-				"flex overflow-hidden rounded-lg border border-[#d0d5dd] bg-white shadow-[0_1px_2px_rgba(16,24,40,0.05)] transition focus-within:border-[#465fff] focus-within:ring-4 focus-within:ring-[#465fff]/10",
+				"flex overflow-hidden rounded-[14px] border border-[#e0e5f2] bg-white transition focus-within:border-[#422afb]",
 				className,
 			)}
 		>
 			{prefix && (
-				<span className="flex items-center gap-1 border-r border-[#eaecf0] bg-[#f9fafb] px-3 text-sm font-medium text-[#667085]">
+				<span className="flex items-center gap-1 border-r border-[#e9edf7] bg-[#f4f7fe] px-3 text-sm font-medium text-[#a3aed0]">
 					{prefix}
 				</span>
 			)}
 			<input
-				className="h-11 w-full bg-transparent px-4 text-sm text-[#101828] outline-none placeholder:text-[#98a2b3]"
+				className="h-10 w-full bg-transparent px-3.5 text-[13.5px] text-[#2b3674] outline-none placeholder:text-[#a3aed0]"
 				{...props}
 			>
 				{children}
 			</input>
 			{suffix && (
-				<span className="flex items-center gap-1 border-l border-[#eaecf0] bg-[#f9fafb] px-3 text-sm font-medium text-[#667085]">
+				<span className="flex items-center gap-1 border-l border-[#e9edf7] bg-[#f4f7fe] px-3 text-sm font-medium text-[#a3aed0]">
 					{suffix}
 				</span>
 			)}
@@ -170,7 +168,7 @@ export function PasswordInput({
 	return (
 		<div className="relative">
 			{icon && (
-				<span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#98a2b3]">
+				<span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#a3aed0]">
 					{icon}
 				</span>
 			)}
@@ -187,7 +185,7 @@ export function PasswordInput({
 			<button
 				type="button"
 				onClick={() => setShow(current => !current)}
-				className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-1 text-[#98a2b3] hover:bg-[#f2f4f7] hover:text-[#344054]"
+				className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-1 text-[#a3aed0] hover:bg-[#eef2fb] hover:text-[#2b3674]"
 				title={show ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
 			>
 				{show ? <EyeOff size={17} /> : <Eye size={17} />}
@@ -209,7 +207,7 @@ export function DateInput({
 			/>
 			<Calendar
 				size={17}
-				className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[#98a2b3]"
+				className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[#a3aed0]"
 			/>
 		</div>
 	);
@@ -224,15 +222,15 @@ export function FileInput({
 	return (
 		<label
 			className={cn(
-				"flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#d0d5dd] bg-[#fcfcfd] px-6 py-8 text-center transition hover:border-[#465fff] hover:bg-[#ecf3ff]/40",
+				"flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#e0e5f2] bg-[#fcfcfd] px-6 py-8 text-center transition hover:border-[#422afb] hover:bg-[#e9e3ff]/40",
 				className,
 			)}
 		>
-			<span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#ecf3ff] text-[#465fff]">
+			<span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#e9e3ff] text-[#422afb]">
 				<UploadCloud size={20} />
 			</span>
-			<span className="text-sm font-medium text-[#344054]">{hint}</span>
-			<span className="text-xs text-[#98a2b3]">{accept}</span>
+			<span className="text-sm font-medium text-[#2b3674]">{hint}</span>
+			<span className="text-xs text-[#a3aed0]">{accept}</span>
 			<input type="file" accept={accept} className="hidden" {...props} />
 		</label>
 	);
@@ -244,11 +242,11 @@ export function Checkbox({
 	...props
 }: React.InputHTMLAttributes<HTMLInputElement> & { label?: React.ReactNode }) {
 	return (
-		<label className="inline-flex cursor-pointer items-center gap-2.5 text-sm text-[#344054]">
+		<label className="inline-flex cursor-pointer items-center gap-2.5 text-sm text-[#2b3674]">
 			<input
 				type="checkbox"
 				className={cn(
-					"h-[18px] w-[18px] cursor-pointer appearance-none rounded-[5px] border border-[#d0d5dd] bg-white transition checked:border-[#465fff] checked:bg-[#465fff] checked:bg-[url('data:image/svg+xml;utf8,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 20 20%27 fill=%27none%27><path d=%27M13.5 6.5 8.75 11.25 6.5 9%27 stroke=%27white%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27/></svg>')] checked:bg-center checked:bg-no-repeat disabled:cursor-not-allowed disabled:bg-[#f2f4f7]",
+					"h-[18px] w-[18px] cursor-pointer appearance-none rounded-[5px] border border-[#e0e5f2] bg-white transition checked:border-[#422afb] checked:bg-[#422afb] checked:bg-[url('data:image/svg+xml;utf8,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 20 20%27 fill=%27none%27><path d=%27M13.5 6.5 8.75 11.25 6.5 9%27 stroke=%27white%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27/></svg>')] checked:bg-center checked:bg-no-repeat disabled:cursor-not-allowed disabled:bg-[#eef2fb]",
 					className,
 				)}
 				{...props}
@@ -264,11 +262,11 @@ export function Radio({
 	...props
 }: React.InputHTMLAttributes<HTMLInputElement> & { label?: React.ReactNode }) {
 	return (
-		<label className="inline-flex cursor-pointer items-center gap-2.5 text-sm text-[#344054]">
+		<label className="inline-flex cursor-pointer items-center gap-2.5 text-sm text-[#2b3674]">
 			<input
 				type="radio"
 				className={cn(
-					"h-[18px] w-[18px] cursor-pointer appearance-none rounded-full border border-[#d0d5dd] bg-white transition checked:border-[5px] checked:border-[#465fff] disabled:cursor-not-allowed disabled:bg-[#f2f4f7]",
+					"h-[18px] w-[18px] cursor-pointer appearance-none rounded-full border border-[#e0e5f2] bg-white transition checked:border-[5px] checked:border-[#422afb] disabled:cursor-not-allowed disabled:bg-[#eef2fb]",
 					className,
 				)}
 				{...props}
@@ -288,7 +286,7 @@ export function Toggle({
 	label?: React.ReactNode;
 }) {
 	return (
-		<label className="inline-flex cursor-pointer items-center gap-2.5 text-sm text-[#344054]">
+		<label className="inline-flex cursor-pointer items-center gap-2.5 text-sm text-[#2b3674]">
 			<button
 				type="button"
 				role="switch"
@@ -296,7 +294,7 @@ export function Toggle({
 				onClick={() => onChange(!checked)}
 				className={cn(
 					"relative h-6 w-11 rounded-full transition-colors",
-					checked ? "bg-[#465fff]" : "bg-[#eaecf0]",
+					checked ? "bg-[#422afb]" : "bg-[#e9edf7]",
 				)}
 			>
 				<span

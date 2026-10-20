@@ -97,7 +97,7 @@ export default function ReportsIndex() {
 								onClick={() => navigate(item.path)}
 								className="erp-card flex items-start gap-4 p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-md"
 							>
-								<span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-[#465fff]/10 text-[#465fff]">
+								<span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-[#422afb]/10 text-[#422afb]">
 									<item.icon size={20} />
 								</span>
 								<div className="min-w-0">

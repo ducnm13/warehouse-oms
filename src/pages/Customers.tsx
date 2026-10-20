@@ -229,13 +229,13 @@ const Customers = ({
 					onClick={() => setActiveTab("customers")}
 					className={`relative px-4 py-2.5 text-sm font-semibold transition-colors ${
 						activeTab === "customers"
-							? "text-emerald-700"
-							: "text-slate-500 hover:text-slate-800"
+							? "text-[#422afb]"
+							: "text-[#a3aed0] hover:text-[#2b3674]"
 					}`}
 				>
 					Quản lý khách hàng
 					{activeTab === "customers" && (
-						<span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-emerald-600" />
+						<span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-[#422afb]" />
 					)}
 				</button>
 				<button
@@ -243,13 +243,13 @@ const Customers = ({
 					onClick={() => setActiveTab("groups")}
 					className={`relative px-4 py-2.5 text-sm font-semibold transition-colors ${
 						activeTab === "groups"
-							? "text-emerald-700"
-							: "text-slate-500 hover:text-slate-800"
+							? "text-[#422afb]"
+							: "text-[#a3aed0] hover:text-[#2b3674]"
 					}`}
 				>
 					Quản lý nhóm khách hàng
 					{activeTab === "groups" && (
-						<span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-emerald-600" />
+						<span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-[#422afb]" />
 					)}
 				</button>
 			</div>
@@ -416,7 +416,7 @@ const Customers = ({
 										setIsModalOpen(false);
 										setEditingCustomer(null);
 									}}
-									className="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+									className="erp-btn"
 								>
 									Hủy
 								</button>
@@ -430,7 +430,7 @@ const Customers = ({
 											) as HTMLFormElement | null
 										)?.requestSubmit()
 									}
-									className="rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+									className="erp-btn erp-btn-primary"
 								>
 									{saving ? "Đang lưu..." : editingCustomer ? "Cập nhật" : "Thêm khách hàng"}
 								</button>
@@ -457,7 +457,7 @@ const Customers = ({
 												type="button"
 												title="Lấy mã mới"
 												onClick={fetchNextCode}
-												className="shrink-0 rounded border border-slate-300 bg-white px-3 py-2 text-slate-600 hover:bg-slate-50"
+												className="erp-btn !px-3"
 											>
 												<RefreshCw size={15} />
 											</button>

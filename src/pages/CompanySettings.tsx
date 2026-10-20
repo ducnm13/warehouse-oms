@@ -172,7 +172,7 @@ export default function CompanySettings() {
               </label>
             </div>
             <div className="mt-6 flex justify-end">
-              <button type="submit" className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2.5 rounded-lg shadow-sm transition-colors cursor-pointer disabled:opacity-50" disabled={saveProfile.isPending}>
+              <button type="submit" className="erp-btn erp-btn-primary" disabled={saveProfile.isPending}>
                 <Save size={16} /> {saveProfile.isPending ? "Đang lưu..." : "Lưu thông tin"}
               </button>
             </div>
@@ -189,16 +189,16 @@ export default function CompanySettings() {
             </div>
           </div>
           <div className="overflow-x-auto rounded-lg border border-slate-200">
-            <table className="w-full text-left border-collapse text-sm">
+            <table className="erp-table">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 text-xs font-semibold uppercase tracking-wider">
-                  <th className="px-4 py-3">Chức danh</th>
-                  <th className="px-4 py-3">Tiêu đề trên phiếu</th>
-                  <th className="px-4 py-3">Tên người ký</th>
-                  <th className="px-4 py-3 text-center">Hiển thị</th>
+                <tr>
+                  <th>Chức danh</th>
+                  <th>Tiêu đề trên phiếu</th>
+                  <th>Tên người ký</th>
+                  <th className="text-center">Hiển thị</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200">
+              <tbody>
                 {signatures.map((sig, i) => (
                   <tr key={sig.code} className="hover:bg-slate-50/50">
                     <td className="px-4 py-3 font-medium text-slate-900">{sig.positionTitle}</td>
@@ -231,7 +231,7 @@ export default function CompanySettings() {
             </table>
           </div>
           <div className="mt-6 flex justify-end">
-            <button className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2.5 rounded-lg shadow-sm transition-colors cursor-pointer disabled:opacity-50" onClick={() => saveSignatures.mutate()} disabled={saveSignatures.isPending}>
+            <button className="erp-btn erp-btn-primary" onClick={() => saveSignatures.mutate()} disabled={saveSignatures.isPending}>
               <Save size={16} /> {saveSignatures.isPending ? "Đang lưu..." : "Lưu chữ ký"}
             </button>
           </div>
@@ -273,7 +273,7 @@ export default function CompanySettings() {
             </label>
           </div>
           <div className="mt-6 flex justify-end">
-            <button className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2.5 rounded-lg shadow-sm transition-colors cursor-pointer disabled:opacity-50" onClick={() => savePrintSettings.mutate()} disabled={savePrintSettings.isPending}>
+            <button className="erp-btn erp-btn-primary" onClick={() => savePrintSettings.mutate()} disabled={savePrintSettings.isPending}>
               <Save size={16} /> {savePrintSettings.isPending ? "Đang lưu..." : "Lưu cài đặt"}
             </button>
           </div>

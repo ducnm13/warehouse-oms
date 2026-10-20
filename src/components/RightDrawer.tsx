@@ -57,7 +57,7 @@ export default function RightDrawer({
 							type="button"
 							title="Đóng"
 							onClick={onClose}
-							className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+							className="erp-icon-btn"
 						>
 							<X size={18} />
 						</button>

@@ -552,7 +552,7 @@ export default function PurchasesV1() {
 									<tr key={document.id}>
 										<td>
 											<button
-												className="font-semibold text-emerald-700"
+												className="font-bold text-[#422afb] hover:underline"
 												onClick={() => setSelected(document)}
 											>
 												{document.code}
@@ -1013,7 +1013,7 @@ export default function PurchasesV1() {
 									{selected.details.map(line => (
 										<tr key={line.id}>
 											<td>
-												{line.productName} - {line.packagingName}
+												{line.productName}
 												<small>{line.sku}</small>
 											</td>
 											<td>{line.warehouseName || "-"}</td>
@@ -1324,7 +1324,7 @@ export default function PurchasesV1() {
 							</button>
 							<button
 								onClick={handlePrintReport}
-								className="px-10 py-2 bg-indigo-600 text-white rounded-lg font-black hover:bg-indigo-700 transition-all shadow-lg uppercase text-[10px] tracking-widest flex items-center gap-2"
+								className="erp-btn erp-btn-primary !px-6 uppercase tracking-widest text-[10px]"
 							>
 								<Printer size={16} /> In chứng từ ngay
 							</button>

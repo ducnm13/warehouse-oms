@@ -167,24 +167,24 @@ export default function Promotions() {
 					method: "POST",
 					body: JSON.stringify({ version: row.version }),
 				}),
-		onSuccess: r => {
-			toast.success(r.message);
-			void qc.invalidateQueries({ queryKey: ["promotions-v1"] });
-			void qc.invalidateQueries({ queryKey: ["next-code-promotion"] });
-		},
-		onError: (e: Error) => toast.error(e.message),
+			onSuccess: r => {
+				toast.success(r.message);
+				void qc.invalidateQueries({ queryKey: ["promotions-v1"] });
+				void qc.invalidateQueries({ queryKey: ["next-code-promotion"] });
+			},
+			onError: (e: Error) => toast.error(e.message),
 		}),
-	remove = useMutation({
-		mutationFn: (row: PromotionProgramV1) =>
-			apiV1(`/api/v1/promotions/${row.id}`, {
-				method: "DELETE",
-			}),
-		onSuccess: r => {
-			toast.success(r.message);
-			void qc.invalidateQueries({ queryKey: ["promotions-v1"] });
-		},
-		onError: (e: Error) => toast.error(e.message),
-	});
+		remove = useMutation({
+			mutationFn: (row: PromotionProgramV1) =>
+				apiV1(`/api/v1/promotions/${row.id}`, {
+					method: "DELETE",
+				}),
+			onSuccess: r => {
+				toast.success(r.message);
+				void qc.invalidateQueries({ queryKey: ["promotions-v1"] });
+			},
+			onError: (e: Error) => toast.error(e.message),
+		});
 	const create = () => {
 			setEditing(null);
 			setForm(empty(nextPromotionCode.data || "KM00001"));
@@ -311,14 +311,14 @@ export default function Promotions() {
 											<small>đến {formatDate(x.endDate)}</small>
 										</td>
 										<td>
-											{x.condition.productName} - {x.condition.packagingName}
+											{x.condition.productName}
 											<small>
 												Mua mỗi {formatNumber(x.condition.minimumQuantity)}{" "}
 												{x.condition.unit}
 											</small>
 										</td>
 										<td>
-											{x.reward.productName} - {x.reward.packagingName}
+											{x.reward.productName}
 											<small>
 												Tặng {formatNumber(x.reward.rewardQuantity)}{" "}
 												{x.reward.unit}
@@ -351,35 +351,35 @@ export default function Promotions() {
 													>
 														<CheckCircle2 size={16} />
 													</button>
-											) : (
-												<button
-													className="erp-icon-btn text-red-600"
-													onClick={() =>
-														action.mutate({ row: x, next: "deactivate" })
-													}
-												>
-													<Undo2 size={16} />
-												</button>
-											)}
-											{x.status === "INACTIVE" && (
-												<button
-													className="erp-icon-btn text-red-600"
-													title="Xóa chương trình"
-													disabled={remove.isPending}
-							onClick={async () => {
-								if (
-									await confirm(
-										`Xóa chương trình ${x.code}? Chương trình đã xóa sẽ không hiển thị trong danh sách.`,
-									)
-								)
-									remove.mutate(x);
-													}}
-												>
-													<Trash2 size={15} />
-												</button>
-											)}
-										</div>
-									</td>
+												) : (
+													<button
+														className="erp-icon-btn text-red-600"
+														onClick={() =>
+															action.mutate({ row: x, next: "deactivate" })
+														}
+													>
+														<Undo2 size={16} />
+													</button>
+												)}
+												{x.status === "INACTIVE" && (
+													<button
+														className="erp-icon-btn text-red-600"
+														title="Xóa chương trình"
+														disabled={remove.isPending}
+														onClick={async () => {
+															if (
+																await confirm(
+																	`Xóa chương trình ${x.code}? Chương trình đã xóa sẽ không hiển thị trong danh sách.`,
+																)
+															)
+																remove.mutate(x);
+														}}
+													>
+														<Trash2 size={15} />
+													</button>
+												)}
+											</div>
+										</td>
 									</tr>
 								))}
 							</tbody>
@@ -461,23 +461,19 @@ export default function Promotions() {
 											}
 										/>
 									</label>
-								<label>
-									Từ ngày
-									<DateInput
-										value={form.startDate}
-										onChange={value =>
-											setForm({ ...form, startDate: value })
-										}
-									/>
-								</label>
-								<label>
-									Đến ngày
-									<DateInput
-										value={form.endDate}
-										onChange={value =>
-											setForm({ ...form, endDate: value })
-										}
-									/>
+									<label>
+										Từ ngày
+										<DateInput
+											value={form.startDate}
+											onChange={value => setForm({ ...form, startDate: value })}
+										/>
+									</label>
+									<label>
+										Đến ngày
+										<DateInput
+											value={form.endDate}
+											onChange={value => setForm({ ...form, endDate: value })}
+										/>
 									</label>
 									<label>
 										Phạm vi

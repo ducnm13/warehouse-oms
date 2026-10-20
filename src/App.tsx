@@ -18,6 +18,7 @@ import { ConfirmProvider } from './components/ui/confirm';
 import Customers from './pages/Customers';
 import OnlineOrders from './pages/OnlineOrders';
 import AuditLogs from './pages/AuditLogs';
+import DevTools from './pages/DevTools';
 import SalesOrders from './pages/SalesOrdersV1';
 import WarehouseTransfers from './pages/WarehouseTransfers';
 import Suppliers from './pages/Suppliers';
@@ -190,6 +191,7 @@ const AppRoutes = () => {
           <Route path="/chat" element={<ChatBox />} />
           <Route path="/company-settings" element={<CompanySettings />} />
           <Route path="/audit-logs" element={<AuditLogs />} />
+          <Route path="/dev-tools" element={<DevTools />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/error-404" element={<NotFoundPage onHome={() => navigate('/dashboard')} onBack={() => navigate('/dashboard')} />} />
           <Route path="/error-500" element={<ServerErrorPage onHome={() => navigate('/dashboard')} onBack={() => navigate('/dashboard')} />} />

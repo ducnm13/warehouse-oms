@@ -19,7 +19,8 @@
 		"typecheck": "tsc --noEmit && npm run typecheck --workspaces --if-present",
 		"prisma:generate": "prisma generate --schema packages/database/prisma/schema.prisma",
 		"prisma:push": "prisma db push --schema packages/database/prisma/schema.prisma",
-		"prisma:studio": "prisma studio --schema packages/database/prisma/schema.prisma"
+		"prisma:studio": "prisma studio --schema packages/database/prisma/schema.prisma",
+		"db:reset-operational": "tsx scripts/reset-operational-data.ts"
 	},
 	"dependencies": {
 		"@google/genai": "^1.29.0",

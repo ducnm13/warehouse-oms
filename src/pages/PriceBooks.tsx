@@ -567,7 +567,7 @@ const isExpanded = (bookId: number) => !!expandedBooks[bookId];
 											<div className="flex items-center gap-2">
 												<BookOpen
 													size={16}
-													className={expanded ? "text-emerald-600" : "text-[#465fff]"}
+													className={expanded ? "text-emerald-600" : "text-[#422afb]"}
 												/>
 												<span className="font-semibold text-slate-800">{book.name}</span>
 											</div>
@@ -693,7 +693,7 @@ const isExpanded = (bookId: number) => !!expandedBooks[bookId];
 														type="button"
 														onClick={() => saveAllPrices(expandedBook!.id, expandedBook!.items!)}
 														disabled={Object.keys(editedPrices).length === 0}
-														className="inline-flex items-center gap-2 rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+														className="erp-btn erp-btn-primary"
 													>
 														<Save size={14} /> Lưu giá bán
 													</button>
@@ -704,7 +704,7 @@ const isExpanded = (bookId: number) => !!expandedBooks[bookId];
 												<div className="text-center py-4 text-slate-400">
 													<p>Chưa có sản phẩm trong bảng giá này</p>
 													<button
-														className="mt-2 text-teal-600 hover:underline text-sm"
+														className="mt-2 text-sm font-semibold text-[#422afb] hover:underline"
 														onClick={(e) => {
 															e.stopPropagation();
 															openBulkAdd(expandedBook || book);
@@ -713,7 +713,7 @@ const isExpanded = (bookId: number) => !!expandedBooks[bookId];
 														+ Thêm hàng loạt sản phẩm
 													</button>
 													{" hoặc "}
-													<button className="mt-2 text-teal-600 hover:underline text-sm" onClick={(e) => { e.stopPropagation(); openAddItem(); }}>
+													<button className="mt-2 text-sm font-semibold text-[#422afb] hover:underline" onClick={(e) => { e.stopPropagation(); openAddItem(); }}>
 														Thêm từng sản phẩm
 													</button>
 												</div>
@@ -756,7 +756,7 @@ const isExpanded = (bookId: number) => !!expandedBooks[bookId];
 								<button
 									type="button"
 									title="Trợ giúp"
-									className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+									className="erp-icon-btn"
 								>
 									?
 								</button>
@@ -764,7 +764,7 @@ const isExpanded = (bookId: number) => !!expandedBooks[bookId];
 									type="button"
 									title="Đóng"
 									onClick={() => setModalOpen(null)}
-									className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+									className="erp-icon-btn"
 								>
 									<X size={18} />
 								</button>
@@ -865,14 +865,14 @@ const isExpanded = (bookId: number) => !!expandedBooks[bookId];
 								<button
 									type="button"
 									onClick={() => setModalOpen(null)}
-									className="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+									className="erp-btn"
 								>
 									Hủy
 								</button>
 								<button
 									type="submit"
 									disabled={createPriceBook.isPending || updatePriceBook.isPending}
-									className="inline-flex items-center gap-2 rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+									className="erp-btn erp-btn-primary"
 								>
 									<Save size={14} />{" "}
 									{createPriceBook.isPending || updatePriceBook.isPending ? "Đang lưu..." : "Lưu"}
@@ -897,7 +897,7 @@ const isExpanded = (bookId: number) => !!expandedBooks[bookId];
 									type="button"
 									title="Đóng"
 									onClick={() => setBulkAddOpen(false)}
-									className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+									className="erp-icon-btn"
 								>
 									<X size={18} />
 								</button>
@@ -969,7 +969,7 @@ const isExpanded = (bookId: number) => !!expandedBooks[bookId];
 								<button
 									type="button"
 									onClick={() => setBulkAddOpen(false)}
-									className="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+									className="erp-btn"
 								>
 									Hủy
 								</button>
@@ -980,7 +980,7 @@ const isExpanded = (bookId: number) => !!expandedBooks[bookId];
 										(bulkAddForm.mode === "BY_CATEGORY" && !bulkAddForm.category) ||
 										bulkAddItems.isPending
 									}
-									className="inline-flex items-center gap-2 rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+									className="erp-btn erp-btn-primary"
 								>
 									<Save size={14} />{" "}
 									{bulkAddItems.isPending ? "Đang thêm..." : "Thêm hàng loạt"}

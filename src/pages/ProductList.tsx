@@ -547,7 +547,7 @@ const ProductList = ({ isArchive = false }: { isArchive?: boolean }) => {
                     <button
                       type="button"
                       onClick={handleAddPackaging}
-                      className="text-[10px] bg-primary/10 text-primary px-3 py-1 rounded-full font-black hover:bg-primary hover:text-white transition-all uppercase"
+                      className="text-[10px] bg-[#e9e3ff] text-[#422afb] px-3 py-1.5 rounded-[10px] font-bold hover:bg-[#422afb] hover:text-white transition-all uppercase"
                     >
                       + Thêm quy cách
                     </button>
@@ -808,7 +808,7 @@ const ProductList = ({ isArchive = false }: { isArchive?: boolean }) => {
                   </button>
                   <button
                     type="submit"
-                    className="px-10 py-2 bg-primary text-white rounded-lg font-black hover:bg-opacity-90 transition-all shadow-lg uppercase text-[10px] tracking-widest"
+                    className="erp-btn erp-btn-primary !px-6 uppercase tracking-widest text-[10px]"
                   >
                     LƯU DỮ LIỆU
                   </button>

@@ -204,14 +204,14 @@ export default function PrintPreview({
 				<>
 					<button
 						type="button"
-						className="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+						className="erp-btn"
 						onClick={onClose}
 					>
 						Đóng
 					</button>
 					<button
 						type="button"
-						className="rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+						className="erp-btn erp-btn-primary"
 						disabled={loading || !html}
 						onClick={doPrint}
 					>

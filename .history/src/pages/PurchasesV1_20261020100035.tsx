@@ -1,14 +1,16 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useReactToPrint } from "react-to-print";
 import {
 	Banknote,
 	CheckCircle2,
 	Edit,
 	Eye,
 	FileClock,
+	PackagePlus,
 	Plus,
 	Printer,
 	Search,
@@ -17,7 +19,8 @@ import {
 	Undo2,
 	X,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import toast from "../components/ui/toast";
+import { confirm, prompt } from "../components/ui/confirm";
 import type {
 	Product,
 	PurchaseDocument,
@@ -28,13 +31,10 @@ import type {
 import { formatDate, formatNumber } from "../lib/utils";
 import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
-import PrintPreview from "../components/PrintPreview";
-import {
-	fillGenericDocument,
-	GENERIC_LAYOUTS,
-	type CompanyPrintProfile,
-} from "../lib/printTemplate";
+import { PurchaseDocumentPrint } from "../components/PurchaseDocumentPrint";
+import { buildCompanyPrintProfile } from "../lib/printTemplate";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
+import { DateInput } from "../components/DateRangeCalendar";
 
 const headerSchema = z.object({
 	documentDate: z.string().min(1, "Chọn ngày chứng từ"),
@@ -70,6 +70,27 @@ const statusMeta = {
 	CANCELLED: { label: "Đã hủy", css: "bg-red-100 text-red-700" },
 } as const;
 
+const linkTypeLabel = (type: string) => {
+	switch (type) {
+		case "INVENTORY_RECEIPT":
+			return "Phiếu nhập kho";
+		case "INVENTORY_ISSUE":
+			return "Phiếu xuất kho";
+		case "PAYMENT_VOUCHER":
+			return "Phiếu chi";
+		case "PAYMENT_RECEIPT":
+			return "Phiếu thu";
+		case "PAYABLE_CHARGE":
+			return "Phiếu chi phí";
+		case "PRODUCTION":
+			return "Lệnh sản xuất";
+		case "INVENTORY_REVERSAL":
+			return "Phiếu đảo";
+		default:
+			return type;
+	}
+};
+
 export default function PurchasesV1() {
 	const queryClient = useQueryClient();
 	const [search, setSearch] = useState("");
@@ -80,13 +101,51 @@ export default function PurchasesV1() {
 	const [selected, setSelected] = useState<PurchaseDocument | null>(null);
 	const [printTarget, setPrintTarget] = useState<PurchaseDocument | null>(null);
 	const [lines, setLines] = useState<Line[]>([emptyLine()]);
+	const [supplierModal, setSupplierModal] = useState(false);
+	const [supplierSaving, setSupplierSaving] = useState(false);
+	const [nextSupplierCode, setNextSupplierCode] = useState("NCC00001");
+	const [supplierForm, setSupplierForm] = useState({
+		name: "",
+		phone: "",
+		taxCode: "",
+		address: "",
+		contactPerson: "",
+		paymentTermDays: 0,
+	});
 
 	useMultiEscapeKey([
 		{ isOpen: open, onClose: () => setOpen(false), priority: 1 },
 		{ isOpen: !!editing, onClose: () => setEditing(null), priority: 2 },
 		{ isOpen: !!selected, onClose: () => setSelected(null), priority: 3 },
 		{ isOpen: !!printTarget, onClose: () => setPrintTarget(null), priority: 4 },
+		{
+			isOpen: supplierModal,
+			onClose: () => setSupplierModal(false),
+			priority: 5,
+		},
 	]);
+
+	// In chứng từ mua hàng (xem trước + in HTML, cùng giao diện phiếu nhập kho)
+	const printRef = useRef<HTMLDivElement>(null);
+	const handlePrintReport = useReactToPrint({
+		contentRef: printRef,
+		documentTitle: printTarget
+			? `Chung-tu-mua-hang-${printTarget.code}`
+			: "Chung-tu-mua-hang",
+		pageStyle: "@page { size: A4; margin: 0; }",
+	});
+	const companyQuery = useQuery({
+		queryKey: ["company-profile"],
+		queryFn: async () => {
+			try {
+				const res = await apiV1("/api/v1/company");
+				return buildCompanyPrintProfile(res.data);
+			} catch {
+				return null;
+			}
+		},
+		staleTime: 5 * 60_000,
+	});
 
 	const form = useForm<HeaderForm>({
 		resolver: zodResolver(headerSchema),
@@ -147,10 +206,33 @@ export default function PurchasesV1() {
 		() =>
 			packagingOptions.map(item => ({
 				value: item.id,
-				label: `${item.productName} - ${item.name}`,
-				subLabel: item.sku ? `SKU: ${item.sku}` : undefined,
+				label: item.productName,
+				subLabel:
+					item.name !== item.productName
+						? `${item.name}${item.sku ? ` | SKU: ${item.sku}` : ""}`
+						: item.sku
+							? `SKU: ${item.sku}`
+							: undefined,
 			})),
 		[packagingOptions],
+	);
+
+	const supplierSearchOptions = useMemo(
+		() =>
+			(references.data?.suppliers || []).map(supplier => ({
+				value: supplier.id,
+				label: supplier.code
+					? `${supplier.code} - ${supplier.name}`
+					: supplier.name,
+				subLabel:
+					[
+						supplier.phone ? `ĐT: ${supplier.phone}` : "",
+						supplier.taxCode ? `MST: ${supplier.taxCode}` : "",
+					]
+						.filter(Boolean)
+						.join(" · ") || undefined,
+			})),
+		[references.data],
 	);
 
 	const applyPackagingCost = (index: number, packagingId: number) => {
@@ -187,6 +269,7 @@ export default function PurchasesV1() {
 		},
 		onSuccess: response => {
 			toast.success(response.message);
+			setSelected(response.data);
 			setOpen(false);
 			setEditing(null);
 			invalidate();
@@ -255,6 +338,71 @@ export default function PurchasesV1() {
 			purchaseCost: 0,
 		});
 		setOpen(true);
+	};
+	// Mở popup tạo nhanh NCC + lấy mã tự sinh
+	const openSupplierModal = async () => {
+		setSupplierForm({
+			name: "",
+			phone: "",
+			taxCode: "",
+			address: "",
+			contactPerson: "",
+			paymentTermDays: 0,
+		});
+		setSupplierModal(true);
+		try {
+			const res = await fetch("/api/next-code/supplier", {
+				headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+			});
+			if (res.ok) {
+				const data = await res.json();
+				if (data.code) setNextSupplierCode(data.code);
+			}
+		} catch {
+			// Giữ mã mặc định khi không lấy được sequence
+		}
+	};
+	// Lưu NCC mới rồi tự động chọn vào chứng từ đang lập
+	const saveSupplier = async (e: React.FormEvent) => {
+		e.preventDefault();
+		if (!supplierForm.name.trim()) {
+			toast.error("Tên nhà cung cấp là bắt buộc");
+			return;
+		}
+		setSupplierSaving(true);
+		try {
+			const res = await fetch("/api/suppliers", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${localStorage.getItem("token")}`,
+				},
+				body: JSON.stringify({
+					code: nextSupplierCode,
+					name: supplierForm.name.trim(),
+					phone: supplierForm.phone.trim(),
+					taxCode: supplierForm.taxCode.trim(),
+					address: supplierForm.address.trim(),
+					contactPerson: supplierForm.contactPerson.trim(),
+					paymentTermDays: Math.max(
+						0,
+						Number(supplierForm.paymentTermDays) || 0,
+					),
+				}),
+			});
+			const data = await res.json().catch(() => ({}));
+			if (!res.ok)
+				throw new Error(data.error || data.message || "Có lỗi xảy ra");
+			const newId = Number(data.id || 0);
+			toast.success("Đã thêm nhà cung cấp");
+			setSupplierModal(false);
+			await queryClient.refetchQueries({ queryKey: ["purchase-references"] });
+			if (newId) form.setValue("supplierId", newId, { shouldValidate: true });
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : "Có lỗi hệ thống");
+		} finally {
+			setSupplierSaving(false);
+		}
 	};
 	const openEdit = (document: PurchaseDocument) => {
 		setEditing(document);
@@ -382,8 +530,9 @@ export default function PurchasesV1() {
 						{(documents.error as Error).message}
 					</div>
 				) : rows.length === 0 ? (
-					<div className="p-12 text-center text-slate-400">
-						Chưa có chứng từ phù hợp.
+					<div className="erp-empty">
+						<PackagePlus size={48} />
+						<p>Chưa có bảng giá nào</p>
 					</div>
 				) : (
 					<div className="overflow-x-auto">
@@ -409,8 +558,8 @@ export default function PurchasesV1() {
 												{document.code}
 											</button>
 											<small>
-												{formatDate(document.documentDate)} · v
-												{document.version}
+												{formatDate(document.documentDate)}
+												{/* · v {document.version} */}
 											</small>
 										</td>
 										<td>
@@ -465,9 +614,9 @@ export default function PurchasesV1() {
 														</button>
 														<button
 															className="erp-icon-btn text-red-600"
-															onClick={() => {
+															onClick={async () => {
 																if (
-																	window.confirm(
+																	await confirm(
 																		`Xóa chứng từ ${document.code}?`,
 																	)
 																)
@@ -479,16 +628,34 @@ export default function PurchasesV1() {
 														</button>
 													</>
 												)}
+												{document.documentStatus === "CANCELLED" && (
+													<button
+														className="erp-icon-btn text-red-600"
+														onClick={async () => {
+															if (
+																await confirm(
+																	`Xóa chứng từ đã hủy ${document.code}?`,
+																)
+															)
+																deleteMutation.mutate(document);
+														}}
+														title="Xóa"
+													>
+														<Trash2 size={16} />
+													</button>
+												)}
 												{document.documentStatus === "POSTED" &&
 													document.links?.some(
 														link => link.linkType === "PAYABLE_CHARGE",
 													) && (
 														<button
 															className="erp-icon-btn text-red-500"
-															onClick={() => {
-																const reason = window.prompt(
-																	"Nhập lý do hủy chứng từ:",
-																);
+															onClick={async () => {
+																const reason = await prompt({
+																	title: "Hủy chứng từ mua hàng",
+																	message: "Nhập lý do hủy chứng từ:",
+																	minLength: 3,
+																});
 																if (reason)
 																	actionMutation.mutate({
 																		document,
@@ -563,27 +730,58 @@ export default function PurchasesV1() {
 									</label>
 									<label>
 										Nhà cung cấp
-										<select
-											{...form.register("supplierId", { valueAsNumber: true })}
-										>
-											<option value="0">Chọn nhà cung cấp</option>
-											{references.data?.suppliers.map(s => (
-												<option key={s.id} value={s.id}>
-													{s.code} - {s.name}
-												</option>
-											))}
-										</select>
+										<div className="flex gap-2">
+											<div className="min-w-0 flex-1">
+												<SearchableSelect
+													value={form.watch("supplierId") || 0}
+													options={supplierSearchOptions}
+													onChange={supplierId =>
+														form.setValue("supplierId", supplierId, {
+															shouldValidate: true,
+														})
+													}
+													placeholder="Nhập tên/mã/SĐT nhà cung cấp"
+													required
+												/>
+											</div>
+											<button
+												type="button"
+												title="Thêm nhà cung cấp mới"
+												onClick={() => void openSupplierModal()}
+												className="erp-btn erp-btn-primary shrink-0 !px-3"
+											>
+												<Plus size={16} />
+											</button>
+										</div>
 										<small className="text-red-500">
 											{form.formState.errors.supplierId?.message}
 										</small>
 									</label>
 									<label>
 										Ngày chứng từ
-										<input type="date" {...form.register("documentDate")} />
+										<DateInput
+											value={form.watch("documentDate") || ""}
+											onChange={value =>
+												form.setValue("documentDate", value, {
+													shouldValidate: true,
+												})
+											}
+										/>
+										<small className="text-red-500">
+											{form.formState.errors.documentDate?.message}
+										</small>
 									</label>
 									<label>
 										Hạn thanh toán
-										<input type="date" {...form.register("dueDate")} />
+										<DateInput
+											value={form.watch("dueDate") || ""}
+											placeholder="Không thời hạn"
+											onChange={value =>
+												form.setValue("dueDate", value, {
+													shouldValidate: true,
+												})
+											}
+										/>
 									</label>
 									<label>
 										Ý định thanh toán
@@ -815,7 +1013,7 @@ export default function PurchasesV1() {
 									{selected.details.map(line => (
 										<tr key={line.id}>
 											<td>
-												{line.productName} - {line.packagingName}
+												{line.productName}
 												<small>{line.sku}</small>
 											</td>
 											<td>{line.warehouseName || "-"}</td>
@@ -836,17 +1034,54 @@ export default function PurchasesV1() {
 								</tbody>
 							</table>
 							<div className="rounded bg-slate-50 p-3">
-								<b>Liên kết nghiệp vụ</b>
+								<b>Chứng từ liên quan</b>
 								{selected.links?.length ? (
 									<div className="mt-2 flex flex-wrap gap-2">
-										{selected.links.map(link => (
-											<span
-												className="erp-badge bg-blue-100 text-blue-700"
-												key={link.id}
-											>
-												{link.linkType}: {link.linkedCode || link.linkedId}
-											</span>
-										))}
+										{selected.links.map(link => {
+											const linkedCode =
+												link.linkedCode || String(link.linkedId);
+											return (
+												<span
+													className="erp-badge bg-blue-100 text-blue-700 cursor-pointer hover:bg-blue-200"
+													key={link.id}
+													onClick={() => {
+														if (!linkedCode) return;
+														if (link.linkType === "INVENTORY_RECEIPT") {
+															window.open(
+																`/inventory-import?code=${encodeURIComponent(linkedCode)}`,
+																"_blank",
+															);
+														} else if (link.linkType === "INVENTORY_ISSUE") {
+															window.open(
+																`/inventory-export?code=${encodeURIComponent(linkedCode)}`,
+																"_blank",
+															);
+														} else if (
+															link.linkType === "PAYMENT_VOUCHER" ||
+															link.linkType === "PAYMENT_RECEIPT"
+														) {
+															window.open(
+																`/debt?vouchers&search=${encodeURIComponent(linkedCode)}`,
+																"_blank",
+															);
+														} else if (link.linkType === "PRODUCTION") {
+															window.open(
+																`/production-mgmt?code=${encodeURIComponent(linkedCode)}`,
+																"_blank",
+															);
+														} else {
+															window.open(
+																`/purchases?search=${encodeURIComponent(linkedCode)}`,
+																"_blank",
+															);
+														}
+													}}
+													title={`Mở ${linkTypeLabel(link.linkType)}: ${linkedCode}`}
+												>
+													{linkTypeLabel(link.linkType)}: {linkedCode}
+												</span>
+											);
+										})}
 									</div>
 								) : (
 									<p className="mt-1 text-sm text-slate-400">
@@ -859,8 +1094,13 @@ export default function PurchasesV1() {
 									Lý do hủy: {selected.cancelReason}
 								</div>
 							)}
-							<div className="text-right text-xl font-bold text-emerald-700">
-								Tổng thanh toán: {formatNumber(selected.totalAmount)} ₫
+							<div className="mt-4 ml-auto w-fit p-4 text-right bg-emerald-50 border-2 border-emerald-200 rounded-xl">
+								<div className="text-sm text-emerald-700 font-medium uppercase tracking-wider mb-1">
+									Tổng thanh toán
+								</div>
+								<div className="text-2xl font-extrabold text-emerald-800">
+									{formatNumber(selected.totalAmount)} ₫
+								</div>
 							</div>
 						</div>
 						<div className="erp-modal-footer">
@@ -871,6 +1111,56 @@ export default function PurchasesV1() {
 							>
 								<Printer size={16} /> In chứng từ
 							</button>
+							{selected.documentStatus === "DRAFT" && (
+								<button
+									type="button"
+									className="erp-btn erp-btn-post"
+									disabled={actionMutation.isPending}
+									onClick={() =>
+										actionMutation.mutate({
+											document: selected,
+											action: "post",
+										})
+									}
+								>
+									<CheckCircle2 size={16} />{" "}
+									{actionMutation.isPending ? "Đang ghi sổ..." : "Ghi sổ"}
+								</button>
+							)}
+							{selected.documentStatus === "POSTED" && (
+								<button
+									type="button"
+									className="erp-btn erp-btn-unpost"
+									disabled={actionMutation.isPending}
+									onClick={async () => {
+										const reason = await prompt({
+											title: "Bỏ ghi chứng từ mua hàng",
+											message: "Nhập lý do bỏ ghi:",
+											minLength: 3,
+										});
+										if (reason)
+											actionMutation.mutate({
+												document: selected,
+												action: "cancel",
+												reason,
+											});
+									}}
+								>
+									<Undo2 size={16} /> Bỏ ghi
+								</button>
+							)}
+							{selected.documentStatus === "CANCELLED" && (
+								<button
+									type="button"
+									className="erp-btn !border-red-200 !bg-red-50 !text-red-700 hover:!bg-red-100"
+									onClick={async () => {
+										if (await confirm(`Xóa chứng từ đã hủy ${selected.code}?`))
+											deleteMutation.mutate(selected);
+									}}
+								>
+									<Trash2 size={16} /> Xóa
+								</button>
+							)}
 							<button
 								type="button"
 								className="erp-btn"
@@ -882,54 +1172,177 @@ export default function PurchasesV1() {
 					</div>
 				</div>
 			)}
-			<PrintPreview
-				open={!!printTarget}
-				title={
-					printTarget
-						? `Xem trước chứng từ mua hàng ${printTarget.code}`
-						: "Xem trước in"
-				}
-				templateUrl="/template_xlsx/Chung-tu-mua-hang.xlsx"
-				fill={
-					printTarget
-						? (worksheet: any, company: any) => {
-								fillGenericDocument(
-									worksheet,
-									company as CompanyPrintProfile | null,
-									GENERIC_LAYOUTS.purchase,
-									{
-										code: printTarget.code,
-										documentDate: printTarget.documentDate,
-										partner: [
-											printTarget.supplierName,
-											printTarget.supplierTaxCode
-												? `MST: ${printTarget.supplierTaxCode}`
-												: "",
-										]
-											.filter(Boolean)
-											.join(" - "),
-										dienGiai: printTarget.description || "",
-										total: Number(printTarget.goodsAmount || 0),
-										rows: printTarget.details.map((line, index) => ({
-											stt: index + 1,
-											sku: line.sku || "",
-											name: [line.productName, line.packagingName]
-												.filter(Boolean)
-												.join(" - "),
-											unit: line.unit || "",
-											quantity: Number(line.quantity || 0),
-											unitPrice: Number(line.unitPrice || 0),
-											amount: Number(
-												line.lineAmount ?? line.quantity * line.unitPrice,
-											),
-										})),
-									},
-								);
-							}
-						: null
-				}
-				onClose={() => setPrintTarget(null)}
-			/>
+			{supplierModal && (
+				<div className="erp-modal-backdrop" style={{ zIndex: 300 }}>
+					<div className="erp-modal max-w-2xl">
+						<div className="erp-modal-header">
+							<div>
+								<h2>Thêm nhà cung cấp mới</h2>
+								<p>
+									Nhà cung cấp mới sẽ được tự động chọn vào chứng từ đang lập
+								</p>
+							</div>
+							<button type="button" onClick={() => setSupplierModal(false)}>
+								<X size={18} />
+							</button>
+						</div>
+						<form onSubmit={saveSupplier}>
+							<div className="erp-modal-body space-y-4">
+								<div className="grid gap-4 md:grid-cols-2">
+									<label>
+										Mã nhà cung cấp (tự sinh)
+										<input
+											type="text"
+											readOnly
+											value={nextSupplierCode}
+											className="font-mono bg-slate-50 text-slate-600"
+										/>
+									</label>
+									<label>
+										Số điện thoại
+										<input
+											type="text"
+											placeholder="09xxx..."
+											value={supplierForm.phone}
+											onChange={e =>
+												setSupplierForm({
+													...supplierForm,
+													phone: e.target.value,
+												})
+											}
+										/>
+									</label>
+									<label className="md:col-span-2">
+										Tên nhà cung cấp <span className="text-red-500">*</span>
+										<input
+											type="text"
+											required
+											placeholder="Công ty TNHH..."
+											value={supplierForm.name}
+											onChange={e =>
+												setSupplierForm({
+													...supplierForm,
+													name: e.target.value,
+												})
+											}
+										/>
+									</label>
+									<label>
+										Mã số thuế
+										<input
+											type="text"
+											placeholder="370xxxxx..."
+											value={supplierForm.taxCode}
+											onChange={e =>
+												setSupplierForm({
+													...supplierForm,
+													taxCode: e.target.value,
+												})
+											}
+										/>
+									</label>
+									<label>
+										Người liên hệ
+										<input
+											type="text"
+											placeholder="Nguyễn Văn A"
+											value={supplierForm.contactPerson}
+											onChange={e =>
+												setSupplierForm({
+													...supplierForm,
+													contactPerson: e.target.value,
+												})
+											}
+										/>
+									</label>
+									<label>
+										Công nợ (ngày)
+										<input
+											type="number"
+											min="0"
+											value={supplierForm.paymentTermDays}
+											onChange={e =>
+												setSupplierForm({
+													...supplierForm,
+													paymentTermDays: Number(e.target.value) || 0,
+												})
+											}
+										/>
+									</label>
+									<label className="md:col-span-2">
+										Địa chỉ
+										<textarea
+											rows={2}
+											placeholder="Số nhà, đường, phường/xã..."
+											value={supplierForm.address}
+											onChange={e =>
+												setSupplierForm({
+													...supplierForm,
+													address: e.target.value,
+												})
+											}
+										/>
+									</label>
+								</div>
+							</div>
+							<div className="erp-modal-footer">
+								<button
+									type="button"
+									className="erp-btn"
+									onClick={() => setSupplierModal(false)}
+								>
+									Hủy
+								</button>
+								<button
+									className="erp-btn erp-btn-primary"
+									disabled={supplierSaving}
+								>
+									{supplierSaving ? "Đang lưu..." : "Thêm nhà cung cấp"}
+								</button>
+							</div>
+						</form>
+					</div>
+				</div>
+			)}
+			{printTarget && (
+				<div className="sales-print-view fixed inset-0 z-[9999] flex flex-col bg-gray-900/90 backdrop-blur-md">
+					<div className="bg-white border-b p-4 flex items-center justify-between no-print shadow-md">
+						<div className="flex items-center gap-4">
+							<h3 className="text-lg font-black text-gray-800 uppercase tracking-tighter">
+								Chứng từ mua hàng
+							</h3>
+							<span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-500">
+								{printTarget.code}
+							</span>
+						</div>
+						<div className="flex items-center gap-3">
+							<button
+								onClick={() => setPrintTarget(null)}
+								className="px-6 py-2 border rounded-lg font-black text-gray-500 hover:bg-gray-50 transition-all uppercase text-[10px] tracking-widest"
+							>
+								Đóng
+							</button>
+							<button
+								onClick={handlePrintReport}
+								className="px-10 py-2 bg-indigo-600 text-white rounded-lg font-black hover:bg-indigo-700 transition-all shadow-lg uppercase text-[10px] tracking-widest flex items-center gap-2"
+							>
+								<Printer size={16} /> In chứng từ ngay
+							</button>
+						</div>
+					</div>
+					<div className="flex-1 overflow-auto p-8 bg-gray-200/50">
+						<div
+							ref={printRef}
+							className="sales-print-view shadow-2xl bg-white mx-auto mb-8 w-[210mm] max-w-full"
+						>
+							<PurchaseDocumentPrint
+								document={printTarget}
+								company={companyQuery.data}
+							/>
+						</div>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }

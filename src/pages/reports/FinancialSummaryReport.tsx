@@ -112,28 +112,28 @@ export default function FinancialSummaryReport() {
 			<ReportCard title="Doanh thu – Giá vốn – Lợi nhuận theo tháng" description="12 tháng gần nhất">
 				<div className="p-4">
 					<div className="mb-3 flex flex-wrap items-center gap-4 text-[12.5px] font-medium text-[#475467]">
-						<span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-[#465fff]" /> Doanh thu</span>
+						<span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-[#422afb]" /> Doanh thu</span>
 						<span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-[#f79009]" /> Giá vốn</span>
 						<span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-[#12b76a]" /> Lợi nhuận</span>
-						<span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-[#98a2b3]" /> Mua hàng</span>
+						<span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-[#a3aed0]" /> Mua hàng</span>
 					</div>
 					<div className="h-80">
 						{chartData.length ? (
 							<ResponsiveContainer width="100%" height="100%">
 								<BarChart data={chartData} barCategoryGap="24%" margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-									<CartesianGrid stroke="#eaecf0" strokeDasharray="4 4" vertical={false} />
-									<XAxis dataKey="label" tickLine={false} axisLine={{ stroke: "#eaecf0" }} tick={{ fontSize: 12, fill: "#667085" }} />
-									<YAxis tickLine={false} axisLine={false} width={56} tick={{ fontSize: 12, fill: "#667085" }} tickFormatter={v => `${Math.round(v / 1000000)}tr`} />
-									<Tooltip cursor={{ fill: "rgba(70,95,255,0.08)" }} contentStyle={{ borderRadius: 12, border: "1px solid #eaecf0", fontSize: 12 }} formatter={(v: any, name: any) => [`${formatNumber(Number(v))} ₫`, name]} />
+									<CartesianGrid stroke="#e9edf7" strokeDasharray="4 4" vertical={false} />
+									<XAxis dataKey="label" tickLine={false} axisLine={{ stroke: "#e9edf7" }} tick={{ fontSize: 12, fill: "#a3aed0" }} />
+									<YAxis tickLine={false} axisLine={false} width={56} tick={{ fontSize: 12, fill: "#a3aed0" }} tickFormatter={v => `${Math.round(v / 1000000)}tr`} />
+									<Tooltip cursor={{ fill: "rgba(70,95,255,0.08)" }} contentStyle={{ borderRadius: 12, border: "1px solid #e9edf7", fontSize: 12 }} formatter={(v: any, name: any) => [`${formatNumber(Number(v))} ₫`, name]} />
 									<Legend />
-									<Bar dataKey="revenue" name="Doanh thu" fill="#465fff" radius={[6, 6, 0, 0]} maxBarSize={22} />
+									<Bar dataKey="revenue" name="Doanh thu" fill="#422afb" radius={[6, 6, 0, 0]} maxBarSize={22} />
 									<Bar dataKey="cogs" name="Giá vốn" fill="#f79009" radius={[6, 6, 0, 0]} maxBarSize={22} />
 									<Bar dataKey="profit" name="Lợi nhuận" fill="#12b76a" radius={[6, 6, 0, 0]} maxBarSize={22} />
-									<Bar dataKey="purchases" name="Mua hàng" fill="#98a2b3" radius={[6, 6, 0, 0]} maxBarSize={22} />
+									<Bar dataKey="purchases" name="Mua hàng" fill="#a3aed0" radius={[6, 6, 0, 0]} maxBarSize={22} />
 								</BarChart>
 							</ResponsiveContainer>
 						) : (
-							<div className="flex h-full items-center justify-center rounded-lg bg-[#f9fafb] text-sm text-[#98a2b3]">
+							<div className="flex h-full items-center justify-center rounded-lg bg-[#f4f7fe] text-sm text-[#a3aed0]">
 								{query.isLoading ? "Đang tải dữ liệu..." : "Chưa có dữ liệu"}
 							</div>
 						)}

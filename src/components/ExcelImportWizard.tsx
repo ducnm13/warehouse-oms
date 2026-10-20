@@ -94,20 +94,20 @@ export function Dropzone({
 			}}
 			className={cn(
 				"flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-10 text-center transition",
-				dragging ? "border-[#465fff] bg-[#ecf3ff]/60" : "border-[#d0d5dd] bg-[#fcfcfd] hover:border-[#465fff] hover:bg-[#ecf3ff]/30",
+				dragging ? "border-[#422afb] bg-[#e9e3ff]/60" : "border-[#e0e5f2] bg-[#fcfcfd] hover:border-[#422afb] hover:bg-[#e9e3ff]/30",
 			)}
 		>
-			<span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#ecf3ff] text-[#465fff]">
+			<span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#e9e3ff] text-[#422afb]">
 				<UploadCloud size={22} />
 			</span>
-			<p className="text-sm font-semibold text-[#101828]">{dragging ? "Thả tệp để tải lên" : "Kéo thả tệp Excel vào đây"}</p>
-			<p className="text-xs text-[#667085]">hoặc bấm để chọn tệp · {accept}</p>
+			<p className="text-sm font-semibold text-[#1b2559]">{dragging ? "Thả tệp để tải lên" : "Kéo thả tệp Excel vào đây"}</p>
+			<p className="text-xs text-[#a3aed0]">hoặc bấm để chọn tệp · {accept}</p>
 			{fileName ? (
 				<p className="mt-1 rounded-full bg-[#ecfdf3] px-3 py-1 text-xs font-semibold text-[#027a48]">
 					{fileName} · {rowCount} dòng
 				</p>
 			) : (
-				<p className="mt-1 text-xs text-[#98a2b3]">Chưa có tệp nào được chọn</p>
+				<p className="mt-1 text-xs text-[#a3aed0]">Chưa có tệp nào được chọn</p>
 			)}
 			<input ref={inputRef} type="file" accept={accept} className="hidden" onChange={e => onSelect(e.target.files?.[0])} />
 		</div>
@@ -236,11 +236,11 @@ const [result, setResult] = useState<ExcelImportResult | null>(null);
 					const done = current < step;
 					return (
 						<div key={label} className="flex items-center gap-2">
-							<span className={cn("flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold", active ? "bg-[#465fff] text-white" : done ? "bg-[#ecf3ff] text-[#3641f4]" : "bg-[#f2f4f7] text-[#667085]")}>
+							<span className={cn("flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold", active ? "bg-[#422afb] text-white" : done ? "bg-[#e9e3ff] text-[#3311db]" : "bg-[#eef2fb] text-[#a3aed0]")}>
 								{index + 1}
 							</span>
-							<span className={cn("text-sm", active ? "font-semibold text-[#101828]" : "text-[#667085]")}>{label}</span>
-							{index < stepLabels.length - 1 && <span className="mx-2 h-px w-8 bg-[#eaecf0]" />}
+							<span className={cn("text-sm", active ? "font-semibold text-[#1b2559]" : "text-[#a3aed0]")}>{label}</span>
+							{index < stepLabels.length - 1 && <span className="mx-2 h-px w-8 bg-[#e9edf7]" />}
 						</div>
 					);
 				})}
@@ -275,12 +275,12 @@ const [result, setResult] = useState<ExcelImportResult | null>(null);
 					</div>
 					<div className="grid gap-3 md:grid-cols-3">
 						{modes.map(option => (
-							<label key={option.value} className={cn("cursor-pointer rounded-xl border p-4 transition", mode === option.value ? "border-[#465fff] bg-[#ecf3ff]/50" : "border-[#eaecf0] hover:border-[#98a2b3]")}>
+							<label key={option.value} className={cn("cursor-pointer rounded-xl border p-4 transition", mode === option.value ? "border-[#422afb] bg-[#e9e3ff]/50" : "border-[#e9edf7] hover:border-[#a3aed0]")}>
 								<span className="flex items-center gap-2">
-									<input type="radio" checked={mode === option.value} onChange={() => setMode(option.value)} className="h-4 w-4 accent-[#465fff]" />
-									<b className="text-sm text-[#101828]">{option.title}</b>
+									<input type="radio" checked={mode === option.value} onChange={() => setMode(option.value)} className="h-4 w-4 accent-[#422afb]" />
+									<b className="text-sm text-[#1b2559]">{option.title}</b>
 								</span>
-								<p className="mt-1 text-xs leading-relaxed text-[#667085]">{option.description}</p>
+								<p className="mt-1 text-xs leading-relaxed text-[#a3aed0]">{option.description}</p>
 							</label>
 						))}
 					</div>

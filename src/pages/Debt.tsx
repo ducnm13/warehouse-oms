@@ -494,7 +494,7 @@ export default function Debt() {
 										<tr key={document.id}>
 											<td>
 												<button
-													className="font-bold text-indigo-700"
+													className="font-bold text-[#422afb] hover:underline"
 													onClick={() => setSelected(document)}
 												>
 													{document.code}

@@ -3,11 +3,11 @@ import { BookOpen, FileText, CheckCircle, AlertCircle, ShieldAlert } from "lucid
 
 export default function UserGuide() {
   return (
-    <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-300 font-sans pb-12">
+    <div className="erp-page max-w-4xl mx-auto space-y-8 animate-in fade-in duration-300 pb-12">
       {/* TIÊU ĐỀ CHÍNH */}
       <div className="border-b border-slate-200 pb-4">
         <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-3">
-          <BookOpen className="text-indigo-600" size={28} />
+          <BookOpen className="text-[#422afb]" size={28} />
           TÀI LIỆU HƯỚNG DẪN SỬ DỤNG HỆ THỐNG
         </h2>
         <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">
@@ -16,9 +16,9 @@ export default function UserGuide() {
       </div>
 
       {/* MỤC 1 */}
-      <section className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-3">
-        <h3 className="text-base font-black text-slate-800 uppercase tracking-wide flex items-center gap-2 border-b pb-2 text-indigo-600">
-          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-50 text-xs font-black">1</span>
+      <section className="erp-card p-6 space-y-3">
+        <h3 className="text-base font-black text-slate-800 uppercase tracking-wide flex items-center gap-2 border-b border-[#e9edf7] pb-2 text-[#422afb]">
+          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#e9e3ff] text-xs font-black">1</span>
           Tổng quan Dashboard
         </h3>
         <p className="text-sm text-slate-600 leading-relaxed">
@@ -31,9 +31,9 @@ export default function UserGuide() {
       </section>
 
       {/* MỤC 2 */}
-      <section className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-3">
-        <h3 className="text-base font-black text-slate-800 uppercase tracking-wide flex items-center gap-2 border-b pb-2 text-indigo-600">
-          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-50 text-xs font-black">2</span>
+      <section className="erp-card p-6 space-y-3">
+        <h3 className="text-base font-black text-slate-800 uppercase tracking-wide flex items-center gap-2 border-b border-[#e9edf7] pb-2 text-[#422afb]">
+          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#e9e3ff] text-xs font-black">2</span>
           Quản lý danh mục hàng hóa & vật tư
         </h3>
         <p className="text-sm text-slate-600 leading-relaxed">
@@ -52,9 +52,9 @@ export default function UserGuide() {
       </section>
 
       {/* MỤC 3 */}
-      <section className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
-        <h3 className="text-base font-black text-slate-800 uppercase tracking-wide flex items-center gap-2 border-b pb-2 text-indigo-600">
-          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-50 text-xs font-black">3</span>
+      <section className="erp-card p-6 space-y-4">
+        <h3 className="text-base font-black text-slate-800 uppercase tracking-wide flex items-center gap-2 border-b border-[#e9edf7] pb-2 text-[#422afb]">
+          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#e9e3ff] text-xs font-black">3</span>
           Quy trình xuất nhập kho thành phẩm
         </h3>
         
@@ -63,13 +63,13 @@ export default function UserGuide() {
             <CheckCircle size={16} className="text-emerald-500" /> 3.1. Lập Phiếu Nhập Kho
           </h4>
           <p className="text-xs text-slate-600 pl-5 leading-relaxed">
-            Nhấn nút <span className="font-bold text-indigo-600">LẬP PHIẾU MỚI</span> → Chọn loại phiếu Nhập kho → Chọn Ngày nhập → Điền người giao và chi tiết sản phẩm kèm số lượng thực tế → Nhấn Lưu phiếu.
+            Nhấn nút <span className="font-bold text-[#422afb]">LẬP PHIẾU MỚI</span> → Chọn loại phiếu Nhập kho → Chọn Ngày nhập → Điền người giao và chi tiết sản phẩm kèm số lượng thực tế → Nhấn Lưu phiếu.
           </p>
         </div>
 
         <div className="space-y-2">
           <h4 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
-            <CheckCircle size={16} className="text-indigo-500" /> 3.2. Lập Phiếu Xuất Hàng (Tài Xế / Khách Hàng)
+            <CheckCircle size={16} className="text-[#422afb]" /> 3.2. Lập Phiếu Xuất Hàng (Tài Xế / Khách Hàng)
           </h4>
           <p className="text-xs text-slate-600 pl-5 leading-relaxed">
             Chọn loại phiếu Xuất kho → Chọn Khách hàng hệ thống (Hệ thống tự động đồng bộ tỷ lệ chiết khấu % mặc định). Thêm sản phẩm cần đi đơn, kiểm tra phần <span className="font-mono bg-slate-100 px-1 py-0.5 rounded text-rose-600">Tổng kết hóa đơn</span> ở cuối form gồm tiền hàng, số tiền chiết khấu giảm trừ và giá trị thực tế thanh toán → Lưu phiếu.
@@ -78,21 +78,21 @@ export default function UserGuide() {
       </section>
 
       {/* MỤC 4 */}
-      <section className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-3">
-        <h3 className="text-base font-black text-slate-800 uppercase tracking-wide flex items-center gap-2 border-b pb-2 text-indigo-600">
-          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-50 text-xs font-black">4</span>
+      <section className="erp-card p-6 space-y-3">
+        <h3 className="text-base font-black text-slate-800 uppercase tracking-wide flex items-center gap-2 border-b border-[#e9edf7] pb-2 text-[#422afb]">
+          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#e9e3ff] text-xs font-black">4</span>
           Hệ thống báo cáo & thống kê
         </h3>
         <ul className="list-disc pl-5 text-sm text-slate-600 space-y-2">
-          <li><strong className="text-slate-700">Báo Cáo Tồn Kho Chi Tiết:</strong> Xem tồn đầu, nhập xuất trong kỳ và tồn cuối kỳ. Tính năng <span className="italic text-indigo-600 font-semibold">Nhật ký thẻ kho</span> giúp lọc chính xác biến động tăng giảm của quy cách đóng gói trong khung ngày đã chọn. Hỗ trợ xuất file Excel bọc lưới màu tiêu chuẩn.</li>
+          <li><strong className="text-slate-700">Báo Cáo Tồn Kho Chi Tiết:</strong> Xem tồn đầu, nhập xuất trong kỳ và tồn cuối kỳ. Tính năng <span className="italic text-[#422afb] font-semibold">Nhật ký thẻ kho</span> giúp lọc chính xác biến động tăng giảm của quy cách đóng gói trong khung ngày đã chọn. Hỗ trợ xuất file Excel bọc lưới màu tiêu chuẩn.</li>
           <li><strong className="text-slate-700">Báo Cáo Doanh Số & Bán Hàng:</strong> Tách biệt theo 2 Tab dữ liệu chính: Cộng dồn theo Khách hàng / Tài xế vận chuyển đơn (Đơn hàng, tổng tiền hàng, tổng chiết khấu, thực thu) và Cộng dồn theo Sản phẩm xuất bán.</li>
         </ul>
       </section>
 
       {/* MỤC 5 */}
-      <section className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-3">
-        <h3 className="text-base font-black text-slate-800 uppercase tracking-wide flex items-center gap-2 border-b pb-2 text-indigo-600">
-          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-50 text-xs font-black">5</span>
+      <section className="erp-card p-6 space-y-3">
+        <h3 className="text-base font-black text-slate-800 uppercase tracking-wide flex items-center gap-2 border-b border-[#e9edf7] pb-2 text-[#422afb]">
+          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#e9e3ff] text-xs font-black">5</span>
           Bảo mật tài khoản & hồ sơ cá nhân
         </h3>
         <p className="text-sm text-slate-600 leading-relaxed">

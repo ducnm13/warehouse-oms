@@ -1,12 +1,24 @@
 import React, { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Edit, Gift, Plus, Search, Undo2, X } from "lucide-react";
-import toast from "react-hot-toast";
+import {
+	CheckCircle2,
+	Edit,
+	Gift,
+	PackagePlus,
+	Plus,
+	Search,
+	Trash2,
+	Undo2,
+	X,
+} from "lucide-react";
+import toast from "../components/ui/toast";
+import { confirm } from "../components/ui/confirm";
 import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
 import { formatDate, formatNumber } from "../lib/utils";
 import type { Product, PromotionProgramV1, Warehouse } from "../types";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
+import { DateInput } from "../components/DateRangeCalendar";
 type Form = {
 	code: string;
 	name: string;
@@ -93,8 +105,13 @@ export default function Promotions() {
 		() =>
 			options.map(x => ({
 				value: x.id,
-				label: `${x.productName} - ${x.name}`,
-				subLabel: x.sku ? `SKU: ${x.sku}` : undefined,
+				label: x.productName,
+				subLabel:
+					x.name !== x.productName
+						? `${x.name}${x.sku ? ` | SKU: ${x.sku}` : ""}`
+						: x.sku
+							? `SKU: ${x.sku}`
+							: undefined,
 			})),
 		[options],
 	);
@@ -154,6 +171,17 @@ export default function Promotions() {
 				toast.success(r.message);
 				void qc.invalidateQueries({ queryKey: ["promotions-v1"] });
 				void qc.invalidateQueries({ queryKey: ["next-code-promotion"] });
+			},
+			onError: (e: Error) => toast.error(e.message),
+		}),
+		remove = useMutation({
+			mutationFn: (row: PromotionProgramV1) =>
+				apiV1(`/api/v1/promotions/${row.id}`, {
+					method: "DELETE",
+				}),
+			onSuccess: r => {
+				toast.success(r.message);
+				void qc.invalidateQueries({ queryKey: ["promotions-v1"] });
 			},
 			onError: (e: Error) => toast.error(e.message),
 		});
@@ -253,8 +281,9 @@ export default function Promotions() {
 						{(documents.error as Error).message}
 					</div>
 				) : !rows.length ? (
-					<div className="p-12 text-center text-slate-400">
-						Chưa có chương trình.
+					<div className="erp-empty">
+						<PackagePlus size={48} />
+						<p>Chưa có chương trình khuyến mãi nào</p>
 					</div>
 				) : (
 					<div className="overflow-x-auto">
@@ -282,14 +311,14 @@ export default function Promotions() {
 											<small>đến {formatDate(x.endDate)}</small>
 										</td>
 										<td>
-											{x.condition.productName} - {x.condition.packagingName}
+											{x.condition.productName}
 											<small>
 												Mua mỗi {formatNumber(x.condition.minimumQuantity)}{" "}
 												{x.condition.unit}
 											</small>
 										</td>
 										<td>
-											{x.reward.productName} - {x.reward.packagingName}
+											{x.reward.productName}
 											<small>
 												Tặng {formatNumber(x.reward.rewardQuantity)}{" "}
 												{x.reward.unit}
@@ -330,6 +359,23 @@ export default function Promotions() {
 														}
 													>
 														<Undo2 size={16} />
+													</button>
+												)}
+												{x.status === "INACTIVE" && (
+													<button
+														className="erp-icon-btn text-red-600"
+														title="Xóa chương trình"
+														disabled={remove.isPending}
+														onClick={async () => {
+															if (
+																await confirm(
+																	`Xóa chương trình ${x.code}? Chương trình đã xóa sẽ không hiển thị trong danh sách.`,
+																)
+															)
+																remove.mutate(x);
+														}}
+													>
+														<Trash2 size={15} />
 													</button>
 												)}
 											</div>
@@ -417,24 +463,16 @@ export default function Promotions() {
 									</label>
 									<label>
 										Từ ngày
-										<input
-											type="date"
-											required
+										<DateInput
 											value={form.startDate}
-											onChange={e =>
-												setForm({ ...form, startDate: e.target.value })
-											}
+											onChange={value => setForm({ ...form, startDate: value })}
 										/>
 									</label>
 									<label>
 										Đến ngày
-										<input
-											type="date"
-											required
+										<DateInput
 											value={form.endDate}
-											onChange={e =>
-												setForm({ ...form, endDate: e.target.value })
-											}
+											onChange={value => setForm({ ...form, endDate: value })}
 										/>
 									</label>
 									<label>
@@ -494,20 +532,15 @@ export default function Promotions() {
 									</label>
 									<label>
 										Hàng tặng
-										<select
+										<SearchableSelect
 											required
 											value={form.rewardPackagingId}
-											onChange={e =>
-												setForm({ ...form, rewardPackagingId: +e.target.value })
+											options={productSearchOptions}
+											onChange={rewardPackagingId =>
+												setForm({ ...form, rewardPackagingId })
 											}
-										>
-											<option value={0}>Chọn hàng tặng</option>
-											{options.map(x => (
-												<option key={x.id} value={x.id}>
-													{x.productName} - {x.name}
-												</option>
-											))}
-										</select>
+											placeholder="Nhập tên/SKU để chọn hàng tặng"
+										/>
 									</label>
 									<label>
 										Số lượng tặng mỗi bậc

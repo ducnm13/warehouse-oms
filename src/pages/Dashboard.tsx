@@ -309,7 +309,7 @@ const Dashboard = ({ setActiveItem }: DashboardProps) => {
           <div className="flex items-center gap-2">
             <button
               onClick={handleExportExcel}
-              className="flex items-center gap-2 px-2 py-2.5 bg-green-600 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-sm hover:bg-green-700 transition-colors mr-4"
+              className="erp-btn mr-4"
             >
               <Download size={16} /> Xuất Excel
             </button>

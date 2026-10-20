@@ -158,36 +158,32 @@ const AuditLogs = () => {
 	};
 
 	return (
-		<div className="space-y-6">
-			<div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+		<div className="erp-page space-y-6">
+			<div className="erp-page-header">
 				<div>
-					<h2 className="text-2xl font-black uppercase tracking-tight text-gray-800">
-						NHẬT KÝ HOẠT ĐỘNG
-					</h2>
-					<p className="mt-1 text-xs font-bold uppercase tracking-widest text-gray-400">
-						Ai thao tác · thao tác gì · thời gian và thiết bị
-					</p>
+					<h1>Nhật ký hoạt động</h1>
+					<p>Ai thao tác · thao tác gì · thời gian và thiết bị</p>
 				</div>
-				<div className="flex items-center gap-2 rounded-xl border bg-white px-4 py-2.5">
-					<History size={16} className="text-indigo-500" />
-					<span className="text-xs font-bold uppercase tracking-widest text-slate-500">
+				<div className="flex items-center gap-2 rounded-[14px] bg-[#e9e3ff] px-4 py-2.5">
+					<History size={16} className="text-[#422afb]" />
+					<span className="text-xs font-bold uppercase tracking-widest text-[#707eae]">
 						Tổng{" "}
-						<b className="text-slate-800">{total.toLocaleString("vi-VN")}</b>{" "}
+						<b className="text-[#2b3674]">{total.toLocaleString("vi-VN")}</b>{" "}
 						thao tác
 					</span>
 				</div>
 			</div>
 
-			<div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+			<div className="erp-card p-4">
 				<div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
 					<div className="relative xl:col-span-2">
-						<span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
+						<span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-[#a3aed0]">
 							<Search size={16} />
 						</span>
 						<input
 							type="text"
 							placeholder="Tìm hành động, chi tiết, nhân viên..."
-							className="w-full rounded-xl border bg-white py-2.5 pl-10 pr-4 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-200"
+							className="!pl-10"
 							value={search}
 							onChange={e => setSearch(e.target.value)}
 						/>
@@ -195,7 +191,7 @@ const AuditLogs = () => {
 					<select
 						value={actionFilter}
 						onChange={e => setActionFilter(e.target.value)}
-						className="rounded-xl border bg-white px-3 py-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-200"
+						
 					>
 						<option value="">Mọi hành động</option>
 						{(filtersQuery.data?.data?.actions || []).map(name => (
@@ -207,7 +203,7 @@ const AuditLogs = () => {
 					<select
 						value={userFilter}
 						onChange={e => setUserFilter(e.target.value)}
-						className="rounded-xl border bg-white px-3 py-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-200"
+						
 					>
 						<option value="">Mọi nhân viên</option>
 						{(usersQuery.data || []).map(u => (
@@ -216,12 +212,10 @@ const AuditLogs = () => {
 							</option>
 						))}
 					</select>
-					<div className="flex items-center gap-2 rounded-xl border bg-white px-3 py-2">
-						<Calendar size={15} className="shrink-0 text-gray-400" />
+					<div>
 						<DateInput value={fromDate} onChange={setFromDate} />
 					</div>
-					<div className="flex items-center gap-2 rounded-xl border bg-white px-3 py-2">
-						<Calendar size={15} className="shrink-0 text-gray-400" />
+					<div>
 						<DateInput value={toDate} onChange={setToDate} />
 					</div>
 				</div>
@@ -238,11 +232,11 @@ const AuditLogs = () => {
 				)}
 			</div>
 
-			<div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+			<div className="erp-card overflow-hidden">
 				<div className="overflow-x-auto">
-					<table className="w-full text-left">
+					<table className="erp-table">
 						<thead>
-							<tr className="border-b border-slate-100 bg-slate-50">
+							<tr>
 								{[
 									"Thời gian",
 									"Hành động",
@@ -254,14 +248,14 @@ const AuditLogs = () => {
 								].map((head, index) => (
 									<th
 										key={index}
-										className="px-4 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400"
+										className="text-[10px] font-black uppercase tracking-widest text-[#a3aed0]"
 									>
 										{head}
 									</th>
 								))}
 							</tr>
 						</thead>
-						<tbody className="divide-y divide-slate-50">
+						<tbody>
 							{logsQuery.isLoading ? (
 								<tr>
 									<td
@@ -299,7 +293,7 @@ const AuditLogs = () => {
 												</span>
 											</td>
 											<td className="px-4 py-3">
-												<span className="inline-flex items-center rounded-lg border border-indigo-100/60 bg-indigo-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-tight text-indigo-600 shadow-sm">
+												<span className="erp-badge bg-[#e9e3ff] text-[#3311db]">
 													{log.action}
 												</span>
 											</td>
@@ -310,7 +304,7 @@ const AuditLogs = () => {
 											</td>
 											<td className="px-4 py-3">
 												<div className="flex items-center gap-2">
-													<div className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-[10px] font-black uppercase text-slate-600">
+													<div className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-[#e9e3ff] text-[10px] font-black uppercase text-[#422afb]">
 														{(log.userName || "?").charAt(0)}
 													</div>
 													<div className="flex flex-col">
@@ -334,7 +328,7 @@ const AuditLogs = () => {
 											<td className="px-4 py-3 text-right">
 												<Eye
 													size={16}
-													className="text-slate-300 group-hover:text-indigo-500"
+													className="text-[#a3aed0] group-hover:text-[#422afb]"
 												/>
 											</td>
 										</tr>
@@ -356,7 +350,7 @@ const AuditLogs = () => {
 						</tbody>
 					</table>
 				</div>
-				<div className="flex flex-col items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/50 p-4 md:flex-row">
+				<div className="flex flex-col items-center justify-between gap-3 border-t border-[#e9edf7] bg-[#f9fbff] p-4 md:flex-row">
 					<div className="flex items-center gap-3">
 						<span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
 							Trang {page}/{totalPages} · {total.toLocaleString("vi-VN")} bản ghi
@@ -364,7 +358,7 @@ const AuditLogs = () => {
 						<select
 							value={limit}
 							onChange={e => setLimit(Number(e.target.value))}
-							className="rounded-lg border bg-white px-2 py-1 text-[11px] font-bold text-slate-600"
+							className="!h-8 !min-h-0 !px-2 !py-1 !text-[11px]"
 						>
 							{[20, 50, 100, 200].map(size => (
 								<option key={size} value={size}>
@@ -414,16 +408,16 @@ const AuditLogs = () => {
 						</div>
 						<div className="erp-modal-body space-y-4">
 							<div className="flex flex-wrap gap-2">
-								<span className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-100/60 bg-indigo-50 px-3 py-1.5 text-[11px] font-black uppercase tracking-tight text-indigo-600">
+								<span className="erp-badge bg-[#e9e3ff] text-[#3311db]">
 									<FileText size={13} /> {detail.action}
 								</span>
-								<span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-bold text-slate-600">
+								<span className="erp-badge bg-[#eef2fb] text-[#707eae]">
 									<Calendar size={13} />{" "}
 									{formatDateTime(detail.createdAt).date}{" "}
 									{formatDateTime(detail.createdAt).time}
 								</span>
 							</div>
-							<div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+							<div className="rounded-[14px] border border-[#e9edf7] bg-[#f9fbff] p-4">
 								<p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
 									Nội dung / chi tiết
 								</p>
@@ -432,7 +426,7 @@ const AuditLogs = () => {
 								</p>
 							</div>
 							<div className="grid gap-3 md:grid-cols-2">
-								<div className="rounded-xl border border-slate-100 p-4">
+								<div className="rounded-[14px] border border-[#e9edf7] p-4">
 									<p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
 										Nhân viên thao tác
 									</p>
@@ -449,7 +443,7 @@ const AuditLogs = () => {
 										User ID: {detail.userId ?? "—"}
 									</p>
 								</div>
-								<div className="rounded-xl border border-slate-100 p-4">
+								<div className="rounded-[14px] border border-[#e9edf7] p-4">
 									<p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
 										Thiết bị & kết nối
 									</p>
@@ -463,7 +457,7 @@ const AuditLogs = () => {
 									</p>
 								</div>
 							</div>
-							<div className="rounded-xl border border-slate-100 p-4">
+							<div className="rounded-[14px] border border-[#e9edf7] p-4">
 								<p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
 									User agent (nguyên văn)
 								</p>

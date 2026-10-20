@@ -46,20 +46,20 @@ export default function Login({ onLogin }: LoginProps) {
 	};
 
 	return (
-		<div className="grid min-h-screen bg-[#f9fafb] lg:grid-cols-2">
-			<div className="relative hidden flex-col justify-between overflow-hidden bg-[#101828] p-10 text-white lg:flex">
+		<div className="grid min-h-screen bg-[#f4f7fe] lg:grid-cols-2">
+			<div className="relative hidden flex-col justify-between overflow-hidden bg-[#1b2559] p-10 text-white lg:flex">
 				<div
-					className="absolute inset-0 opacity-20"
+					className="absolute inset-0 opacity-30"
 					style={{
 						backgroundImage:
-							"radial-gradient(circle at 20% 20%, #465fff 0, transparent 28%), radial-gradient(circle at 85% 15%, #12b76a 0, transparent 24%), radial-gradient(circle at 70% 90%, #f79009 0, transparent 20%)",
+							"radial-gradient(circle at 20% 20%, #7551ff 0, transparent 32%), radial-gradient(circle at 85% 15%, #00b5d8 0, transparent 26%), radial-gradient(circle at 70% 90%, #422afb 0, transparent 24%)",
 					}}
 				/>
 				<div className="relative flex items-center gap-3">
 					<div>
 						<img src="/public/images/logo2.png" alt="" className="w-40" />
 					</div>
-					{/* <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#465fff] font-bold">
+					{/* <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#422afb] font-bold">
 						C
 					</span> */}
 					<div>
@@ -99,17 +99,17 @@ export default function Login({ onLogin }: LoginProps) {
 			</div>
 
 			<div className="flex min-w-0 flex-1 items-center justify-center p-6 sm:p-10">
-				<div className="w-full max-w-md rounded-2xl border border-[#eaecf0] bg-white p-8 shadow-[0_1px_2px_rgba(16,24,40,0.05)]">
+				<div className="w-full max-w-md rounded-[20px] bg-white p-8 shadow-[14px_17px_40px_4px_rgba(112,144,176,0.08)]">
 					<div>
 						<div className="mb-6 flex items-center gap-3">
-							<span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#ecf3ff] text-[#465fff]">
+							<span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#e9e3ff] text-[#422afb]">
 								<Warehouse size={20} />
 							</span>
 							<div>
-								<h1 className="text-xl font-bold tracking-tight text-[#101828]">
+								<h1 className="text-2xl font-bold tracking-tight text-[#1b2559]">
 									Đăng nhập
 								</h1>
-								<p className="text-sm text-[#667085]">
+								<p className="text-sm text-[#a3aed0]">
 									Chào mừng trở lại hệ thống kho Challenge
 								</p>
 							</div>
@@ -117,7 +117,7 @@ export default function Login({ onLogin }: LoginProps) {
 
 						<form onSubmit={handleSubmit} className="space-y-4">
 							<div>
-								<label className="mb-1.5 block text-sm font-medium text-[#344054]">
+								<label className="mb-1.5 block text-sm font-medium text-[#2b3674]">
 									Tên đăng nhập <span className="text-[#f04438]">*</span>
 								</label>
 								<div className="relative block">
@@ -131,12 +131,12 @@ export default function Login({ onLogin }: LoginProps) {
 											display: "block",
 											width: "100%",
 											height: 44,
-											border: "1px solid #d0d5dd",
-											borderRadius: 8,
+											border: "1px solid #e0e5f2",
+											borderRadius: 14,
 											background: "#fff",
 											padding: "0 12px 0 40px",
 											fontSize: 14,
-											color: "#101828",
+											color: "#2b3674",
 										}}
 									/>
 									<UserIcon
@@ -146,14 +146,14 @@ export default function Login({ onLogin }: LoginProps) {
 											left: 12,
 											top: "50%",
 											transform: "translateY(-50%)",
-											color: "#98a2b3",
+											color: "#a3aed0",
 											pointerEvents: "none",
 										}}
 									/>
 								</div>
 							</div>
 							<div>
-								<label className="mb-1.5 block text-sm font-medium text-[#344054]">
+								<label className="mb-1.5 block text-sm font-medium text-[#2b3674]">
 									Mật khẩu <span className="text-[#f04438]">*</span>
 								</label>
 								<div className="relative block">
@@ -168,12 +168,12 @@ export default function Login({ onLogin }: LoginProps) {
 											display: "block",
 											width: "100%",
 											height: 44,
-											border: "1px solid #d0d5dd",
-											borderRadius: 8,
+											border: "1px solid #e0e5f2",
+											borderRadius: 14,
 											background: "#fff",
 											padding: "0 12px 0 40px",
 											fontSize: 14,
-											color: "#101828",
+											color: "#2b3674",
 										}}
 									/>
 									<Lock
@@ -183,7 +183,7 @@ export default function Login({ onLogin }: LoginProps) {
 											left: 12,
 											top: "50%",
 											transform: "translateY(-50%)",
-											color: "#98a2b3",
+											color: "#a3aed0",
 											pointerEvents: "none",
 										}}
 									/>
@@ -191,16 +191,16 @@ export default function Login({ onLogin }: LoginProps) {
 							</div>
 
 							<div className="flex items-center justify-between text-sm">
-								<label className="inline-flex cursor-pointer items-center gap-2 text-[#344054]">
+								<label className="inline-flex cursor-pointer items-center gap-2 text-[#2b3674]">
 									<input
 										type="checkbox"
 										checked={remember}
 										onChange={e => setRemember(e.target.checked)}
-										className="h-4 w-4 accent-[#465fff]"
+										className="h-4 w-4 accent-[#422afb]"
 									/>
 									Ghi nhớ đăng nhập
 								</label>
-								{/* <span className="font-medium text-[#465fff]">
+								{/* <span className="font-medium text-[#422afb]">
 									Liên hệ quản trị để cấp lại
 								</span> */}
 							</div>
@@ -214,13 +214,13 @@ export default function Login({ onLogin }: LoginProps) {
 								{loading ? "Đang xử lý..." : "Đăng nhập"}
 							</Button>
 
-							{/* <div className="flex items-center gap-2 rounded-lg bg-[#f9fafb] px-3 py-2.5 text-xs text-[#667085]">
+							{/* <div className="flex items-center gap-2 rounded-lg bg-[#f4f7fe] px-3 py-2.5 text-xs text-[#a3aed0]">
 								<ShieldCheck size={15} className="shrink-0 text-[#12b76a]" />
 								Phiên đăng nhập được bảo vệ bằng JWT và refresh token.
 							</div> */}
 
-							{/* <div className="rounded-lg border border-dashed border-[#d0d5dd] p-3 text-xs text-[#667085]">
-								<p className="mb-1 flex items-center gap-1.5 font-semibold text-[#344054]">
+							{/* <div className="rounded-lg border border-dashed border-[#e0e5f2] p-3 text-xs text-[#a3aed0]">
+								<p className="mb-1 flex items-center gap-1.5 font-semibold text-[#2b3674]">
 									<Boxes size={14} /> Tài khoản demo
 								</p>
 								<p>

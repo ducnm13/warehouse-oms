@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { apiV1 } from "../lib/apiV1";
 import {
 	LayoutDashboard,
 	ArrowRightLeft,
@@ -19,7 +21,6 @@ import {
 	BookOpen,
 	Settings,
 	Store,
-	ChevronDown,
 	Package,
 	BarChart3,
 	Warehouse,
@@ -27,6 +28,7 @@ import {
 	Tag,
 	ShieldCheck,
 	MessageCircle,
+	Terminal,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -58,16 +60,16 @@ const NavItem = ({
 	return (
 		<button
 			onClick={handleClick}
-			className={`group w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13.5px] font-medium transition-all duration-150
+			className={`group w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13.5px] font-medium transition-all duration-150
         ${indent ? "ml-3 pl-2 w-[calc(100%-12px)]" : ""}
         ${
 					active
-						? "bg-[#465fff]/15 text-[#b2ccff] font-semibold"
-						: "text-[#98a2b3] hover:bg-white/[.06] hover:text-white"
+						? "bg-[#f2efff] text-[#422afb] font-semibold"
+						: "text-[#2b3674] hover:bg-[#f4f7fe] hover:text-[#2b3674]"
 				}`}
 		>
 			<span
-				className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${active ? "bg-[#465fff] text-white" : "bg-white/5 text-[#98a2b3] group-hover:text-white"}`}
+				className={`flex h-8 w-8 items-center justify-center rounded-xl transition-colors ${active ? "bg-[#422afb] text-white shadow-[0_6px_16px_rgba(66,42,251,0.35)]" : "bg-[#f4f7fe] text-[#2b3674] group-hover:text-[#2b3674]"}`}
 			>
 				<Icon size={indent ? 15 : 17} />
 			</span>
@@ -77,90 +79,10 @@ const NavItem = ({
 };
 
 const SectionLabel = ({ children }: { children: React.ReactNode }) => (
-	<p className="px-3 text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500 mb-1 mt-5">
+	<p className="px-3 text-[10px] font-bold uppercase tracking-[0.1em] text-[#2b3674] mb-1 mt-5">
 		{children}
 	</p>
 );
-
-const SubMenu = ({
-	icon: Icon,
-	label,
-	path,
-	children,
-	defaultOpen = false,
-}: {
-	icon: React.FC<any>;
-	label: string;
-	path: string;
-	children: React.ReactNode;
-	defaultOpen?: boolean;
-}) => {
-	const location = useLocation();
-	const [open, setOpen] = useState(
-		defaultOpen || location.pathname.startsWith(path),
-	);
-	return (
-		<div>
-			<button
-				onClick={() => setOpen(o => !o)}
-				className={`group w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13.5px] font-medium transition-all duration-150
-          ${location.pathname.startsWith(path) ? "text-white" : "text-[#98a2b3] hover:bg-white/[.06] hover:text-white"}`}
-			>
-				<span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/5 text-[#98a2b3] transition-colors group-hover:text-white">
-					<Icon size={17} />
-				</span>
-				<span className="flex-1 text-left">{label}</span>
-				<ChevronDown
-					size={14}
-					className={`transition-transform duration-200 opacity-60 ${open ? "rotate-180" : ""}`}
-				/>
-			</button>
-			<div
-				className={`overflow-hidden transition-all duration-250 ${open ? "max-h-[1600px] opacity-100" : "max-h-0 opacity-0"}`}
-			>
-				<div className="mt-0.5 ml-4 pl-3 border-l border-white/10 space-y-0.5 py-1">
-					{children}
-				</div>
-			</div>
-		</div>
-	);
-};
-
-const ReportMenuGroup = ({
-	children,
-	label,
-}: {
-	children: React.ReactNode;
-	label: string;
-}) => (
-	<div className="mt-1 first:mt-0">
-		<p className="px-3 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
-			{label}
-		</p>
-		<div className="space-y-0.5">{children}</div>
-	</div>
-);
-
-const ReportMenuItem = ({ label, path }: { label: string; path: string }) => {
-	const location = useLocation();
-	const navigate = useNavigate();
-	const active = location.pathname === path;
-	return (
-		<button
-			onClick={() => navigate(path)}
-			className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-150 ${
-				active
-					? "bg-[#465fff]/15 text-[#b2ccff] font-semibold"
-					: "text-[#98a2b3] hover:bg-white/[.06] hover:text-white"
-			}`}
-		>
-			<span
-				className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${active ? "bg-[#b2ccff]" : "bg-white/20"}`}
-			/>
-			{label}
-		</button>
-	);
-};
 
 export default function Sidebar({
 	sidebarOpen,
@@ -170,6 +92,12 @@ export default function Sidebar({
 	onLogout,
 }: SidebarProps) {
 	const sidebarRef = useRef<HTMLDivElement>(null);
+	const location = useLocation();
+
+	// Đóng sidebar trên mobile sau khi chuyển trang
+	useEffect(() => {
+		setSidebarOpen(false);
+	}, [location.pathname, setSidebarOpen]);
 
 	useEffect(() => {
 		const handle = (e: MouseEvent) => {
@@ -195,17 +123,24 @@ export default function Sidebar({
 		return list.some(p => perms.includes(p));
 	};
 
+	// Vai trò kho (thủ kho) không hiển thị khu vực bán hàng
+	const isWarehouseRole = role === "W_MANAGER";
+
 	// Bán hàng
-	const showSales = has("sales.view");
-	const showPromotions = has("promotion.view");
-	const showSalesReturns = has("sales.return.view");
-	const showCustomers = has("customer.view");
-	const showDebt = has("debt.view");
+	const showSales = has("sales.view") && !isWarehouseRole;
+	const showPromotions = has("promotion.view") && !isWarehouseRole;
+	const showSalesReturns = has("sales.return.view") && !isWarehouseRole;
+	const showCustomers = has("customer.view") && !isWarehouseRole;
+	const showDebt = has("debt.view") && !isWarehouseRole;
 	const showSalesSection =
-		showSales || showPromotions || showSalesReturns || showCustomers || showDebt;
+		showSales ||
+		showPromotions ||
+		showSalesReturns ||
+		showCustomers ||
+		showDebt;
 
 	// Bán hàng online
-	const showOnline = has("online.view");
+	const showOnline = has("online.view") && !isWarehouseRole;
 
 	// Mua hàng
 	const showPurchases = has("purchase.view");
@@ -238,7 +173,8 @@ export default function Sidebar({
 	const showProductionMgmt =
 		!!role && (role === "ADMIN" || role === "P_MANAGER");
 	const showAssembly = has("assembly.view");
-	const showProductionSection = showProduction || showProductionMgmt || showAssembly;
+	const showProductionSection =
+		showProduction || showProductionMgmt || showAssembly;
 
 	// Báo cáo
 	const showReports = has("report.view");
@@ -250,6 +186,15 @@ export default function Sidebar({
 	const showCompany = has("company.manage");
 	const showManageSection =
 		showUsers || showRoles || showAuditLogs || showCompany;
+	const canUseDevTools = has("system.admin");
+	const devToolsAccess = useQuery({
+		queryKey: ["devtools-access"],
+		queryFn: () => apiV1<{ allowed: boolean }>("/api/v1/devtools/access"),
+		enabled: canUseDevTools,
+		staleTime: 5 * 60_000,
+		retry: false,
+	});
+	const showDevTools = canUseDevTools && devToolsAccess.data?.data.allowed === true;
 
 	return (
 		<>
@@ -265,35 +210,38 @@ export default function Sidebar({
 				ref={sidebarRef}
 				className={`
           fixed md:relative inset-y-0 left-0 z-50
-          w-[260px] h-full flex flex-col flex-shrink-0
+          w-[270px] h-full flex flex-col flex-shrink-0 bg-white
           transform transition-transform duration-300 ease-in-out
           ${sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
         `}
-				style={{ background: "#0a20c7", borderRight: "1px solid #030E68" }}
 			>
 				{/* Logo */}
-				<div
-					className="h-16 flex items-center px-5 flex-shrink-0"
-					style={{ borderBottom: "1px solid #1d2939" }}
-				>
+				<div className="h-20 flex items-center px-5 flex-shrink-0 border-b border-[#e6ecfa]">
 					<div className="flex items-center gap-2.5 justify-center w-full">
-						<div className="w-30 flex items-center justify-center">
-							<img src="/public/images/logo2.png" alt="" />
+						<div className="w-36 flex items-center justify-center">
+							<img
+								src="/public/images/logo.png"
+								alt=""
+								className="w-full object-contain"
+							/>
 						</div>
-						{/* <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#465fff] text-lg font-bold text-white">
-							C
-						</span> */}
 						<div>
-							<p className="text-white font-semibold text-[14px] leading-tight tracking-tight">
+							<p className="text-[#2b3674] font-bold text-[14px] leading-tight tracking-tight">
 								ERP
 							</p>
-							<p className="text-[#667085] text-[11px]">v1.0.2</p>
+							<p className="text-[#2b3674] text-[11px]">v1.0.2</p>
 						</div>
 					</div>
 				</div>
 
 				{/* Nav */}
-				<nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5 custom-scrollbar">
+				<nav
+					className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5 custom-scrollbar"
+					onClick={event => {
+						if ((event.target as HTMLElement).closest("button"))
+							setSidebarOpen(false);
+					}}
+				>
 					{has("dashboard.view") && (
 						<NavItem
 							icon={LayoutDashboard}
@@ -309,7 +257,7 @@ export default function Sidebar({
 							{showSales && (
 								<NavItem
 									icon={ShoppingCart}
-									label="Đơn bán hàng"
+									label="Bán hàng"
 									path="/sales-orders"
 								/>
 							)}
@@ -345,7 +293,11 @@ export default function Sidebar({
 						<>
 							<SectionLabel>Mua hàng</SectionLabel>
 							{showPurchases && (
-								<NavItem icon={ShoppingBag} label="Mua hàng" path="/purchases" />
+								<NavItem
+									icon={ShoppingBag}
+									label="Mua hàng"
+									path="/purchases"
+								/>
 							)}
 							{showSuppliers && (
 								<NavItem
@@ -450,44 +402,7 @@ export default function Sidebar({
 
 					{/* Báo cáo */}
 					{showReports && (
-						<>
-							<SectionLabel>Báo cáo</SectionLabel>
-							<SubMenu icon={BarChart3} label="Báo cáo" path="/reports">
-								<ReportMenuItem label="Trung tâm báo cáo" path="/reports" />
-								<ReportMenuGroup label="Tài chính">
-									<ReportMenuItem label="Tổng quan tài chính" path="/reports/financial" />
-								</ReportMenuGroup>
-								<ReportMenuGroup label="Bán hàng">
-									<ReportMenuItem label="Doanh thu & lợi nhuận" path="/reports/sales-profit" />
-									<ReportMenuItem label="Theo KH / nhóm" path="/reports/sales-customer" />
-									<ReportMenuItem label="Theo sản phẩm" path="/reports/sales-product" />
-									<ReportMenuItem label="Trả hàng bán" path="/reports/sales-returns" />
-								</ReportMenuGroup>
-								<ReportMenuGroup label="Mua hàng">
-									<ReportMenuItem label="Theo nhà cung cấp" path="/reports/purchases-supplier" />
-									<ReportMenuItem label="Theo mặt hàng" path="/reports/purchases-product" />
-								</ReportMenuGroup>
-								<ReportMenuGroup label="Tồn kho">
-									<ReportMenuItem label="Tổng hợp tồn kho" path="/reports/inventory-summary" />
-									<ReportMenuItem label="Giá trị tồn & tồn thấp" path="/reports/stock-on-hand" />
-									<ReportMenuItem label="Sổ chi tiết 1 mã" path="/reports/item-ledger" />
-									<ReportMenuItem label="Chuyển kho" path="/reports/transfers" />
-								</ReportMenuGroup>
-								<ReportMenuGroup label="Sản xuất">
-									<ReportMenuItem label="Tổng quan sản xuất" path="/reports/production-overview" />
-									<ReportMenuItem label="Định mức vs thực tế" path="/reports/production-variance" />
-									<ReportMenuItem label="SX – Lắp ráp – Tháo dỡ" path="/reports/operations" />
-								</ReportMenuGroup>
-								<ReportMenuGroup label="Công nợ">
-									<ReportMenuItem label="Công nợ phải thu" path="/reports/debt-receivable" />
-									<ReportMenuItem label="Công nợ phải trả" path="/reports/debt-payable" />
-								</ReportMenuGroup>
-								<ReportMenuGroup label="Khuyến mãi & Online">
-									<ReportMenuItem label="Sử dụng khuyến mãi" path="/reports/promotions" />
-									<ReportMenuItem label="Bán hàng online" path="/reports/online" />
-								</ReportMenuGroup>
-							</SubMenu>
-						</>
+						<NavItem icon={BarChart3} label="Báo cáo" path="/reports" />
 					)}
 
 					{/* Tin nhắn nội bộ: mọi tài khoản đăng nhập đều dùng được */}
@@ -517,6 +432,13 @@ export default function Sidebar({
 									path="/company-settings"
 								/>
 							)}
+						</>
+					)}
+
+					{showDevTools && (
+						<>
+							<SectionLabel>Developer</SectionLabel>
+							<NavItem icon={Terminal} label="Dev Tools" path="/dev-tools" />
 						</>
 					)}
 				</nav>

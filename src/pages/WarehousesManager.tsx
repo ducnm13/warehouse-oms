@@ -114,7 +114,7 @@ export default function WarehousesManager() {
           <p className="text-sm text-slate-500 mt-1">Thêm mới, cấu hình loại kho, vị trí và quản lý danh sách kho toàn hệ thống</p>
         </div>
         <div>
-          <button className="inline-flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg shadow-sm transition-colors cursor-pointer" onClick={openCreate}>
+          <button className="erp-btn erp-btn-primary" onClick={openCreate}>
             <Plus size={16} /> Thêm kho mới
           </button>
         </div>
@@ -145,19 +145,19 @@ export default function WarehousesManager() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-sm">
+            <table className="erp-table">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 text-xs font-semibold uppercase tracking-wider">
-                  <th className="px-5 py-3.5">Mã kho</th>
-                  <th className="px-5 py-3.5">Tên kho</th>
-                  <th className="px-5 py-3.5">Loại kho</th>
-                  <th className="px-5 py-3.5">Vị trí / Tầng</th>
-                  <th className="px-5 py-3.5">Địa chỉ</th>
-                  <th className="px-5 py-3.5 text-center">Giao dịch / Tồn</th>
-                  <th className="px-5 py-3.5 text-right">Thao tác</th>
+                <tr>
+                  <th>Mã kho</th>
+                  <th>Tên kho</th>
+                  <th>Loại kho</th>
+                  <th>Vị trí / Tầng</th>
+                  <th>Địa chỉ</th>
+                  <th className="text-center">Giao dịch / Tồn</th>
+                  <th className="text-right">Thao tác</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200">
+              <tbody>
                 {filtered.map((w: WarehouseItem) => {
                   const tInfo = WAREHOUSE_TYPES[w.type] || { label: w.type, color: "bg-slate-100 text-slate-800" };
                   return (
@@ -249,7 +249,7 @@ export default function WarehousesManager() {
                 <button type="button" onClick={() => setModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 bg-white border border-slate-300 rounded-lg shadow-sm">
                   Hủy
                 </button>
-                <button type="submit" disabled={createMutation.isPending || updateMutation.isPending} className="inline-flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium px-5 py-2 rounded-lg shadow-sm transition-colors cursor-pointer disabled:opacity-50">
+                <button type="submit" disabled={createMutation.isPending || updateMutation.isPending} className="erp-btn erp-btn-primary">
                   <Save size={16} /> {createMutation.isPending || updateMutation.isPending ? "Đang lưu..." : "Lưu kho"}
                 </button>
               </div>

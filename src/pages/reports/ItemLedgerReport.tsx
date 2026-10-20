@@ -1,8 +1,10 @@
 import React, { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import ReportPeriodFilter from "../../components/ReportPeriodFilter";
+import SearchableSelect from "../../components/SearchableSelect";
 import { apiV1, legacyApi } from "../../lib/apiV1";
 import { formatDate } from "../../lib/utils";
+import { ledgerSourceTypeLabel } from "../../lib/ledger-labels";
 import type { ItemLedgerReportV1, Product } from "../../types";
 import {
 	ExportButton,
@@ -43,6 +45,15 @@ export default function ItemLedgerReport() {
 			),
 		[products.data],
 	);
+	const packagingOptions = useMemo(
+		() =>
+			packagings.map(packaging => ({
+				value: packaging.id,
+				label: `${packaging.productName} - ${packaging.name}`,
+				subLabel: [packaging.sku, packaging.unit].filter(Boolean).join(" · "),
+			})),
+		[packagings],
+	);
 	const params = new URLSearchParams({ from, to, packagingId: String(packagingId) });
 	if (warehouseId) params.set("warehouseId", String(warehouseId));
 	const query = useQuery({
@@ -57,7 +68,7 @@ export default function ItemLedgerReport() {
 		exportExcel(`So_chi_tiet_vat_tu_${from}_${to}.xlsx`, "So chi tiet", [
 			{ header: "Thời gian", value: (r: ItemLedgerReportV1["rows"][number]) => r.occurredAt, width: 20 },
 			{ header: "Chứng từ", value: r => r.documentCode, width: 18 },
-			{ header: "Loại", value: r => r.sourceType, width: 22 },
+			{ header: "Loại", value: r => ledgerSourceTypeLabel(r.sourceType), width: 22 },
 			{ header: "Kho", value: r => r.warehouseName, width: 20 },
 			{ header: "Nhập SL", value: r => r.inboundQuantity, width: 12 },
 			{ header: "Xuất SL", value: r => r.outboundQuantity, width: 12 },
@@ -75,14 +86,12 @@ export default function ItemLedgerReport() {
 				<WarehouseSelect value={warehouseId} onChange={setWarehouseId} warehouses={refs.data?.warehouses || []} />
 				<label>
 					Mặt hàng
-					<select value={packagingId} onChange={e => setPackagingId(Number(e.target.value))}>
-						<option value={0}>Chọn mặt hàng</option>
-						{packagings.map(packaging => (
-							<option key={packaging.id} value={packaging.id}>
-								{packaging.productName} - {packaging.name}
-							</option>
-						))}
-					</select>
+					<SearchableSelect
+						value={packagingId}
+						options={packagingOptions}
+						onChange={setPackagingId}
+						placeholder="Nhập tên/SKU để chọn mặt hàng"
+					/>
 				</label>
 			</FilterBar>
 
@@ -119,7 +128,7 @@ export default function ItemLedgerReport() {
 									<tr key={row.id}>
 										<td>{formatDate(row.occurredAt)}</td>
 										<td><b>{row.documentCode}</b></td>
-										<td>{row.sourceType}</td>
+										<td>{ledgerSourceTypeLabel(row.sourceType)}</td>
 										<td>{row.warehouseName}</td>
 										<td className="text-right text-emerald-600">{row.inboundQuantity ? qty(row.inboundQuantity) : "-"}</td>
 										<td className="text-right text-red-600">{row.outboundQuantity ? qty(row.outboundQuantity) : "-"}</td>
