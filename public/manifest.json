@@ -1,8 +1,11 @@
 {
+	"id": "/",
 	"name": "Challenge ERP",
 	"short_name": "Challenge ERP",
-	"description": "Hệ thống quản lý kho vận Challenge ERP V1.0.2",
+	"description": "Hệ thống quản lý kho và vận hành Challenge ERP",
+	"lang": "vi",
 	"start_url": "/",
+	"scope": "/",
 	"display": "standalone",
 	"background_color": "#F4F7FE",
 	"theme_color": "#422AFB",

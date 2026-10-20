@@ -658,6 +658,72 @@
 	align-items: flex-end;
 	gap: 12px;
 }
+.u078-notify {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	width: min(330px, calc(100vw - 32px));
+	padding: 10px 10px 10px 12px;
+	border-radius: 14px;
+	border: 1px solid var(--ux-line);
+	background: var(--ux-surface);
+	box-shadow: 0 12px 30px -16px var(--ux-shadow-strong);
+	color: var(--ux-ink);
+	animation: u078-panel-in 0.28s var(--ux-spring);
+}
+.u078-notify > svg {
+	width: 20px;
+	height: 20px;
+	flex: none;
+	color: var(--ux-accent);
+}
+.u078-notify-text {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.u078-notify-text b {
+	font-size: 13px;
+	font-weight: 650;
+	line-height: 1.3;
+}
+.u078-notify-text small {
+	font-size: 11px;
+	line-height: 1.35;
+	color: var(--ux-ink-2);
+}
+.u078-notify-action {
+	flex: none;
+	border: 0;
+	border-radius: 9px;
+	padding: 7px 12px;
+	background: var(--ux-accent);
+	color: var(--ux-accent-ink);
+	font-size: 12px;
+	font-weight: 650;
+}
+.u078-notify-close {
+	flex: none;
+	width: 26px;
+	height: 26px;
+	display: grid;
+	place-items: center;
+	border: 0;
+	border-radius: 7px;
+	padding: 0;
+	background: transparent;
+	color: var(--ux-ink-3);
+}
+.u078-notify-close:hover {
+	background: var(--ux-surface-2);
+	color: var(--ux-ink);
+}
+.u078-notify-close svg {
+	width: 14px;
+	height: 14px;
+}
 .u078-bubble {
 	position: relative;
 	width: 56px;
