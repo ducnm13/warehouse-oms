@@ -4,11 +4,19 @@ import { resolveDocumentCode } from "../../common/document-code";
 import { HttpError } from "../../common/http-error";
 import { mapProduction } from "./production.mapper";
 import { Prisma, prisma, productionInclude, productionRepository } from "./production.repository";
-import { syncProductionStatusFromDocuments } from "./production-status";
+import { resolveProductionDocumentStatuses } from "./production-status";
 
 const dec = (n: number) => new Prisma.Decimal(n.toFixed(4));
 const cash = (n: number) => new Prisma.Decimal(n.toFixed(2));
 const now = () => new Date().toISOString();
+
+const addMonths = (dateStr: string, months: number) => {
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  d.setMonth(d.getMonth() + months);
+  return d.toISOString().slice(0, 10);
+};
+const shelfLifeOf = (pkg: any) => pkg?.shelfLifeMonths ?? pkg?.products?.shelfLifeMonths ?? 24;
 
 async function inventoryDoc(tx: any, data: { code: string; type: "IMPORT" | "EXPORT"; date: string; warehouseId: number; note: string; sourceModule: string; userId: number }) {
   const at = new Date(), t = now();
@@ -77,29 +85,38 @@ async function snapshot(tx: any, orderId: number, outputs: any[]) {
   await tx.production_order_materials_v1.createMany({ data: [...map].map(([packagingId, value]) => ({ orderId, packagingId, plannedQuantity: dec(value.qty), unit: value.unit || null })) });
 }
 
+async function mapProductionWithDocuments(db: any, rows: any[]) {
+  const statuses = await resolveProductionDocumentStatuses(db, rows);
+  return rows.map(row => ({ ...mapProduction(row), documentStatus: statuses.get(row.id) || "DRAFT" }));
+}
+
+async function mapOneProductionWithDocuments(db: any, row: any) {
+  return (await mapProductionWithDocuments(db, [row]))[0];
+}
+
 export const productionService = {
   async list(q: any) {
     const where: any = { sourceModule: "PRODUCTION_V1", ...(q.status ? { status: q.status } : {}), ...(q.warehouseId ? { warehouseId: q.warehouseId } : {}), ...(q.month ? { order_date: { startsWith: q.month } } : {}), ...(q.search ? { OR: [{ code: { contains: q.search } }, { batch_number: { contains: q.search } }] } : {}) };
     const [r, total] = await Promise.all([productionRepository.list(where, (q.page - 1) * q.limit, q.limit), productionRepository.count(where)]);
-    return { data: r.map(mapProduction), meta: { page: q.page, limit: q.limit, total, totalPages: Math.ceil(total / q.limit) } };
+    return { data: await mapProductionWithDocuments(prisma, r), meta: { page: q.page, limit: q.limit, total, totalPages: Math.ceil(total / q.limit) } };
   },
   async get(id: number) {
     const r = await productionRepository.find(id);
     if (!r || r.sourceModule !== "PRODUCTION_V1") throw new HttpError(404, "PRODUCTION_NOT_FOUND", "Không tìm thấy lệnh");
-    return mapProduction(r);
+    return mapOneProductionWithDocuments(prisma, r);
   },
   async create(i: ProductionDraftInput, u: number) {
     return prisma.$transaction(async tx => {
       const wh = await tx.warehouses.findUnique({ where: { id: i.warehouseId } });
       if (!wh) throw new HttpError(422, "WAREHOUSE_NOT_FOUND", "Kho không tồn tại");
-      const firstOutput = await tx.productpackagings.findUnique({ where: { id: i.outputs[0].packagingId } });
+      const firstOutput = await tx.productpackagings.findUnique({ where: { id: i.outputs[0].packagingId }, include: { products: true } });
       if (!firstOutput) throw new HttpError(422, "OUTPUT_NOT_FOUND", "Mã thành phẩm không tồn tại");
       const code = await resolveDocumentCode("production", (i as any).code);
       const t = now();
       const r = await tx.productionorders.create({
         data: {
           code, productId: firstOutput.productId, warehouseId: i.warehouseId, order_date: i.orderDate,
-          mfg_date: i.mfgDate, exp_date: i.expDate, batch_number: i.batchNumber || null, note: i.note || null,
+          mfg_date: i.mfgDate, exp_date: addMonths(i.mfgDate, shelfLifeOf(firstOutput)), batch_number: i.batchNumber || null, note: i.note || null,
           total_powder_kg: i.totalPowderKg, target_sachets: i.targetSachets,
           total_sachets: i.outputs.reduce((s, x) => s + x.plannedQuantity, 0),
           loss_percent: i.lossPercent, status: "DRAFT", sourceModule: "PRODUCTION_V1",
@@ -109,7 +126,7 @@ export const productionService = {
       });
       await snapshot(tx, r.id, i.outputs);
       await tx.audit_logs.create({ data: { action: "Tạo lệnh sản xuất v1", details: r.code, userId: u, userName: String(u), createdAt: t } });
-      return mapProduction(await tx.productionorders.findUnique({ where: { id: r.id }, include: productionInclude }));
+      return mapOneProductionWithDocuments(tx, await tx.productionorders.findUnique({ where: { id: r.id }, include: productionInclude }));
     });
   },
   async update(id: number, i: ProductionUpdateInput, u: number) {
@@ -120,12 +137,12 @@ export const productionService = {
       if (r.status === "DRAFT") {
         await tx.productiondetails.deleteMany({ where: { orderId: id } });
         await tx.production_order_materials_v1.deleteMany({ where: { orderId: id } });
-        const firstOutput = await tx.productpackagings.findUnique({ where: { id: i.outputs[0].packagingId } });
+        const firstOutput = await tx.productpackagings.findUnique({ where: { id: i.outputs[0].packagingId }, include: { products: true } });
         await tx.productionorders.update({
           where: { id },
           data: {
             productId: firstOutput?.productId, warehouseId: i.warehouseId, order_date: i.orderDate,
-            mfg_date: i.mfgDate, exp_date: i.expDate, batch_number: i.batchNumber || null, note: i.note || null,
+            mfg_date: i.mfgDate, exp_date: addMonths(i.mfgDate, shelfLifeOf(firstOutput)), batch_number: i.batchNumber || null, note: i.note || null,
             total_powder_kg: i.totalPowderKg, target_sachets: i.targetSachets,
             total_sachets: i.outputs.reduce((s, x) => s + x.plannedQuantity, 0),
             loss_percent: i.lossPercent, version: { increment: 1 }, updatedAt: t,
@@ -135,20 +152,21 @@ export const productionService = {
         await snapshot(tx, id, i.outputs);
       } else {
         // Đang sản xuất: sửa thông tin mẻ + bổ sung (mã lệnh, kho, ngày tạo), giữ nguyên dòng chi tiết & số thực tế đã nhập
+        const firstOutput = await tx.productpackagings.findUnique({ where: { id: i.outputs[0].packagingId }, include: { products: true } });
         await tx.productionorders.update({
           where: { id },
           data: {
             ...(i.code ? { code: i.code } : {}),
             warehouseId: i.warehouseId,
             order_date: i.orderDate,
-            mfg_date: i.mfgDate, exp_date: i.expDate, batch_number: i.batchNumber || null, note: i.note || null,
+            mfg_date: i.mfgDate, exp_date: addMonths(i.mfgDate, shelfLifeOf(firstOutput)), batch_number: i.batchNumber || null, note: i.note || null,
             total_powder_kg: i.totalPowderKg, target_sachets: i.targetSachets,
             loss_percent: i.lossPercent, version: { increment: 1 }, updatedAt: t
           }
         });
       }
       await tx.audit_logs.create({ data: { action: "Cập nhật lệnh sản xuất v1", details: String(id), userId: u, userName: String(u), createdAt: t } });
-      return mapProduction(await tx.productionorders.findUnique({ where: { id }, include: productionInclude }));
+      return mapOneProductionWithDocuments(tx, await tx.productionorders.findUnique({ where: { id }, include: productionInclude }));
     });
   },
   async linkInventory(id: number, input: { linkType: string; linkedId: number; linkedCode?: string }, u: number) {
@@ -162,9 +180,7 @@ export const productionService = {
         update: { linkedCode: value.linkedCode || null }
       });
       await tx.audit_logs.create({ data: { action: "Liên kết phiếu kho lệnh sản xuất", details: `${id} -> ${value.linkedCode || value.linkedId}`, userId: u, userName: String(u), createdAt: t } });
-      // Trạng thái lệnh suy ra từ chứng từ đã ghi sổ (đang SX khi có phiếu xuất, hoàn thành khi đủ xuất + nhập)
-      await syncProductionStatusFromDocuments(tx, id, u);
-      return mapProduction(await tx.productionorders.findUnique({ where: { id }, include: productionInclude }));
+      return mapOneProductionWithDocuments(tx, await tx.productionorders.findUnique({ where: { id }, include: productionInclude }));
     });
   },
   async confirm(id: number, i: ProductionConfirmInput, u: number) {
@@ -182,7 +198,7 @@ export const productionService = {
         where: { id }, data: { status: "IN_PROGRESS", startedAt: new Date(), startedBy: u, version: { increment: 1 }, updatedAt: t }, include: productionInclude
       });
       await tx.audit_logs.create({ data: { action: "Xác nhận sản xuất v1", details: updated.code, userId: u, userName: String(u), createdAt: t } });
-      return mapProduction(updated);
+      return mapOneProductionWithDocuments(tx, updated);
     });
   },
   // CHỐT số lượng: chỉ khóa số thực tế, KHÔNG sinh phiếu kho/ledger/tồn.
@@ -229,11 +245,17 @@ export const productionService = {
         const totalValue = quantity * unitCost;
         await tx.production_order_materials_v1.update({ where: { id: m.id }, data: { actualQuantity: dec(quantity), totalValue: cash(totalValue) } });
       }
-      const bumped = await tx.productionorders.update({ where: { id }, data: { version: { increment: 1 }, updatedAt: t } });
-      await tx.audit_logs.create({ data: { action: "Chốt số lượng sản xuất v1", details: bumped.code, userId: u, userName: String(u), createdAt: t } });
-      // CHỐT chỉ ghi nhận số thực tế; trạng thái Hoàn thành do chứng từ quyết định (đủ phiếu xuất + phiếu nhập)
-      await syncProductionStatusFromDocuments(tx, id, u);
-      return mapProduction(await tx.productionorders.findUnique({ where: { id }, include: productionInclude }));
+      const bumped = await tx.productionorders.update({
+        where: { id },
+        data: {
+          status: "COMPLETED",
+          ...(r.status === "COMPLETED" ? {} : { completedAt: new Date(), completedBy: u }),
+          version: { increment: 1 },
+          updatedAt: t,
+        },
+      });
+      await tx.audit_logs.create({ data: { action: "Chốt hoàn thành sản xuất v1", details: bumped.code, userId: u, userName: String(u), createdAt: t } });
+      return mapOneProductionWithDocuments(tx, await tx.productionorders.findUnique({ where: { id }, include: productionInclude }));
     });
   },
   async cancel(id: number, i: ProductionCancelInput, u: number) {
@@ -271,7 +293,7 @@ export const productionService = {
       }
       const updated = await tx.productionorders.update({ where: { id }, data: { status: "CANCELLED", cancelledAt: at, cancelledBy: u, cancelReason: i.reason, version: { increment: 1 }, updatedAt: t }, include: productionInclude });
       await tx.audit_logs.create({ data: { action: "Hủy lệnh sản xuất v1", details: `${updated.code}: ${i.reason}`, userId: u, userName: String(u), createdAt: t } });
-      return mapProduction(updated);
+      return mapOneProductionWithDocuments(tx, updated);
     }, { timeout: 30000 });
   },
   async delete(id: number, input: ProductionDeleteInput, u: number) {
@@ -339,7 +361,7 @@ export const productionService = {
           createdAt: t,
         },
       });
-      return mapProduction(await tx.productionorders.findUnique({ where: { id }, include: productionInclude }));
+      return mapOneProductionWithDocuments(tx, await tx.productionorders.findUnique({ where: { id }, include: productionInclude }));
     });
   },
 };

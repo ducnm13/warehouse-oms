@@ -34,15 +34,9 @@ const today = () => new Date().toISOString().slice(0, 10);
 const statusMeta = {
 	DRAFT: { label: "Nháp", css: "bg-slate-100 text-slate-700" },
 	IN_PROGRESS: { label: "Đang sản xuất", css: "bg-amber-100 text-amber-700" },
-	COMPLETED: { label: "Hoàn thành", css: "bg-emerald-100 text-emerald-700" },
+	COMPLETED: { label: "Đã xong", css: "bg-emerald-100 text-emerald-700" },
 	CANCELLED: { label: "Đã hủy", css: "bg-red-100 text-red-700" },
 } as const;
-
-interface AllocRow {
-	packagingId: number;
-	actualQuantity: number;
-	note: string;
-}
 
 const addMonths = (dateStr: string, months: number) => {
 	const d = new Date(dateStr);
@@ -50,6 +44,13 @@ const addMonths = (dateStr: string, months: number) => {
 	d.setMonth(d.getMonth() + months);
 	return d.toISOString().slice(0, 10);
 };
+
+interface AllocRow {
+	packagingId: number;
+	actualQuantity: number;
+	note: string;
+}
+
 
 // Tiền tố số lô theo sản phẩm: COP28 → CO, Quán Gold → QG, Cacao → CA, Matcha → MT...
 const BATCH_PREFIXES: Array<[string, string]> = [
@@ -106,7 +107,8 @@ export default function ProductionManagement({
 	const manage =
 		user.role === "ADMIN" ||
 		user.role === "P_MANAGER" ||
-		user.role === "W_MANAGER";
+		user.role === "W_MANAGER" ||
+		(user.permissions || []).includes("production.manage");
 	const [month, setMonth] = useState(today().slice(0, 7));
 	const [status, setStatus] = useState("");
 	const [search, setSearch] = useState("");
@@ -321,7 +323,7 @@ export default function ProductionManagement({
 		},
 		onSuccess: response => {
 			const code = response.data?.code || "";
-			toast.success(`Đã chốt ${code} — kho lập phiếu nhập theo số chốt`);
+			toast.success(`Đã chốt hoàn thành ${code}`);
 			setSelected(null);
 			setEditForm(null);
 			setAllocRows([]);
@@ -385,9 +387,9 @@ export default function ProductionManagement({
 	});
 
 	const openEdit = (order: ProductionOrderV1) => {
-		const shelf = order.outputs?.[0]?.shelfLifeMonths || 24;
+		const shelf = order.outputs?.[0]?.shelfLifeMonths ?? 24;
 		const mfg = order.mfgDate || today();
-		const exp = order.expDate || (mfg ? addMonths(mfg, shelf) : today());
+		const exp = order.expDate || addMonths(mfg, shelf);
 		const mainOut = order.outputs?.[0];
 		const mainPkg = packagingOptions.find(p => p.id === mainOut?.packagingId);
 		const batchNumber =
@@ -421,18 +423,17 @@ export default function ProductionManagement({
 
 	const handleMfgDateChange = (newMfgDate: string) => {
 		if (!editForm) return;
-		const firstOutput = editForm.outputs[0];
-		const months = firstOutput?.shelfLifeMonths || 24;
+		const months = editForm.outputs[0]?.shelfLifeMonths ?? 24;
 		// Số lô trống hoặc do phần mềm tự điền thì đánh lại theo ngày SX mới; số gõ tay giữ nguyên
 		let batchNumber = editForm.batchNumber;
 		if (!batchNumber.trim() || isAutoBatch(batchNumber)) {
-			const mainOut = selected?.outputs?.[0];
+			const mainOut = editForm.outputs[0];
 			const mainPkg = packagingOptions.find(p => p.id === mainOut?.packagingId);
 			batchNumber =
 				autoBatchNumber(
 					newMfgDate,
 					(mainPkg as any)?.productName,
-					mainOut?.sku,
+					mainPkg?.sku,
 				) || batchNumber;
 		}
 		setEditForm({
@@ -640,7 +641,7 @@ export default function ProductionManagement({
 					<option value="">Tất cả trạng thái</option>
 					<option value="DRAFT">Nháp</option>
 					<option value="IN_PROGRESS">Đang sản xuất</option>
-					<option value="COMPLETED">Hoàn thành</option>
+					<option value="COMPLETED">Đã xong</option>
 					<option value="CANCELLED">Đã hủy</option>
 				</select>
 				<div className="erp-search flex-1 min-w-[250px] max-w-[400px]">
@@ -668,7 +669,7 @@ export default function ProductionManagement({
 							Factory,
 						],
 						[
-							"Hoàn thành",
+							"Đã xong",
 							rows.filter(x => x.status === "COMPLETED").length,
 							CheckCircle2,
 						],
@@ -702,6 +703,7 @@ export default function ProductionManagement({
 								<tr>
 									<th>Mã lệnh / Số lô</th>
 									<th>Ngày SX / Hạn</th>
+									<th>Diễn giải</th>
 									<th>Kho</th>
 									<th>Trạng thái</th>
 									<th>Thành phẩm / SL kế hoạch</th>
@@ -731,6 +733,9 @@ export default function ProductionManagement({
 											{order.expDate && (
 												<small>Hạn: {formatDate(order.expDate)}</small>
 											)}
+										</td>
+										<td className="max-w-[260px] whitespace-normal text-slate-600">
+											{order.note || "—"}
 										</td>
 										<td>{getWarehouseName(order.warehouseId)}</td>
 										<td>
@@ -778,7 +783,7 @@ export default function ProductionManagement({
 												>
 													<Eye size={16} />
 												</button>
-												{(order.status === "DRAFT" ||
+												{/* {(order.status === "DRAFT" ||
 													order.status === "IN_PROGRESS" ||
 													order.status === "COMPLETED") &&
 													manage && (
@@ -795,7 +800,7 @@ export default function ProductionManagement({
 														>
 															<Edit size={16} />
 														</button>
-													)}
+													)} */}
 												{order.status === "DRAFT" && manage && (
 													<>
 														<button
@@ -1411,9 +1416,7 @@ export default function ProductionManagement({
 										disabled={updateMutation.isPending}
 									>
 										<Save size={15} />{" "}
-										{updateMutation.isPending
-											? "Đang lưu..."
-											: "Lưu thay đổi"}
+										{updateMutation.isPending ? "Đang lưu..." : "Lưu thay đổi"}
 									</button>
 								)}
 								{canActual && manage && (
@@ -1552,7 +1555,7 @@ export default function ProductionManagement({
 							) : null}
 						</div>
 						<div className="erp-modal-footer">
-							{selected.links.some(
+							{/* {selected.links.some(
 								(l: any) => l.linkType === "INVENTORY_ISSUE",
 							) && (
 								<button
@@ -1564,7 +1567,7 @@ export default function ProductionManagement({
 										? "Đang đồng bộ..."
 										: "Đồng bộ NVL từ phiếu xuất"}
 								</button>
-							)}
+							)} */}
 							{(selected.status === "DRAFT" ||
 								selected.status === "IN_PROGRESS" ||
 								selected.status === "COMPLETED") &&

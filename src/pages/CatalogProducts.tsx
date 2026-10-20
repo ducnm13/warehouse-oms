@@ -1996,11 +1996,7 @@ export default function CatalogProducts({
 								</p>
 							</div>
 							<div className="flex items-center gap-1">
-								<button
-									type="button"
-									title="Trợ giúp"
-									className="erp-icon-btn"
-								>
+								<button type="button" title="Trợ giúp" className="erp-icon-btn">
 									?
 								</button>
 								<button
@@ -2186,14 +2182,14 @@ export default function CatalogProducts({
 								>
 									Hủy
 								</button>
-								<button
+								{/* <button
 									type="button"
 									onClick={() => savePkg.mutate()}
 									disabled={savePkg.isPending}
 									className="erp-btn"
 								>
 									Cất
-								</button>
+								</button> */}
 								<button
 									type="submit"
 									disabled={savePkg.isPending}

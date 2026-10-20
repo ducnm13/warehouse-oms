@@ -51,6 +51,12 @@ interface BomPreview {
 }
 
 const today = () => new Date().toISOString().slice(0, 10);
+const addMonths = (dateStr: string, months: number) => {
+	const d = new Date(dateStr);
+	if (isNaN(d.getTime())) return dateStr;
+	d.setMonth(d.getMonth() + months);
+	return d.toISOString().slice(0, 10);
+};
 // Dòng tạo lúc lập lệnh (plannedQuantity > 0). Dòng phân bổ thêm khi CHỐT
 // (plannedQuantity = 0) chỉ thuộc trang Quản lý SX — ẩn khỏi trang Lệnh SX.
 const baseOutputs = (order: ProductionOrderV1) =>
@@ -82,12 +88,15 @@ const convertUnitValue = (
 	if (lFrom && mlTo) return value * 1000;
 	return value;
 };
-const sm = {
+const documentStatusMeta = {
 	DRAFT: ["Nháp", "bg-slate-100 text-slate-700"],
-	IN_PROGRESS: ["Đang sản xuất", "bg-amber-100 text-amber-700"],
-	COMPLETED: ["Hoàn thành", "bg-emerald-100 text-emerald-700"],
+	WAITING_RECEIPT: ["Chưa lập phiếu nhập", "bg-amber-100 text-amber-700"],
+	FULL: ["Đã lập đủ phiếu", "bg-emerald-100 text-emerald-700"],
 	CANCELLED: ["Đã hủy", "bg-red-100 text-red-700"],
 } as const;
+type DocumentStatusKey = keyof typeof documentStatusMeta;
+const documentStatusOf = (order: ProductionOrderV1): DocumentStatusKey =>
+	order.status === "CANCELLED" ? "CANCELLED" : order.documentStatus || "DRAFT";
 
 export default function Production({
 	user,
@@ -100,7 +109,8 @@ export default function Production({
 	const manage =
 		user.role === "ADMIN" ||
 		user.role === "P_MANAGER" ||
-		user.role === "W_MANAGER";
+		user.role === "W_MANAGER" ||
+		(user.permissions || []).includes("production.manage");
 	const [month, setMonth] = useState(today().slice(0, 7));
 	const [status, setStatus] = useState("");
 	const [search, setSearch] = useState("");
@@ -172,12 +182,19 @@ export default function Production({
 		},
 	});
 	const docs = useQuery({
-		queryKey: ["production-v1", month, status, search],
+		queryKey: ["production-v1", month, search],
 		queryFn: () =>
 			apiV1<ProductionOrderV1[]>(
-				`/api/v1/production-orders?page=1&limit=100&month=${month}&search=${encodeURIComponent(search)}${status ? `&status=${status}` : ""}`,
+				`/api/v1/production-orders?page=1&limit=100&month=${month}&search=${encodeURIComponent(search)}`,
 			),
 	});
+	const rows = useMemo(
+		() =>
+			(docs.data?.data || []).filter(
+				order => !status || documentStatusOf(order) === status,
+			),
+		[docs.data, status],
+	);
 	const nextCode = useQuery({
 		queryKey: ["next-code-production"],
 		queryFn: async () => {
@@ -339,11 +356,18 @@ export default function Production({
 			if (lines.some(line => !line.packagingId || line.plannedQuantity <= 0)) {
 				throw Error("Nhập đủ mã thành phẩm, số lượng");
 			}
+			const mainPkg = packagingOptions.find(
+				p => p.id === lines[0]?.packagingId,
+			);
+			const mfgDate = editing?.mfgDate || orderDate;
+			const expDate =
+				editing?.expDate ||
+				addMonths(orderDate, mainPkg?.shelfLifeMonths ?? 24);
 			const payload = {
 				code: code || undefined,
 				orderDate,
-				mfgDate: orderDate,
-				expDate: orderDate,
+				mfgDate,
+				expDate,
 				warehouseId,
 				batchNumber: editing ? batchNumber : "",
 				totalPowderKg: 0,
@@ -625,11 +649,12 @@ export default function Production({
 				<div className="erp-stat">
 					<Play />
 					<div>
-						<span>Đang SX</span>
+						<span>Chưa lập phiếu nhập</span>
 						<strong>
 							{
-								(docs.data?.data || []).filter(x => x.status === "IN_PROGRESS")
-									.length
+								(docs.data?.data || []).filter(
+									x => documentStatusOf(x) === "WAITING_RECEIPT",
+								).length
 							}
 						</strong>
 					</div>
@@ -637,11 +662,12 @@ export default function Production({
 				<div className="erp-stat">
 					<CheckCircle2 />
 					<div>
-						<span>Hoàn thành</span>
+						<span>Đã lập đủ phiếu</span>
 						<strong>
 							{
-								(docs.data?.data || []).filter(x => x.status === "COMPLETED")
-									.length
+								(docs.data?.data || []).filter(
+									x => documentStatusOf(x) === "FULL",
+								).length
 							}
 						</strong>
 					</div>
@@ -664,7 +690,7 @@ export default function Production({
 					/>
 					<select value={status} onChange={e => setStatus(e.target.value)}>
 						<option value="">Mọi trạng thái</option>
-						{Object.entries(sm).map(([k, v]) => (
+						{Object.entries(documentStatusMeta).map(([k, v]) => (
 							<option key={k} value={k}>
 								{v[0]}
 							</option>
@@ -677,13 +703,14 @@ export default function Production({
 							<tr>
 								<th>Mã lệnh</th>
 								<th>Ngày</th>
+								<th>Diễn giải</th>
 								<th>Thành phẩm</th>
 								<th>Trạng thái</th>
 								<th></th>
 							</tr>
 						</thead>
 						<tbody>
-							{(docs.data?.data || []).map(d => (
+							{rows.map(d => (
 								<tr key={d.id}>
 									<td>
 										<button
@@ -695,6 +722,9 @@ export default function Production({
 										<small>v{d.version}</small>
 									</td>
 									<td>{formatDate(d.orderDate)}</td>
+									<td className="max-w-[260px] whitespace-normal text-slate-600">
+										{d.note || "—"}
+									</td>
 									<td>
 										{baseOutputs(d).map((x, i) => (
 											<div key={i} className="text-sm">
@@ -707,8 +737,8 @@ export default function Production({
 										))}
 									</td>
 									<td>
-										<span className={`erp-badge ${sm[d.status][1]}`}>
-											{sm[d.status][0]}
+										<span className={`erp-badge ${documentStatusMeta[documentStatusOf(d)][1]}`}>
+											{documentStatusMeta[documentStatusOf(d)][0]}
 										</span>
 									</td>
 									<td>
@@ -1021,8 +1051,8 @@ export default function Production({
 						</div>
 						<div className="erp-modal-body space-y-4">
 							<div className="flex flex-wrap items-center gap-2">
-								<span className={`erp-badge ${sm[selected.status][1]}`}>
-									{sm[selected.status][0]}
+								<span className={`erp-badge ${documentStatusMeta[documentStatusOf(selected)][1]}`}>
+									{documentStatusMeta[documentStatusOf(selected)][0]}
 								</span>
 								{selected.links.length > 0 && (
 									<div className="flex flex-wrap gap-1.5">

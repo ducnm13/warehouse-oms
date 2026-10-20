@@ -40,6 +40,7 @@ export interface ProductPackaging {
 	sku?: string;
 	unit?: string;
 	packCount: number;
+	shelfLifeMonths?: number;
 	defaultRatio: number;
 	initial_stock?: number;
 	min_stock?: number;
@@ -318,6 +319,7 @@ export interface ProductionOrderV1 {
 	lossPercent: number;
 	note?: string;
 	status: "DRAFT" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+	documentStatus: "DRAFT" | "WAITING_RECEIPT" | "FULL";
 	version: number;
 	startedAt?: string;
 	completedAt?: string;

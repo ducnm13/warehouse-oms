@@ -8,7 +8,7 @@ export const productionInclude = {
 } satisfies Prisma.productionordersInclude;
 
 export const productionRepository = {
-  list(where: Prisma.productionordersWhereInput, skip: number, take: number) { return prisma.productionorders.findMany({ where, include: productionInclude, orderBy: [{ order_date: "desc" }, { id: "desc" }], skip, take }); },
+  list(where: Prisma.productionordersWhereInput, skip: number, take: number) { return prisma.productionorders.findMany({ where, include: productionInclude, orderBy: [{ code: "desc" }, { id: "desc" }], skip, take }); },
   count(where: Prisma.productionordersWhereInput) { return prisma.productionorders.count({ where }); },
   find(id: number) { return prisma.productionorders.findUnique({ where: { id }, include: productionInclude }); },
 };

@@ -169,9 +169,9 @@ export default function Sidebar({
 
 	// Sản xuất
 	const showProduction = has("production.view");
-	// "Quản lý sản xuất" chỉ dành cho Quản lý sản xuất và ADMIN
+	// "Quản lý sản xuất" dành cho ADMIN/Quản lý sản xuất (có quyền production.manage)
 	const showProductionMgmt =
-		!!role && (role === "ADMIN" || role === "P_MANAGER");
+		has("production.manage") && role !== "W_MANAGER";
 	const showAssembly = has("assembly.view");
 	const showProductionSection =
 		showProduction || showProductionMgmt || showAssembly;

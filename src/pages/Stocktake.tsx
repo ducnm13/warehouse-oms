@@ -1,25 +1,28 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	CheckCircle2,
 	ClipboardCheck,
+	Download,
 	Edit,
 	Eye,
+	FileSpreadsheet,
 	Plus,
 	Printer,
 	Undo2,
 	X,
 } from "lucide-react";
+import ExcelJS from "exceljs";
+import { useReactToPrint } from "react-to-print";
 import toast from "../components/ui/toast";
 import { confirm, prompt } from "../components/ui/confirm";
 import { apiV1, legacyApi } from "../lib/apiV1";
 import { formatDate, formatNumber } from "../lib/utils";
-import PrintPreview from "../components/PrintPreview";
 import {
-	fillGenericDocument,
-	GENERIC_LAYOUTS,
+	buildCompanyPrintProfile,
 	type CompanyPrintProfile,
 } from "../lib/printTemplate";
+import { StocktakeDocument } from "../components/StocktakeDocument";
 import type { InventoryBalanceV1, StocktakeV1, Warehouse } from "../types";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
@@ -49,6 +52,13 @@ export default function Stocktake() {
 		[editing, setEditing] = useState<StocktakeV1 | null>(null),
 		[selected, setSelected] = useState<StocktakeV1 | null>(null);
 	const [printTarget, setPrintTarget] = useState<StocktakeV1 | null>(null);
+	const printRef = useRef<HTMLDivElement>(null);
+	const importInputRef = useRef<HTMLInputElement>(null);
+	const handlePrint = useReactToPrint({
+		contentRef: printRef,
+		documentTitle: printTarget ? `Bien-ban-kiem-ke-${printTarget.code}` : "Bien-ban-kiem-ke",
+		pageStyle: "@page { size: A4; margin: 0; }",
+	});
 	const [date, setDate] = useState(today()),
 		[warehouseId, setWarehouseId] = useState(0),
 		[note, setNote] = useState(""),
@@ -64,6 +74,17 @@ export default function Stocktake() {
 	const warehouses = useQuery({
 		queryKey: ["stocktake-warehouses"],
 		queryFn: () => legacyApi<Warehouse[]>("/api/warehouses"),
+	});
+	const companyQuery = useQuery({
+		queryKey: ["company-profile"],
+		queryFn: async () => {
+			try {
+				const response = await apiV1<any>("/api/v1/company");
+				return buildCompanyPrintProfile(response.data);
+			} catch {
+				return null as CompanyPrintProfile | null;
+			}
+		},
 	});
 	const documents = useQuery({
 		queryKey: ["stocktakes-v1", page, status, warehouseFilter],
@@ -109,6 +130,112 @@ export default function Stocktake() {
 			setLines([]);
 		} finally {
 			setLoadingSnapshot(false);
+		}
+	};
+	const downloadImportTemplate = async () => {
+		const workbook = new ExcelJS.Workbook();
+		const sheet = workbook.addWorksheet("Kiem ke");
+		sheet.columns = [
+			{ header: "SKU", key: "sku", width: 22 },
+			{ header: "Tên hàng hóa", key: "name", width: 42 },
+			{ header: "ĐVT", key: "unit", width: 12 },
+			{ header: "Tồn sổ", key: "expected", width: 16 },
+			{ header: "Tồn thực tế", key: "actual", width: 16 },
+		];
+		for (const line of lines.slice(0, 20)) {
+			sheet.addRow({
+				sku: line.sku || "",
+				name: [line.productName, line.packagingName].filter(Boolean).join(" - "),
+				unit: line.unit || "",
+				expected: line.expectedQuantity,
+				actual: line.expectedQuantity,
+			});
+		}
+		const buffer = await workbook.xlsx.writeBuffer();
+		const { saveAs } = await import("file-saver");
+		saveAs(
+			new Blob([buffer], {
+				type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+			}),
+			"Mau_Kiem_Ke_Kho.xlsx",
+		);
+	};
+	const importExcel = async (file?: File) => {
+		if (!file) return;
+		try {
+			const workbook = new ExcelJS.Workbook();
+			await workbook.xlsx.load(await file.arrayBuffer());
+			const sheet = workbook.worksheets[0];
+			if (!sheet) throw new Error("File Excel không có sheet dữ liệu");
+			const norm = (value: unknown) =>
+				String(value ?? "")
+					.normalize("NFD")
+					.replace(/[\u0300-\u036f]/g, "")
+					.toLowerCase()
+					.trim();
+			const headerRow = sheet.getRow(1);
+			const headers = new Map<string, number>();
+			headerRow.eachCell({ includeEmpty: false }, (cell, column) => {
+				headers.set(norm(cell.value), column);
+			});
+			const findColumn = (predicate: (value: string) => boolean) => {
+				for (const [header, column] of headers) {
+					if (predicate(header)) return column;
+				}
+				return 0;
+			};
+			const skuColumn = findColumn(
+				header => header.includes("sku") || header.includes("ma hang"),
+			);
+			const actualColumn = findColumn(
+				header => header.includes("thuc te") || header.includes("actual"),
+			);
+			if (!skuColumn || !actualColumn)
+				throw new Error(
+					"Không tìm thấy cột SKU và Tồn thực tế. Vui lòng dùng file mẫu.",
+				);
+			const values = new Map<string, number>();
+			const invalidRows: string[] = [];
+			sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+				if (rowNumber === 1) return;
+				const sku = String(row.getCell(skuColumn).value ?? "").trim();
+				const rawActual = row.getCell(actualColumn).value;
+				if (!sku && (rawActual === null || rawActual === undefined || rawActual === "")) return;
+				const actual = Number(
+					typeof rawActual === "number"
+						? rawActual
+						: String(rawActual ?? "").replace(/,/g, "").trim(),
+				);
+				if (!sku || Number.isNaN(actual) || actual < 0) {
+					invalidRows.push(`Dòng ${rowNumber}`);
+					return;
+				}
+				values.set(norm(sku), actual);
+			});
+			if (!values.size) throw new Error("File Excel không có dòng dữ liệu hợp lệ");
+			const snapshotSkus = new Set(lines.map(line => norm(line.sku)));
+			const missing = [...values.keys()].filter(sku => !snapshotSkus.has(sku));
+			const matched = lines.reduce(
+				(count, line) => (values.has(norm(line.sku)) ? count + 1 : count),
+				0,
+			);
+			setLines(current =>
+				current.map(line => {
+					const actual = values.get(norm(line.sku));
+					return actual === undefined ? line : { ...line, actualQuantity: actual };
+				}),
+			);
+			toast.success(`Đã cập nhật ${matched} dòng kiểm kê từ Excel`);
+			if (missing.length)
+				toast.error(
+					`${missing.length} mã không có trong kho đang kiểm kê: ${missing.slice(0, 5).join(", ")}${missing.length > 5 ? "..." : ""}`,
+				);
+			if (invalidRows.length)
+				toast.error(`Bỏ qua ${invalidRows.length} dòng không hợp lệ: ${invalidRows.slice(0, 5).join(", ")}`);
+		} catch (error) {
+			toast.error((error as Error).message);
+		} finally {
+			if (importInputRef.current) importInputRef.current.value = "";
 		}
 	};
 	const saveMutation = useMutation({
@@ -482,11 +609,36 @@ export default function Stocktake() {
 										/>
 									</label>
 								</div>
-								<div className="flex justify-between rounded bg-slate-50 p-3 text-sm">
+								<div className="flex flex-wrap items-center gap-2 rounded bg-slate-50 p-3 text-sm">
 									<span>
 										{lines.length} quy cách · {changed} dòng chênh lệch
 									</span>
 									{loadingSnapshot && <b>Đang tải snapshot...</b>}
+									<div className="ml-auto flex flex-wrap gap-2">
+										<button
+											type="button"
+											className="erp-btn"
+											onClick={() => void downloadImportTemplate()}
+											disabled={!lines.length}
+										>
+											<Download size={15} /> Tải file mẫu
+										</button>
+										<button
+											type="button"
+											className="erp-btn"
+											onClick={() => importInputRef.current?.click()}
+											disabled={!lines.length}
+										>
+											<FileSpreadsheet size={15} /> Nhập Excel
+										</button>
+										<input
+											ref={importInputRef}
+											type="file"
+											accept=".xlsx,.xls"
+											className="hidden"
+											onChange={event => void importExcel(event.target.files?.[0])}
+										/>
+									</div>
 								</div>
 								<div className="max-h-[50vh] overflow-auto border rounded">
 									<table className="erp-table">
@@ -714,44 +866,43 @@ export default function Stocktake() {
 					</div>
 				</div>
 			)}
-			<PrintPreview
-				open={!!printTarget}
-				title={
-					printTarget
-						? `Xem trước biên bản ${printTarget.code}`
-						: "Xem trước in"
-				}
-				fill={
-					printTarget
-						? (worksheet, company) => {
-								const makeRow = (line: any, index: number) => ({
-									stt: index + 1,
-									sku: line.sku || "",
-									name: [line.productName, line.packagingName]
-										.filter(Boolean)
-										.join(" - "),
-									unit: line.unit || "",
-									expected: Number(line.expectedQuantity || 0),
-									actual: Number(line.actualQuantity || 0),
-									difference: Number(line.difference || 0),
-								});
-								fillGenericDocument(
-									worksheet,
-									company as CompanyPrintProfile | null,
-									GENERIC_LAYOUTS.stocktake,
-									{
-										code: printTarget.code,
-										documentDate: printTarget.date,
-										partner: printTarget.warehouseName || "",
-										dienGiai: printTarget.note || "",
-										rows: printTarget.details.map(makeRow),
-									},
-								);
-							}
-						: null
-				}
-				onClose={() => setPrintTarget(null)}
-			/>
+			{printTarget && (
+				<div className="sales-print-view fixed inset-0 z-[9999] flex flex-col bg-gray-900/90 backdrop-blur-md">
+					<div className="no-print flex items-center justify-between border-b bg-white p-4 shadow-md">
+						<div className="flex items-center gap-4">
+							<h3 className="text-lg font-black uppercase tracking-tight text-gray-800">
+								Biên bản kiểm kê kho
+							</h3>
+							<span className="rounded bg-gray-100 px-2 py-1 font-mono text-xs text-gray-500">
+								{printTarget.code}
+							</span>
+						</div>
+						<div className="flex items-center gap-3">
+							<button
+								onClick={() => setPrintTarget(null)}
+								className="rounded-lg border px-6 py-2 text-[10px] font-black uppercase tracking-widest text-gray-500 transition-all hover:bg-gray-50"
+							>
+								Đóng
+							</button>
+							<button
+								onClick={handlePrint}
+								className="erp-btn erp-btn-primary !px-6 text-[10px] uppercase tracking-widest"
+							>
+								<Printer size={16} /> In
+							</button>
+						</div>
+					</div>
+					<div className="flex-1 overflow-auto bg-gray-200/50 p-8">
+						<div className="sales-print-view mx-auto mb-8 w-[210mm] max-w-full bg-white shadow-2xl">
+							<StocktakeDocument
+								ref={printRef}
+								stocktake={printTarget}
+								company={companyQuery.data}
+							/>
+						</div>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }

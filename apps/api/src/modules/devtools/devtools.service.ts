@@ -49,6 +49,15 @@ const SCRIPTS: DevScript[] = [
     timeoutMs: 300_000,
   },
   {
+    id: "dump-database",
+    label: "Dump cơ sở dữ liệu",
+    description: "Xuất toàn bộ cấu trúc và dữ liệu ra file .sql trong thư mục backups/.",
+    command: "npx",
+    args: ["tsx", "scripts/dump-database.ts"],
+    dangerous: false,
+    timeoutMs: 600_000,
+  },
+  {
     id: "typecheck",
     label: "Kiểm tra kiểu TypeScript",
     description: "Chạy npm run typecheck trên toàn bộ workspace.",

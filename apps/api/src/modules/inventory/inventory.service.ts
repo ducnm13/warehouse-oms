@@ -4,7 +4,6 @@ import { HttpError } from "../../common/http-error";
 import { mapInventoryDocument, mapStocktake } from "./inventory.mapper";
 import { inventoryInclude, inventoryRepository, prisma, stocktakeInclude } from "./inventory.repository";
 import { nextDocumentCode, documentCodePrefixes } from "../../common/document-code";
-import { syncProductionStatusFromDocuments } from "../production/production-status";
 
 const decimal = (value: number) => new Prisma.Decimal(value.toFixed(4));
 const money = (value: number) => new Prisma.Decimal(value.toFixed(2));
@@ -148,13 +147,6 @@ export const inventoryService = {
       // Ghi sổ lại (từ đã bỏ ghi): xóa dấu vết hủy, giữ nguyên bút toán đảo cũ để bù trừ
       const row = await tx.inventorytransactions.update({ where: { id }, data: { documentStatus: "POSTED", postedAt: occurredAt, postedBy: userId, cancelledAt: null, cancelledBy: null, cancelReason: null, reversalTransactionId: null, version: { increment: 1 }, updatedAt: now }, include: inventoryInclude });
 
-      // Phiếu kho gắn lệnh sản xuất: suy lại trạng thái lệnh theo chứng từ đã ghi sổ
-      // (phiếu xuất NVL -> Đang sản xuất; đủ phiếu xuất + phiếu nhập -> Hoàn thành)
-      const prodLink = await tx.production_order_document_links_v1.findFirst({
-        where: { linkedId: BigInt(id) },
-      });
-      if (prodLink) await syncProductionStatusFromDocuments(tx, prodLink.orderId, userId);
-
       await tx.audit_logs.create({ data: { action: "Ghi sổ phiếu kho v1", details: row.code || String(id), userId, userName: String(userId), createdAt: now } });
       return mapInventoryDocument(row);
     }, { timeout: 30_000 });
@@ -194,9 +186,6 @@ export const inventoryService = {
       }
       const row = await tx.inventorytransactions.update({ where: { id }, data: { documentStatus: "CANCELLED", cancelledAt: occurredAt.toISOString(), cancelledBy: userId, cancelReason: input.reason, version: { increment: 1 }, updatedAt: now }, include: inventoryInclude });
       await tx.audit_logs.create({ data: { action: "Hủy phiếu kho v1", details: `${row.code}: ${input.reason}`, userId, userName: String(userId), createdAt: now } });
-      // Hủy chứng từ gắn lệnh sản xuất: suy lại trạng thái lệnh (có thể mất điều kiện Hoàn thành)
-      const prodLink = await tx.production_order_document_links_v1.findFirst({ where: { linkedId: BigInt(id) } });
-      if (prodLink) await syncProductionStatusFromDocuments(tx, prodLink.orderId, userId);
       return mapInventoryDocument(row);
     }, { timeout: 30_000 });
   },
@@ -204,6 +193,9 @@ export const inventoryService = {
     return prisma.$transaction(async tx => {
       const current = await lockDocument(tx, id); assertVersion(current, input.version);
       if (current.documentStatus === "DRAFT") {
+        await tx.production_order_document_links_v1.deleteMany({ where: { linkedId: BigInt(id) } });
+        await tx.assembly_order_document_links.deleteMany({ where: { linkedId: BigInt(id) } });
+        await tx.disassembly_order_document_links.deleteMany({ where: { linkedId: BigInt(id) } });
         await tx.inventorytransactiondetails.deleteMany({ where: { transactionId: id } });
         const row = await tx.inventorytransactions.delete({ where: { id } });
         await tx.audit_logs.create({ data: { action: "Xóa phiếu kho v1", details: `${row.code}`, userId, userName: String(userId), createdAt: nowIso() } });
@@ -220,15 +212,13 @@ export const inventoryService = {
         await tx.inventorytransactiondetails.deleteMany({ where: { transactionId: rev.id } });
         await tx.inventorytransactions.delete({ where: { id: rev.id } });
       }
-      // Gỡ liên kết lệnh sản xuất/lắp ráp/tháo dỡ rồi suy lại trạng thái lệnh sản xuất
-      const prodLinks = await tx.production_order_document_links_v1.findMany({ where: { linkedId: BigInt(id) } });
+      // Gỡ liên kết lệnh sản xuất/lắp ráp/tháo dỡ
       await tx.production_order_document_links_v1.deleteMany({ where: { linkedId: BigInt(id) } });
       await tx.assembly_order_document_links.deleteMany({ where: { linkedId: BigInt(id) } });
       await tx.disassembly_order_document_links.deleteMany({ where: { linkedId: BigInt(id) } });
       await tx.inventorytransactiondetails.deleteMany({ where: { transactionId: id } });
       const row = await tx.inventorytransactions.delete({ where: { id } });
       await tx.audit_logs.create({ data: { action: "Xóa phiếu kho đã hủy v1", details: `${row.code}`, userId, userName: String(userId), createdAt: now } });
-      for (const link of prodLinks) await syncProductionStatusFromDocuments(tx, link.orderId, userId);
       return { success: true, message: "Đã xóa phiếu kho" };
     });
   },

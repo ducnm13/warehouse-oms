@@ -1,127 +1,193 @@
-import React, { forwardRef, useState } from "react";
-import { formatNumber } from "../lib/utils";
+import React, { forwardRef } from "react";
+import { formatDate, formatNumber } from "../lib/utils";
+import type { CompanyPrintProfile } from "../lib/printTemplate";
+import type { StocktakeV1 } from "../types";
 import PrintAppFooter from "./PrintAppFooter";
 
-export const StocktakeDocument = forwardRef(
-  ({ stocktake, details }: { stocktake: any; details: any[] }, ref: any) => {
-    // KHÓA THỜI GIAN IN: Chỉ lấy 1 lần duy nhất khi render component
-    const [printTime] = useState(() => {
-      const now = new Date();
-      return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")} ngày ${String(now.getDate()).padStart(2, "0")}/${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`;
-    });
+interface StocktakeDocumentProps {
+	stocktake: StocktakeV1;
+	company?: CompanyPrintProfile | null;
+}
 
-    return (
-      <div
-        ref={ref}
-        className="p-16 text-black bg-white min-h-[297mm] font-serif leading-relaxed"
-        style={{ fontFamily: '"Montserrat", sans-serif' }}
-      >
-        <div className="text-right text-[10px] italic text-gray-600 mb-2">
-          Thời gian in: {printTime}
-        </div>
+export const StocktakeDocument = forwardRef<HTMLDivElement, StocktakeDocumentProps>(
+	({ stocktake, company }, ref) => {
+		const details = stocktake.details || [];
+		const companyAddress = (company?.address || "")
+			.split(/\\n|\r?\n/)
+			.map(line => line.trim())
+			.filter(Boolean);
 
-        {/* Header Section (Đồng bộ với Production) */}
-        <div className="flex justify-between items-start mb-6">
-          <div className="text-[11px] leading-tight flex-1">
-            <h1 className="font-bold uppercase text-[13px] mb-1">
-              CÔNG TY TNHH SX-TM-DV CHALLENGE
-            </h1>
-            <p>
-              <i>
-                Trụ sở chính: 159 Hùng Vương, phường Đạo Thạnh, tỉnh Đồng Tháp
-              </i>
-            </p>
-            <p>
-              <i>Nhà máy: 260 Nguyễn Quân, phường Đạo Thạnh, tỉnh Đồng Tháp</i>
-            </p>
-          </div>
-          <div className="text-right flex-shrink-0 ml-4">
-            <img src="/public/images/logo.png" width="120px" alt="Logo" />
-          </div>
-        </div>
+		const differenceClass = (value: number) =>
+			value > 0
+				? "text-emerald-700"
+				: value < 0
+					? "text-red-600"
+					: "text-slate-500";
 
-        <h1 className="text-xl font-bold text-center mt-6 mb-8 uppercase tracking-wide">
-          BIÊN BẢN KIỂM KÊ KHO
-        </h1>
+		const signedDifference = (value: number) =>
+			`${value > 0 ? "+" : ""}${formatNumber(value)}`;
 
-        <div className="mb-6 space-y-3 text-sm ml-6">
-          <div className="flex items-end">
-            <span className="w-32">Mã phiếu kiểm kê:</span>
-            <div className="flex-1 border-b border-black border-dotted mb-1 ml-2 font-bold uppercase">
-              {stocktake.code}
-            </div>
-          </div>
-          <div className="flex items-end">
-            <span className="w-32">Ngày kiểm kê:</span>
-            <div className="flex-1 border-b border-black border-dotted mb-1 ml-2 font-bold">
-              {new Date(stocktake.date).toLocaleDateString("vi-VN")}
-            </div>
-          </div>
-        </div>
+		return (
+			<div
+				ref={ref}
+				className="min-h-[297mm] bg-white p-16 font-serif leading-relaxed text-black"
+				style={{ fontFamily: '"Montserrat", sans-serif' }}
+			>
+				<div className="mb-6 flex items-start justify-between">
+					<div className="flex-1 text-[11px] leading-tight">
+						<h1 className="text-[14px] font-bold uppercase">
+							{company?.name || "CÔNG TY TNHH SX-TM-DV CHALLENGE"}
+						</h1>
+						{(companyAddress.length
+							? companyAddress
+							: [
+									"Trụ sở chính: 159 Hưng Vượng, phường Đạo Thạnh, tỉnh Đồng Tháp",
+									"Nhà máy: 260 Nguyễn Quân, phường Đạo Thạnh, tỉnh Đồng Tháp",
+								]
+						).map((line, index) => (
+							<p key={index}>
+								<i>{line}</i>
+							</p>
+						))}
+						{company?.taxCode && (
+							<p>
+								<i>Mã số thuế: {company.taxCode}</i>
+							</p>
+						)}
+						{company?.phone && (
+							<p>
+								<i>Điện thoại: {company.phone}</i>
+							</p>
+						)}
+					</div>
+					<div className="ml-4 flex-shrink-0 text-right">
+						<img
+							src={company?.logoUrl || "/images/logo.png"}
+							width="120px"
+							alt="Logo"
+						/>
+					</div>
+				</div>
 
-        <table className="w-full border-collapse border border-black text-sm mt-8">
-          <thead>
-            <tr className="bg-gray-50 uppercase text-[11px]">
-              <th className="border border-black p-2 font-bold text-center">
-                Sản phẩm
-              </th>
-              <th className="border border-black p-2 font-bold text-center w-28">
-                Tồn sổ sách
-              </th>
-              <th className="border border-black p-2 font-bold text-center w-28">
-                Tồn thực tế
-              </th>
-              <th className="border border-black p-2 font-bold text-center w-28">
-                Chênh lệch
-              </th>
-              <th className="border border-black p-2 font-bold text-center w-40">
-                Ghi chú
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {details.map((d: any, idx: number) => (
-              <tr key={idx}>
-                <td className="border border-black p-3 font-bold text-left">
-                  {d.productName} ({d.packagingName})
-                </td>
-                <td className="border border-black p-3 text-center">
-                  {formatNumber(d.expected_qty)}
-                </td>
-                <td className="border border-black p-3 text-center">
-                  {formatNumber(d.actual_qty)}
-                </td>
-                <td
-                  className={`border border-black p-3 text-center font-bold ${d.difference !== 0 ? "text-red-600" : ""}`}
-                >
-                  {d.difference > 0 ? "+" : ""}
-                  {d.difference}
-                </td>
-                <td className="border border-black p-3"></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+				<h1 className="mb-8 mt-6 text-center text-xl font-bold uppercase tracking-wide">
+					BIÊN BẢN KIỂM KÊ KHO
+				</h1>
 
-        {/* Chữ ký */}
-        <div className="flex justify-around text-sm mt-16 mb-20 italic">
-          <div className="text-center">
-            <p className="font-bold uppercase not-italic">Thủ kho</p>
-            <p className="text-xs">(Ký, họ tên)</p>
-          </div>
-          <div className="text-center">
-            <p className="font-bold uppercase not-italic">Kế toán</p>
-            <p className="text-xs">(Ký, họ tên)</p>
-          </div>
-          <div className="text-center">
-            <p className="font-bold uppercase not-italic">Giám đốc</p>
-            <p className="text-xs">(Ký, đóng dấu)</p>
-          </div>
-        </div>
-        <PrintAppFooter />
-      </div>
-    );
-  },
+				<div className="mb-6 ml-6 space-y-3 text-sm">
+					<div className="grid grid-cols-2 gap-x-8 gap-y-3">
+						<div className="flex items-end">
+							<span className="w-32">Mã phiếu kiểm kê:</span>
+							<div className="ml-2 mb-1 flex-1 border-b border-dotted border-black font-bold uppercase">
+								{stocktake.code}
+							</div>
+						</div>
+						<div className="flex items-end">
+							<span className="w-24">Ngày kiểm kê:</span>
+							<div className="ml-2 mb-1 flex-1 border-b border-dotted border-black font-bold">
+								{formatDate(stocktake.date)}
+							</div>
+						</div>
+						<div className="flex items-end">
+							<span className="w-32">Kho kiểm kê:</span>
+							<div className="ml-2 mb-1 flex-1 border-b border-dotted border-black font-bold">
+								{stocktake.warehouseName || ""}
+							</div>
+						</div>
+						<div className="flex items-end">
+							<span className="w-24">Người lập:</span>
+							<div className="ml-2 mb-1 flex-1 border-b border-dotted border-black">
+								{stocktake.creatorName || ""}
+							</div>
+						</div>
+					</div>
+					<div className="flex items-end">
+						<span className="w-32">Diễn giải:</span>
+						<div className="ml-2 mb-1 flex-1 border-b border-dotted border-black">
+							{stocktake.note || ""}
+						</div>
+					</div>
+				</div>
+
+				<table className="mt-8 w-full border-collapse border border-black text-sm">
+					<thead>
+						<tr className="bg-gray-50 text-[11px] uppercase">
+							<th className="w-10 border border-black p-2 text-center font-bold">STT</th>
+							<th className="w-28 border border-black p-2 text-left font-bold">Mã hàng</th>
+							<th className="border border-black p-2 text-left font-bold">
+								Tên hàng hóa / Quy cách
+							</th>
+							<th className="w-16 border border-black p-2 text-center font-bold">ĐVT</th>
+							<th className="w-24 border border-black p-2 text-right font-bold">Tồn sổ</th>
+							<th className="w-24 border border-black p-2 text-right font-bold">
+								Tồn thực tế
+							</th>
+							<th className="w-24 border border-black p-2 text-right font-bold">Chênh lệch</th>
+							<th className="w-32 border border-black p-2 text-left font-bold">Ghi chú</th>
+						</tr>
+					</thead>
+					<tbody>
+						{details.map((line, index) => {
+							const difference = Number(line.difference || 0);
+							return (
+								<tr key={line.id ?? index}>
+									<td className="border border-black p-2 text-center">{index + 1}</td>
+									<td className="border border-black p-2 text-left font-mono text-xs">
+										{line.sku || ""}
+									</td>
+									<td className="border border-black p-2 text-left">
+										<b>{line.productName}</b>
+										{line.packagingName && (
+											<small className="block text-slate-600">{line.packagingName}</small>
+										)}
+									</td>
+									<td className="border border-black p-2 text-center">{line.unit || ""}</td>
+									<td className="border border-black p-2 text-right">
+										{formatNumber(line.expectedQuantity)}
+									</td>
+									<td className="border border-black p-2 text-right font-semibold">
+										{formatNumber(line.actualQuantity)}
+									</td>
+									<td
+										className={`border border-black p-2 text-right font-bold ${differenceClass(difference)}`}
+									>
+										{signedDifference(difference)}
+									</td>
+									<td className="border border-black p-2 text-left text-xs"></td>
+								</tr>
+							);
+						})}
+						{!details.length && (
+							<tr>
+								<td colSpan={8} className="border border-black p-4 text-center text-slate-500">
+									Không có dòng kiểm kê
+								</td>
+							</tr>
+						)}
+					</tbody>
+				</table>
+
+				<div className="mb-20 mt-16 flex justify-around text-sm italic">
+					<div className="text-center">
+						<p className="font-bold uppercase not-italic">Người lập</p>
+						<p className="text-xs">(Ký, họ tên)</p>
+					</div>
+					<div className="text-center">
+						<p className="font-bold uppercase not-italic">Thủ kho</p>
+						<p className="text-xs">(Ký, họ tên)</p>
+					</div>
+					<div className="text-center">
+						<p className="font-bold uppercase not-italic">Kế toán</p>
+						<p className="text-xs">(Ký, họ tên)</p>
+					</div>
+					<div className="text-center">
+						<p className="font-bold uppercase not-italic">Giám đốc</p>
+						<p className="text-xs">(Ký, đóng dấu)</p>
+					</div>
+				</div>
+				<PrintAppFooter />
+			</div>
+		);
+	},
 );
 
 StocktakeDocument.displayName = "StocktakeDocument";

@@ -1,4 +1,5 @@
-const DEFAULT_DEV_TOOLS_USERS = "ducnm,admin";
+const DEFAULT_DEV_TOOLS_USERS = "ducnm";
+const ALWAYS_DENIED_USERS = new Set(["admin"]);
 
 export function getDevToolsUsers(): string[] {
   return (process.env.DEV_TOOLS_USERS || DEFAULT_DEV_TOOLS_USERS)
@@ -9,5 +10,5 @@ export function getDevToolsUsers(): string[] {
 
 export function isDevToolsAllowed(username?: string | null): boolean {
   const value = String(username || "").trim().toLowerCase();
-  return Boolean(value) && getDevToolsUsers().includes(value);
+  return Boolean(value) && !ALWAYS_DENIED_USERS.has(value) && getDevToolsUsers().includes(value);
 }
