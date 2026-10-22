@@ -152,6 +152,7 @@ export default function Promotions() {
 				toast.success(r.message);
 				setOpen(false);
 				void qc.invalidateQueries({ queryKey: ["promotions-v1"] });
+				void qc.invalidateQueries({ queryKey: ["next-code-promotion"] });
 			},
 			onError: (e: Error) => toast.error(e.message),
 		}),
@@ -185,9 +186,10 @@ export default function Promotions() {
 			},
 			onError: (e: Error) => toast.error(e.message),
 		});
-	const create = () => {
+	const create = async () => {
 			setEditing(null);
-			setForm(empty(nextPromotionCode.data || "KM00001"));
+			const latest = await nextPromotionCode.refetch();
+			setForm(empty(latest.data || "KM00001"));
 			setOpen(true);
 		},
 		edit = (x: PromotionProgramV1) => {

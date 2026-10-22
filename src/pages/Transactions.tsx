@@ -5,6 +5,7 @@ import {
 	BarChart3,
 	Boxes,
 	CheckCircle2,
+	Copy,
 	Edit,
 	Eye,
 	Plus,
@@ -37,6 +38,7 @@ import type {
 } from "../types";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
+import TableActions from "../components/TableActions";
 
 type Line = {
 	packagingId: number;
@@ -535,6 +537,27 @@ export default function Transactions({
 		);
 		setOpen(true);
 	};
+	const duplicate = (document: InventoryDocumentV1) => {
+		setEditing(null);
+		setType(document.type);
+		setForm({
+			type: document.type,
+			transactionDate: today(),
+			warehouseId: document.warehouseId,
+			recipient: document.recipient || "",
+			reason: document.reason || "",
+			note: document.note || "",
+		});
+		setLines(
+			document.details.map(line => ({
+				packagingId: line.packagingId,
+				quantity: Number(line.quantity),
+				unitCost: Number(line.unitCost),
+				note: line.note || "",
+			})),
+		);
+		setOpen(true);
+	};
 	const updateLine = (index: number, patch: Partial<Line>) =>
 		setLines(current =>
 			current.map((line, position) =>
@@ -592,7 +615,7 @@ export default function Transactions({
 							? "Xuất kho"
 							: initialType === "IMPORT"
 								? "Nhập kho"
-								: "Nhập, xuất kho V1"}
+								: "Nhập, xuất kho"}
 					</h1>
 					<p>
 						Phiếu bán hàng ghi sổ tự sinh phiếu xuất kho tại đây · Chứng từ nháp
@@ -708,7 +731,7 @@ export default function Transactions({
 									<option value="">Tất cả nguồn</option>
 									<option value="MANUAL_V1">Nhập tay</option>
 									<option value="SALE_V1">Bán hàng tự sinh</option>
-									<option value="PURCHASE_V1">Mua hàng V1</option>
+									<option value="PURCHASE_V1">Mua hàng</option>
 								</select>
 								<select
 									value={status}
@@ -802,78 +825,74 @@ export default function Transactions({
 													)}
 												</td>
 												<td>
-													<div className="flex gap-1">
-														<button
-															title="Xem"
-															className="erp-icon-btn"
-															onClick={() => setSelected(document)}
-														>
-															<Eye size={16} />
-														</button>
-														<button
-															title="Sửa"
-															className="erp-icon-btn"
-															disabled={
-																!(
+													<TableActions
+														actions={[
+															{
+																key: "view",
+																label: "Xem chi tiết",
+																icon: <Eye size={15} />,
+																onClick: () => setSelected(document),
+															},
+															{
+																key: "duplicate",
+																label: "Nhân bản",
+																icon: <Copy size={15} />,
+																onClick: () => duplicate(document),
+															},
+															{
+																key: "print",
+																label: "In phiếu",
+																icon: <Printer size={15} />,
+																onClick: () => setReportDoc(document),
+															},
+															{
+																key: "post",
+																label:
+																	document.documentStatus === "CANCELLED"
+																		? "Lưu lại"
+																		: "Lưu",
+																icon: <CheckCircle2 size={15} />,
+																tone: "success",
+																disabled: actionMutation.isPending,
+																hidden: !(
 																	document.documentStatus === "DRAFT" ||
-																	(document.documentStatus ===
-																		"CANCELLED" &&
+																	(document.documentStatus === "CANCELLED" &&
 																		document.sourceModule === "MANUAL_V1")
-																)
-															}
-															onClick={() => openEdit(document)}
-														>
-															<Edit size={16} />
-														</button>
-														<button
-															title={
-																document.documentStatus === "CANCELLED"
-																	? "Ghi sổ lại"
-																	: "Ghi sổ"
-															}
-															className="erp-icon-btn text-emerald-600"
-															disabled={
-																!(
-																	document.documentStatus === "DRAFT" ||
-																	(document.documentStatus ===
-																		"CANCELLED" &&
-																		document.sourceModule === "MANUAL_V1")
-																) || actionMutation.isPending
-															}
-							onClick={async () => {
-								if (
-									await confirm(
-										document.documentStatus === "CANCELLED"
-											? `Ghi sổ lại ${document.code}?`
-											: `Ghi sổ ${document.code}?`,
-									)
-								)
-									actionMutation.mutate({
-										document,
-										action: "post",
-									});
-							}}
-														>
-															<CheckCircle2 size={16} />
-														</button>
-														{document.documentStatus === "DRAFT" ||
-														document.documentStatus === "CANCELLED" ||
-														(document.documentStatus === "POSTED" &&
-															document.sourceModule === "MANUAL_V1") ? (
-															<button
-																title={
+																),
+																onClick: async () => {
+																	if (
+																		await confirm(
+																			document.documentStatus === "CANCELLED"
+																				? `Lưu lại ${document.code}?`
+																				: `Lưu ${document.code}?`,
+																		)
+																	)
+																		actionMutation.mutate({
+																			document,
+																			action: "post",
+																		});
+																},
+															},
+															{
+																key: "delete",
+																label:
 																	document.documentStatus === "CANCELLED"
 																		? "Xóa phiếu đã hủy"
 																		: document.documentStatus === "DRAFT"
 																			? "Xóa phiếu nháp"
-																			: "Hủy phiếu & hoàn lại tồn kho"
-																}
-																className="erp-icon-btn text-red-600"
-																disabled={
+																			: "Hủy phiếu & hoàn lại tồn kho",
+																icon: <Trash2 size={15} />,
+																tone: "danger",
+																disabled:
 																	deleteMutation.isPending ||
-																	actionMutation.isPending
-																}
-																onClick={async () => {
+																	actionMutation.isPending,
+																hidden: !(
+																	document.documentStatus === "DRAFT" ||
+																	document.documentStatus === "CANCELLED" ||
+																	(document.documentStatus === "POSTED" &&
+																		document.sourceModule === "MANUAL_V1")
+																),
+																onClick: async () => {
 																	if (
 																		document.documentStatus === "DRAFT"
 																	) {
@@ -886,8 +905,7 @@ export default function Transactions({
 																		return;
 																	}
 																	if (
-																		document.documentStatus ===
-																		"CANCELLED"
+																		document.documentStatus === "CANCELLED"
 																	) {
 																		if (
 																			await confirm(
@@ -909,12 +927,10 @@ export default function Transactions({
 																			action: "cancel",
 																			reason: reason.trim(),
 																		});
-																}}
-															>
-																<Trash2 size={16} />
-															</button>
-														) : null}
-													</div>
+																},
+															},
+														]}
+													/>
 												</td>
 											</tr>
 										))

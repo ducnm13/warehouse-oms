@@ -12,6 +12,7 @@ import {
 	MemoryStick,
 	Play,
 	RefreshCw,
+	Save,
 	Search,
 	Server,
 	ShieldAlert,
@@ -92,7 +93,28 @@ interface QueryResult {
 	rowCount: number;
 	truncated: boolean;
 	durationMs: number;
+	affectedRows?: number;
 }
+
+interface TableColumn {
+	name: string;
+	dataType: string;
+	nullable: boolean;
+	primaryKey: boolean;
+	defaultValue: unknown;
+	extra: string;
+}
+
+interface TableData {
+	name: string;
+	columns: TableColumn[];
+	primaryKey: string[];
+	rows: Record<string, any>[];
+	limit: number;
+	offset: number;
+}
+
+type RowEdits = Record<number, Record<string, any>>;
 
 interface ScriptInfo {
 	id: string;
@@ -161,6 +183,12 @@ const DevTools = () => {
 	const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
 	const [queryError, setQueryError] = useState<string | null>(null);
 	const [querying, setQuerying] = useState(false);
+	const [tableView, setTableView] = useState<TableData | null>(null);
+	const [tableLoading, setTableLoading] = useState(false);
+	const [tableError, setTableError] = useState<string | null>(null);
+	const [rowEdits, setRowEdits] = useState<RowEdits>({});
+	const [editingCell, setEditingCell] = useState<{ row: number; column: string } | null>(null);
+	const [saving, setSaving] = useState(false);
 	const [runningId, setRunningId] = useState<string | null>(null);
 	const [scriptResult, setScriptResult] = useState<ScriptRunResult | null>(null);
 	const [scriptError, setScriptError] = useState<string | null>(null);
@@ -203,6 +231,9 @@ const DevTools = () => {
 		}
 		setQuerying(true);
 		setQueryError(null);
+		setTableView(null);
+		setRowEdits({});
+		setEditingCell(null);
 		try {
 			const response = await apiV1<QueryResult>("/api/v1/devtools/database/query", {
 				method: "POST",
@@ -217,10 +248,68 @@ const DevTools = () => {
 		}
 	};
 
+	const loadTable = async (name: string) => {
+		setTableLoading(true);
+		setTableError(null);
+		try {
+			const response = await apiV1<TableData>(`/api/v1/devtools/database/tables/${encodeURIComponent(name)}?limit=100`);
+			setTableView(response.data);
+			setRowEdits({});
+			setEditingCell(null);
+			return response.data;
+		} catch (error) {
+			setTableView(null);
+			setTableError((error as Error).message);
+			return null;
+		} finally {
+			setTableLoading(false);
+		}
+	};
+
 	const openTable = (table: TableInfo) => {
 		const statement = `SELECT * FROM \`${table.name}\` LIMIT 50;`;
 		setSql(statement);
-		void runQuery(statement);
+		setQueryResult(null);
+		setQueryError(null);
+		void loadTable(table.name);
+	};
+
+	const editedRowIndexes = Object.keys(rowEdits)
+		.map(Number)
+		.filter(index => Object.keys(rowEdits[index] || {}).length > 0);
+
+	const saveEdits = async () => {
+		if (!tableView) return;
+		if (!tableView.primaryKey.length) {
+			toast.error("Bảng không có khóa chính nên không thể sửa trực tiếp");
+			return;
+		}
+		if (!editedRowIndexes.length) {
+			toast.error("Chưa có thay đổi nào để lưu");
+			return;
+		}
+		const rowsSnapshot = tableView.rows;
+		setSaving(true);
+		try {
+			for (const index of editedRowIndexes) {
+				const changes = rowEdits[index];
+				const source = rowsSnapshot[index];
+				const keys: Record<string, any> = {};
+				for (const primaryKey of tableView.primaryKey) {
+					keys[primaryKey] = source[primaryKey];
+				}
+				await apiV1("/api/v1/devtools/database/row", {
+					method: "POST",
+					body: JSON.stringify({ table: tableView.name, keys, changes }),
+				});
+			}
+			toast.success(`Đã lưu ${editedRowIndexes.length} dòng`);
+			await loadTable(tableView.name);
+		} catch (error) {
+			toast.error(`Không lưu được thay đổi\n${(error as Error).message}`);
+		} finally {
+			setSaving(false);
+		}
 	};
 
 	const runScript = async (script: ScriptInfo) => {
@@ -541,7 +630,7 @@ const DevTools = () => {
 							)}
 						</div>
 						<div className="border-t border-[#e9edf7] px-3 py-2 text-[11px] text-[#a3aed0]">
-							{tables.data?.data.length || 0} bảng · chỉ đọc
+							{tables.data?.data.length || 0} bảng · bấm để xem &amp; sửa dữ liệu
 						</div>
 					</div>
 
@@ -552,7 +641,7 @@ const DevTools = () => {
 									<h2 className="flex items-center gap-2 text-[14px] font-bold text-[#1b2559]">
 										<Terminal size={17} className="text-[#422afb]" /> SQL Console
 									</h2>
-									<p className="text-[11.5px] text-[#a3aed0]">Chỉ SELECT / SHOW / DESCRIBE / EXPLAIN · tối đa 1.000 dòng</p>
+									<p className="text-[11.5px] text-[#a3aed0]">SELECT / SHOW / DESCRIBE / EXPLAIN và INSERT / UPDATE / DELETE / REPLACE · nhiều câu lệnh cách nhau bởi dấu ; · tối đa 1.000 dòng</p>
 								</div>
 								<button className="erp-btn erp-btn-primary" onClick={() => void runQuery()} disabled={querying}>
 									{querying ? <Loader2 className="animate-spin" size={15} /> : <Play size={15} />}
@@ -581,10 +670,38 @@ const DevTools = () => {
 
 						<div className="erp-card overflow-hidden">
 							<div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#e9edf7] px-4 py-3">
-								<h2 className="text-[14px] font-bold text-[#1b2559]">Kết quả</h2>
-								{queryResult ? (
+								<div>
+									<h2 className="text-[14px] font-bold text-[#1b2559]">
+										{tableView ? `Dữ liệu bảng ${tableView.name}` : "Kết quả"}
+									</h2>
+									{tableView ? (
+										<p className="text-[11.5px] text-[#a3aed0]">
+											Bấm vào ô để sửa · nhập NULL để xóa giá trị · khóa chính: {tableView.primaryKey.join(", ") || "không có"}
+										</p>
+									) : null}
+								</div>
+								{tableView ? (
 									<div className="flex flex-wrap items-center gap-2 text-[11.5px] text-[#a3aed0]">
-										<span className="erp-badge bg-[#e9e3ff] text-[#3311db]">{queryResult.rowCount.toLocaleString("vi-VN")} dòng</span>
+										<span className="erp-badge bg-[#e9e3ff] text-[#3311db]">{tableView.rows.length.toLocaleString("vi-VN")} dòng</span>
+										{editedRowIndexes.length ? (
+											<span className="text-[#b45309]">{editedRowIndexes.length} dòng đã sửa</span>
+										) : null}
+										<button
+											className="erp-btn erp-btn-primary"
+											onClick={() => void saveEdits()}
+											disabled={saving || !editedRowIndexes.length}
+										>
+											{saving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />}
+											{saving ? "Đang lưu…" : "Lưu thay đổi"}
+										</button>
+									</div>
+								) : queryResult ? (
+									<div className="flex flex-wrap items-center gap-2 text-[11.5px] text-[#a3aed0]">
+										{queryResult.rows.length ? (
+											<span className="erp-badge bg-[#e9e3ff] text-[#3311db]">{queryResult.rowCount.toLocaleString("vi-VN")} dòng</span>
+										) : (
+											<span className="erp-badge bg-[#e6f8f3] text-[#059669]">{queryResult.affectedRows ?? 0} dòng bị ảnh hưởng</span>
+										)}
 										<span className="inline-flex items-center gap-1">
 											<Clock size={12} /> {queryResult.durationMs} ms
 										</span>
@@ -592,7 +709,81 @@ const DevTools = () => {
 									</div>
 								) : null}
 							</div>
-							{querying ? (
+							{tableView ? (
+								tableLoading ? (
+									<div className="flex items-center justify-center gap-2 p-10 text-[13px] text-[#a3aed0]">
+										<Loader2 className="animate-spin" size={18} /> Đang tải dữ liệu bảng…
+									</div>
+								) : tableError ? (
+									<div className="p-8 text-center text-[12.5px] text-[#ee5d50]">{tableError}</div>
+								) : tableView.rows.length ? (
+									<div className="max-h-[520px] overflow-auto">
+										<table className="erp-table">
+											<thead>
+												<tr>
+													{tableView.columns.map(column => (
+														<th key={column.name}>
+															{column.name}
+															{column.primaryKey ? <span className="ml-1 text-[#422afb]">*</span> : null}
+														</th>
+													))}
+												</tr>
+											</thead>
+											<tbody>
+												{tableView.rows.map((row, index) => (
+													<tr key={index}>
+														{tableView.columns.map(column => {
+															const edited = Object.prototype.hasOwnProperty.call(rowEdits[index] || {}, column.name);
+															const value = edited ? rowEdits[index][column.name] : row[column.name];
+															const isEditing = editingCell?.row === index && editingCell.column === column.name;
+															const text = cellText(value);
+															return (
+																<td
+																	key={column.name}
+																	className={`cursor-text ${edited ? "bg-[#fff8e6]" : ""}`}
+																	title={tableView.primaryKey.length ? "Bấm để sửa" : "Bảng không có khóa chính"}
+																	onClick={() => {
+																		if (tableView.primaryKey.length) setEditingCell({ row: index, column: column.name });
+																	}}
+																>
+																	{isEditing ? (
+																		<input
+																			autoFocus
+																			value={value === null || value === undefined ? "" : String(value)}
+																			placeholder="NULL"
+																			className="!h-7 !min-h-0 !px-1.5 !py-0 font-mono !text-[11.5px]"
+																			onChange={event =>
+																				setRowEdits(previous => ({
+																					...previous,
+																					[index]: { ...(previous[index] || {}), [column.name]: event.target.value },
+																				}))
+																			}
+																			onClick={event => event.stopPropagation()}
+																			onBlur={() => setEditingCell(null)}
+																			onKeyDown={event => {
+																				if (event.key === "Enter" || event.key === "Escape") {
+																					event.preventDefault();
+																					setEditingCell(null);
+																				}
+																			}}
+																		/>
+																	) : (
+																		<span className="block max-w-[360px] truncate font-mono text-[11.5px]" title={text}>
+																			{value === null || value === undefined ? <em className="text-[#a3aed0]">NULL</em> : text}
+																		</span>
+																	)}
+																</td>
+															);
+														})}
+													</tr>
+												))}
+											</tbody>
+										</table>
+									</div>
+								) : (
+									<div className="p-8 text-center text-[12.5px] text-[#a3aed0]">Bảng không có dữ liệu.</div>
+								)
+							) : querying ? (
 								<div className="flex items-center justify-center gap-2 p-10 text-[13px] text-[#a3aed0]">
 									<Loader2 className="animate-spin" size={18} /> Đang chạy truy vấn…
 								</div>
@@ -626,7 +817,9 @@ const DevTools = () => {
 										</table>
 									</div>
 								) : (
-									<div className="p-8 text-center text-[12.5px] text-[#a3aed0]">Truy vấn không trả về dòng nào.</div>
+									<div className="p-8 text-center text-[12.5px] text-[#a3aed0]">
+										{queryResult.affectedRows !== undefined ? `Đã thực thi, ${queryResult.affectedRows} dòng bị ảnh hưởng.` : "Truy vấn không trả về dòng nào."}
+									</div>
 								)
 							) : (
 								<div className="p-8 text-center text-[12.5px] text-[#a3aed0]">Chọn một bảng bên trái hoặc nhập câu lệnh SQL để bắt đầu.</div>

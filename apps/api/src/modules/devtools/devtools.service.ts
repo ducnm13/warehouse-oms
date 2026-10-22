@@ -7,6 +7,43 @@ import { HttpError } from "../../common/http-error";
 const execFileAsync = promisify(execFile);
 const MAX_QUERY_ROWS = 1000;
 
+function splitStatements(sql: string): string[] {
+  const statements: string[] = [];
+  let current = "";
+  let quote: string | null = null;
+  let escaped = false;
+  for (const char of sql) {
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      current += char;
+      escaped = true;
+      continue;
+    }
+    if (quote) {
+      current += char;
+      if (char === quote) quote = null;
+      continue;
+    }
+    if (char === "'" || char === '"' || char === "`") {
+      quote = char;
+      current += char;
+      continue;
+    }
+    if (char === ";") {
+      if (current.trim()) statements.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  if (current.trim()) statements.push(current.trim());
+  return statements;
+}
+
 export type DevScript = {
   id: string;
   label: string;
@@ -286,46 +323,160 @@ export const devtoolsService = {
     }));
   },
 
+  async tableData(name: string, limit = 100, offset = 0) {
+    const tableName = String(name || "").trim();
+    if (!tableName) throw new HttpError(400, "TABLE_REQUIRED", "Thiếu tên bảng");
+    const tables = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT TABLE_NAME AS name FROM information_schema.tables WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+      tableName,
+    );
+    if (!tables.length) throw new HttpError(404, "TABLE_NOT_FOUND", "Không tìm thấy bảng");
+    const columns = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT COLUMN_NAME AS name, DATA_TYPE AS dataType, IS_NULLABLE AS nullable,
+        COLUMN_KEY AS columnKey, COLUMN_DEFAULT AS defaultValue, EXTRA AS extra
+       FROM information_schema.columns
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
+       ORDER BY ORDINAL_POSITION`,
+      tableName,
+    );
+    const safeName = `\`${tableName.replace(/`/g, "``")}\``;
+    const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
+    const safeOffset = Math.max(Number(offset) || 0, 0);
+    const rows = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT * FROM ${safeName} LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+    );
+    return {
+      name: tableName,
+      columns: columns.map(column => ({
+        name: String(column.name),
+        dataType: String(column.dataType || ""),
+        nullable: String(column.nullable || "").toUpperCase() === "YES",
+        primaryKey: String(column.columnKey || "").toUpperCase() === "PRI",
+        defaultValue: column.defaultValue,
+        extra: column.extra || "",
+      })),
+      primaryKey: columns
+        .filter(column => String(column.columnKey || "").toUpperCase() === "PRI")
+        .map(column => String(column.name)),
+      rows: sanitize(rows),
+      limit: safeLimit,
+      offset: safeOffset,
+    };
+  },
+
+  async updateRow(input: { table: string; keys: Record<string, any>; changes: Record<string, any> }, userId: number, username: string) {
+    const tableName = String(input?.table || "").trim();
+    const keys = input?.keys || {};
+    const changes = input?.changes || {};
+    if (!tableName) throw new HttpError(400, "TABLE_REQUIRED", "Thiếu tên bảng");
+    if (!Object.keys(keys).length) throw new HttpError(400, "KEYS_REQUIRED", "Thiếu khóa chính để cập nhật");
+    if (!Object.keys(changes).length) throw new HttpError(400, "CHANGES_REQUIRED", "Không có thay đổi để lưu");
+    const table = await this.tableData(tableName, 1, 0);
+    const columnMap: Map<string, { dataType: string }> = new Map(
+      table.columns.map(column => [String(column.name), { dataType: String(column.dataType || "") }]),
+    );
+    for (const key of Object.keys(keys)) {
+      if (!columnMap.has(key)) throw new HttpError(400, "COLUMN_NOT_FOUND", `Không có cột ${key}`);
+    }
+    for (const column of Object.keys(changes)) {
+      if (!columnMap.has(column)) throw new HttpError(400, "COLUMN_NOT_FOUND", `Không có cột ${column}`);
+    }
+    const quote = (value: string) => `\`${value.replace(/`/g, "``")}\``;
+    const normalize = (value: any, dataType: string) => {
+      if (value === null || value === undefined) return null;
+      if (typeof value === "string" && value.trim().toUpperCase() === "NULL") return null;
+      if (/^(tinyint|smallint|mediumint|int|bigint|decimal|numeric|float|double|bit|year)/i.test(dataType)) {
+        if (typeof value === "string" && value.trim() === "") return null;
+        const number = Number(value);
+        return Number.isFinite(number) ? number : value;
+      }
+      return value;
+    };
+    const setSql = Object.keys(changes)
+      .map(column => `${quote(column)} = ?`)
+      .join(", ");
+    const whereSql = Object.keys(keys)
+      .map(column => `${quote(column)} = ?`)
+      .join(" AND ");
+    const values = [
+      ...Object.entries(changes).map(([column, value]) => normalize(value, columnMap.get(column)?.dataType || "")),
+      ...Object.entries(keys).map(([column, value]) => normalize(value, columnMap.get(column)?.dataType || "")),
+    ];
+    const tableSql = quote(tableName);
+    const affected = await prisma.$executeRawUnsafe(
+      `UPDATE ${tableSql} SET ${setSql} WHERE ${whereSql} LIMIT 1`,
+      ...values,
+    );
+    void prisma.audit_logs.create({
+      data: {
+        action: "Sửa dữ liệu bảng dev",
+        details: `${tableName} · ${Object.keys(changes).join(", ")} · ${affected} dòng`,
+        userId,
+        userName: username,
+        createdAt: new Date().toISOString(),
+      },
+    }).catch(() => {});
+    return { affectedRows: Number(affected) };
+  },
+
   async query(sql: string) {
     const trimmed = String(sql || "").trim();
     if (!trimmed) throw new HttpError(400, "SQL_REQUIRED", "Vui lòng nhập câu lệnh SQL");
-    const statement = trimmed.replace(/;+\s*$/, "").trim();
-    if (statement.includes(";")) {
-      throw new HttpError(400, "MULTIPLE_STATEMENTS", "Chỉ cho phép một câu lệnh mỗi lần chạy");
-    }
-    if (!/^(select|show|describe|desc|explain)\b/i.test(statement)) {
-      throw new HttpError(400, "READ_ONLY_ONLY", "Chỉ cho phép truy vấn đọc dữ liệu (SELECT/SHOW/DESCRIBE/EXPLAIN)");
-    }
-    if (/^explain\s+analyze\b/i.test(statement)) {
-      throw new HttpError(400, "READ_ONLY_ONLY", "Không hỗ trợ EXPLAIN ANALYZE trong chế độ chỉ đọc");
-    }
-    if (/\binto\s+(out|dump)file\b/i.test(statement) || /\bfor\s+update\b/i.test(statement) ||
-        /\block\s+in\s+share\s+mode\b/i.test(statement) || /\bload_file\s*\(/i.test(statement) ||
-        /\bsleep\s*\(/i.test(statement) || /\bbenchmark\s*\(/i.test(statement)) {
-      throw new HttpError(400, "UNSAFE_QUERY", "Câu lệnh chứa thao tác không được phép");
+    const statements = splitStatements(trimmed);
+    if (!statements.length) throw new HttpError(400, "SQL_REQUIRED", "Vui lòng nhập câu lệnh SQL");
+    for (const statement of statements) {
+      if (!/^(select|show|describe|desc|explain|insert|update|delete|replace)\b/i.test(statement)) {
+        throw new HttpError(400, "STATEMENT_NOT_ALLOWED", "Chỉ hỗ trợ SELECT/SHOW/DESCRIBE/EXPLAIN và INSERT/UPDATE/DELETE/REPLACE");
+      }
+      if (/^explain\s+analyze\b/i.test(statement)) {
+        throw new HttpError(400, "READ_ONLY_ONLY", "Không hỗ trợ EXPLAIN ANALYZE");
+      }
+      if (/\binto\s+(out|dump)file\b/i.test(statement) || /\bfor\s+update\b/i.test(statement) ||
+          /\block\s+in\s+share\s+mode\b/i.test(statement) || /\bload_file\s*\(/i.test(statement) ||
+          /\bsleep\s*\(/i.test(statement) || /\bbenchmark\s*\(/i.test(statement)) {
+        throw new HttpError(400, "UNSAFE_QUERY", "Câu lệnh chứa thao tác không được phép");
+      }
     }
 
     const startedAt = Date.now();
-    const rows = await prisma.$transaction(async tx => {
+    const result = await prisma.$transaction(async tx => {
       try {
         await tx.$executeRawUnsafe("SET SESSION MAX_EXECUTION_TIME=15000");
       } catch {
         // MySQL cũ có thể không hỗ trợ; vẫn tiếp tục chạy truy vấn.
       }
-      return tx.$queryRawUnsafe<any[]>(statement) as Promise<any[]>;
-    }, { timeout: 20_000, maxWait: 5_000 });
+      let last: any = null;
+      const summaries: Array<{ statement: string; rowCount: number; affectedRows: number }> = [];
+      for (const statement of statements) {
+        if (/^(select|show|describe|desc|explain)\b/i.test(statement)) {
+          const rows = await tx.$queryRawUnsafe<any[]>(statement) as any[];
+          const list = Array.isArray(rows) ? rows : [rows];
+          last = {
+            columns: list.length ? Object.keys(list[0]) : [],
+            rows: sanitize(list.slice(0, MAX_QUERY_ROWS)),
+            rowCount: list.length,
+            truncated: list.length > MAX_QUERY_ROWS,
+            affectedRows: 0,
+          };
+          summaries.push({ statement: statement.slice(0, 200), rowCount: list.length, affectedRows: 0 });
+        } else {
+          const affected = Number(await tx.$executeRawUnsafe(statement));
+          last = {
+            columns: [],
+            rows: [],
+            rowCount: affected,
+            truncated: false,
+            affectedRows: affected,
+          };
+          summaries.push({ statement: statement.slice(0, 200), rowCount: affected, affectedRows: affected });
+        }
+      }
+      return { ...last, statements: summaries };
+    }, { timeout: 30_000, maxWait: 5_000 });
 
-    const durationMs = Date.now() - startedAt;
-    const list = Array.isArray(rows) ? rows : [rows];
-    const columns = list.length ? Object.keys(list[0]) : [];
-    return {
-      columns,
-      rows: sanitize(list.slice(0, MAX_QUERY_ROWS)),
-      rowCount: list.length,
-      truncated: list.length > MAX_QUERY_ROWS,
-      durationMs,
-    };
+    return { ...result, durationMs: Date.now() - startedAt };
   },
+
 
   scripts() {
     return SCRIPTS.map(script => ({

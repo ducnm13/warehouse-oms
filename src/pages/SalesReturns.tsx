@@ -2,7 +2,9 @@ import React, { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	CheckCircle2,
+	Copy,
 	Edit,
+	Eye,
 	PackagePlus,
 	Plus,
 	Printer,
@@ -13,7 +15,7 @@ import {
 import toast from "../components/ui/toast";
 import { prompt } from "../components/ui/confirm";
 import { apiV1, legacyApi } from "../lib/apiV1";
-import { formatDate, formatNumber } from "../lib/utils";
+import { formatDate, formatNumber, formatProductName } from "../lib/utils";
 import { finishedGoodsWarehouseId } from "../lib/warehouse-defaults";
 import PrintPreview from "../components/PrintPreview";
 import {
@@ -24,6 +26,7 @@ import {
 import type { SalesOrder, SalesReturnV1, Warehouse } from "../types";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
+import TableActions from "../components/TableActions";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const badge = {
@@ -201,6 +204,21 @@ export default function SalesReturns() {
 		);
 		setOpen(true);
 	};
+	const duplicate = (document: SalesReturnV1) => {
+		setEditing(null);
+		setOrderId(document.originalSalesOrderId);
+		setWarehouseId(document.warehouseId);
+		setReturnDate(today());
+		setReason(document.reason);
+		setLines(
+			document.lines.map(line => ({
+				originalSalesOrderLineId: line.originalSalesOrderLineId,
+				quantity: line.quantity,
+				note: line.note || "",
+			})),
+		);
+		setOpen(true);
+	};
 	const rows = documents.data?.data || [],
 		meta = documents.data?.meta as any;
 
@@ -294,42 +312,57 @@ export default function SalesReturns() {
 											</span>
 										</td>
 										<td>
-											<div className="flex gap-1">
-												<button
-													className="erp-icon-btn"
-													disabled={document.status !== "DRAFT"}
-													onClick={() => edit(document)}
-												>
-													<Edit size={15} />
-												</button>
-												<button
-													className="erp-icon-btn text-emerald-600"
-													disabled={document.status !== "DRAFT"}
-													onClick={() =>
-														action.mutate({ document, action: "post" })
-													}
-												>
-													<CheckCircle2 size={16} />
-												</button>
-												<button
-													className="erp-icon-btn text-red-600"
-													disabled={document.status !== "POSTED"}
-											onClick={async () => {
-												const cancellationReason = await prompt({
-													title: "Hủy phiếu trả",
-													message: "Nhập lý do hủy phiếu trả:",
-												});
-												if (cancellationReason)
-													action.mutate({
-														document,
-														action: "cancel",
-														reason: cancellationReason,
-													});
-											}}
-												>
-													<Undo2 size={16} />
-												</button>
-											</div>
+											<TableActions
+												actions={[
+													{
+														key: "view",
+														label: "Xem chi tiết",
+														icon: <Eye size={15} />,
+														onClick: () => setSelected(document),
+													},
+													{
+														key: "duplicate",
+														label: "Nhân bản",
+														icon: <Copy size={15} />,
+														onClick: () => duplicate(document),
+													},
+													{
+														key: "print",
+														label: "In phiếu",
+														icon: <Printer size={15} />,
+														onClick: () => setPrintTarget(document),
+													},
+													{
+														key: "post",
+														label: "Lưu",
+														icon: <CheckCircle2 size={15} />,
+														tone: "success",
+														disabled: document.status !== "DRAFT",
+														hidden: document.status !== "DRAFT",
+														onClick: () =>
+															action.mutate({ document, action: "post" }),
+													},
+													{
+														key: "cancel",
+														label: "Hủy phiếu",
+														icon: <Undo2 size={15} />,
+														tone: "danger",
+														hidden: document.status !== "POSTED",
+														onClick: async () => {
+															const cancellationReason = await prompt({
+																title: "Hủy phiếu trả",
+																message: "Nhập lý do hủy phiếu trả:",
+															});
+															if (cancellationReason)
+																action.mutate({
+																	document,
+																	action: "cancel",
+																	reason: cancellationReason,
+																});
+														},
+													},
+												]}
+											/>
 										</td>
 									</tr>
 								))}
@@ -454,7 +487,10 @@ export default function SalesReturns() {
 													return (
 														<tr key={line.id}>
 															<td>
-																{line.productName} - {line.packagingName}
+																{formatProductName(
+																	line.productName,
+																	line.packagingName,
+																)}
 																<small>{line.sku}</small>
 															</td>
 															<td>{line.lineType || "SALE"}</td>
@@ -549,7 +585,10 @@ export default function SalesReturns() {
 									{selected.lines.map(line => (
 										<tr key={line.id}>
 											<td>
-												{line.productName} - {line.packagingName}
+												{formatProductName(
+													line.productName,
+													line.packagingName,
+												)}
 												<small>{line.lineType}</small>
 											</td>
 											<td>
@@ -575,6 +614,17 @@ export default function SalesReturns() {
 							)}
 						</div>
 						<div className="erp-modal-footer">
+							{selected.status === "DRAFT" && (
+								<button
+									className="erp-btn erp-btn-primary"
+									onClick={() => {
+										edit(selected);
+										setSelected(null);
+									}}
+								>
+									<Edit size={16} /> Sửa
+								</button>
+							)}
 							<button
 								className="erp-btn"
 								onClick={() => setPrintTarget(selected)}
@@ -590,7 +640,7 @@ export default function SalesReturns() {
 									}
 								>
 									<CheckCircle2 size={16} />{" "}
-									{action.isPending ? "Đang ghi sổ..." : "Ghi sổ"}
+									{action.isPending ? "Đang lưu..." : "Lưu"}
 								</button>
 							)}
 							{selected.status === "POSTED" && (
@@ -643,9 +693,10 @@ export default function SalesReturns() {
 										rows: printTarget.lines.map((line, index) => ({
 											stt: index + 1,
 											sku: line.sku || "",
-											name: [line.productName, line.packagingName]
-												.filter(Boolean)
-												.join(" - "),
+											name: formatProductName(
+												line.productName,
+												line.packagingName,
+											),
 											unit: line.unit || "",
 											quantity: Number(line.quantity || 0),
 											unitPrice: Number(line.unitPrice || 0),

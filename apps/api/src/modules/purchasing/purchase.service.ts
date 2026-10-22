@@ -224,6 +224,82 @@ export const purchaseService = {
       return mapPurchaseDocument(updated);
     }, { timeout: 30_000 });
   },
+  async unpost(id: number, version: number, userId: number) {
+    return prisma.$transaction(async tx => {
+      const locked = await tx.$queryRawUnsafe<any[]>("SELECT id,documentStatus,version FROM purchase_documents WHERE id=? FOR UPDATE", id);
+      const current = locked[0];
+      if (!current) throw new HttpError(404, "PURCHASE_NOT_FOUND", "Không tìm thấy chứng từ");
+      if (current.documentStatus !== "POSTED") throw new HttpError(409, "PURCHASE_NOT_POSTED", "Chỉ được bỏ ghi chứng từ đã ghi sổ");
+      if (Number(current.version) !== version) throw new HttpError(409, "VERSION_CONFLICT", "Chứng từ đã được người khác cập nhật");
+
+      const document = await tx.purchase_documents.findUnique({ where: { id }, include: purchaseInclude });
+      if (!document) throw new HttpError(404, "PURCHASE_NOT_FOUND", "Không tìm thấy chứng từ");
+      const links = await tx.purchase_document_links_v1.findMany({ where: { purchaseDocumentId: id } });
+      if (!links.some(link => link.linkType === "PAYABLE_CHARGE")) {
+        throw new HttpError(409, "LEGACY_PURCHASE_NOT_REVERSIBLE", "Chứng từ legacy chưa có ledger v1; không thể bỏ ghi tự động");
+      }
+
+      const debtPayments = await tx.$queryRawUnsafe<any[]>(`SELECT COUNT(*) count
+        FROM payment_voucher_allocations a JOIN payment_vouchers v ON v.id=a.paymentVoucherId
+        WHERE a.purchaseDocumentId=? AND v.sourceModule='DEBT_V1' AND v.status='POSTED'`, id);
+      if (Number(debtPayments[0]?.count || 0) > 0) {
+        throw new HttpError(409, "DEBT_PAYMENT_EXISTS", "Hãy hủy phiếu chi công nợ V1 trước khi bỏ ghi chứng từ mua hàng");
+      }
+
+      const now = nowIso();
+
+      if (document.type === "DOMESTIC_INVENTORY") {
+        const stockOut = new Map<string, { packagingId: number; warehouseId: number; quantity: number }>();
+        for (const line of document.purchase_document_details) {
+          if (!line.warehouseId) throw new HttpError(409, "MISSING_WAREHOUSE", "Dữ liệu kho của chứng từ không đầy đủ");
+          const key = `${line.packagingId}:${line.warehouseId}`;
+          const entry = stockOut.get(key) || { packagingId: line.packagingId, warehouseId: line.warehouseId, quantity: 0 };
+          entry.quantity += Number(line.quantity);
+          stockOut.set(key, entry);
+        }
+        for (const entry of stockOut.values()) {
+          const balance = await tx.productwarehouses.findUnique({ where: { packagingId_warehouseId: { packagingId: entry.packagingId, warehouseId: entry.warehouseId } } });
+          if (Number(balance?.stock_quantity || 0) < entry.quantity) {
+            throw new HttpError(409, "REVERSAL_STOCK_SHORTAGE", `Không đủ tồn để bỏ ghi hàng hóa ${entry.packagingId} tại kho ${entry.warehouseId}`);
+          }
+        }
+        for (const entry of stockOut.values()) {
+          await tx.productwarehouses.update({
+            where: { packagingId_warehouseId: { packagingId: entry.packagingId, warehouseId: entry.warehouseId } },
+            data: { stock_quantity: { decrement: entry.quantity }, updatedAt: now },
+          });
+        }
+      }
+
+      await tx.inventory_ledger.deleteMany({ where: { sourceType: "PURCHASE", sourceId: id } });
+      await tx.purchase_inventory_links.deleteMany({ where: { purchaseDocumentId: id } });
+      const receiptIds = links.filter(link => link.linkType === "INVENTORY_RECEIPT").map(link => Number(link.linkedId));
+      if (receiptIds.length) {
+        await tx.inventorytransactiondetails.deleteMany({ where: { transactionId: { in: receiptIds } } });
+        await tx.inventorytransactions.deleteMany({ where: { id: { in: receiptIds } } });
+      }
+
+      await tx.payable_transactions.deleteMany({ where: { sourceId: id, sourceType: { in: ["PURCHASE", "PURCHASE_PAYMENT"] } } });
+      const voucherIds = links.filter(link => link.linkType === "PAYMENT_VOUCHER").map(link => link.linkedId);
+      if (voucherIds.length) {
+        await tx.payment_voucher_allocations.deleteMany({ where: { paymentVoucherId: { in: voucherIds } } });
+        await tx.payment_vouchers.deleteMany({ where: { id: { in: voucherIds } } });
+      }
+      await tx.supplier_payments.deleteMany({ where: { purchaseDocumentId: id } });
+      await tx.purchase_document_links_v1.deleteMany({ where: { purchaseDocumentId: id } });
+
+      const updated = await tx.purchase_documents.update({
+        where: { id },
+        data: {
+          documentStatus: "DRAFT", postedAt: null, postedBy: null,
+          inventoryTransactionId: null, paymentStatus: "UNPAID", paidAmount: 0,
+          version: { increment: 1 }, updatedAt: now,
+        }, include: purchaseInclude,
+      });
+      await tx.audit_logs.create({ data: { action: "Bỏ ghi mua hàng v1", details: document.code, userId, userName: String(userId), createdAt: now } });
+      return mapPurchaseDocument(updated);
+    }, { timeout: 30_000 });
+  },
   async cancel(id: number, input: PurchaseCancelInput, userId: number) {
     return prisma.$transaction(async tx => {
       const locked = await tx.$queryRawUnsafe<any[]>("SELECT id,documentStatus,version FROM purchase_documents WHERE id=? FOR UPDATE", id);
@@ -254,18 +330,6 @@ export const purchaseService = {
           grouped.set(line.warehouseId, [...(grouped.get(line.warehouseId) || []), line]);
         }
         for (const [warehouseId, lines] of grouped) {
-          const reversalCode = `H-PN-${document.code}-${warehouseId}`;
-          const reversalTransaction = await tx.inventorytransactions.create({
-            data: {
-              code: reversalCode, type: "EXPORT", transaction_date: now.slice(0, 10), exit_date: now.slice(0, 10),
-              warehouseId, note: `Đảo phiếu nhập khi hủy ${document.code}`, recipient: document.suppliers.name,
-              reason: "Hủy mua hàng v1", createdBy: userId, createdAt: now, updatedAt: now,
-              inventorytransactiondetails: { create: lines.map(line => ({ packagingId: line.packagingId, quantity: Number(line.quantity), note: document.code, createdAt: now, updatedAt: now })) },
-            },
-          });
-          await tx.purchase_document_links_v1.create({
-            data: { purchaseDocumentId: id, linkType: "INVENTORY_REVERSAL", linkedId: BigInt(reversalTransaction.id), linkedCode: reversalCode },
-          });
           for (const line of lines) {
             await tx.productwarehouses.update({
               where: { packagingId_warehouseId: { packagingId: line.packagingId, warehouseId } },

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import {
 	Plus,
+	Copy,
 	Edit,
 	Eye,
 	Trash2,
@@ -22,7 +23,8 @@ import DeliveryPromise from "../components/DeliveryPromise";
 import { confirm } from "../components/ui/confirm";
 import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
-import { formatNumber, formatDate } from "../lib/utils";
+import TableActions from "../components/TableActions";
+import { formatNumber, formatDate, formatProductName } from "../lib/utils";
 import type { Product } from "../types";
 
 interface OnlineProduct {
@@ -530,6 +532,27 @@ const OnlineOrders = () => {
 		} finally {
 			setSaving(false);
 		}
+	};
+
+	const duplicateOrder = (order: OnlineOrder) => {
+		setDetailOrder(null);
+		void fetchNextOrderCode();
+		setRecipientName(order.recipientName || "");
+		setPhone(order.phone || "");
+		setAddress(order.address || "");
+		setShippingFee(Number(order.shippingFee || 0));
+		setItems(
+			(order.items || []).map(item => ({
+				productName: item.productName,
+				quantity: Number(item.quantity || 1),
+				price: Number(item.price || 0),
+				unit: item.unit || "Cái",
+				packagingId: item.packagingId ?? null,
+				onlineProductId: null,
+			})),
+		);
+		setTab("create");
+		toast.success(`Đã sao chép đơn ${order.orderCode}`);
 	};
 
 	const handleUpdateStatus = async (id: number, status: string) => {
@@ -1094,14 +1117,29 @@ const OnlineOrders = () => {
 											</td>
 											<td className="text-right">
 												<div className="flex flex-col items-end gap-1">
-													<div className="flex items-center justify-end gap-1">
-														<button onClick={() => setDetailOrder(order)} className="erp-icon-btn" title="Xem chi tiết">
-															<Eye size={15} />
-														</button>
-														<button onClick={() => handleDeleteOrder(order)} className="erp-icon-btn text-red-500" title="Xóa đơn">
-															<Trash2 size={15} />
-														</button>
-													</div>
+													<TableActions
+														actions={[
+															{
+																key: "view",
+																label: "Xem chi tiết",
+																icon: <Eye size={15} />,
+																onClick: () => setDetailOrder(order),
+															},
+															{
+																key: "duplicate",
+																label: "Nhân bản đơn",
+																icon: <Copy size={15} />,
+																onClick: () => duplicateOrder(order),
+															},
+															{
+																key: "delete",
+																label: "Xóa đơn",
+																icon: <Trash2 size={15} />,
+																tone: "danger",
+																onClick: () => handleDeleteOrder(order),
+															},
+														]}
+													/>
 													{order.status === "Pending" && (
 														<button
 															onClick={() =>
@@ -1246,10 +1284,7 @@ const OnlineOrders = () => {
 									value={prodPackagingId}
 									options={erpPackagings.map(p => ({
 										value: p.id,
-										label:
-											p.productName === p.name
-												? p.name
-												: `${p.productName} - ${p.name}`,
+										label: formatProductName(p.productName, p.name),
 										subLabel: p.sku ? `SKU: ${p.sku}` : undefined,
 									}))}
 									onChange={id => {
@@ -1258,9 +1293,7 @@ const OnlineOrders = () => {
 										const found = erpPackagings.find(p => p.id === id);
 										if (found) {
 											setProdName(
-												found.productName === found.name
-													? found.name
-													: `${found.productName} - ${found.name}`,
+												formatProductName(found.productName, found.name),
 											);
 											if (found.unit) setProdUnit(found.unit);
 											const bp = companyPriceOf(found.id);
@@ -1574,6 +1607,9 @@ const OnlineOrders = () => {
 							</div>
 						</div>
 						<div className="erp-modal-footer">
+							<button type="button" className="erp-btn" onClick={() => duplicateOrder(detailOrder)}>
+								Nhân bản
+							</button>
 							<button type="button" className="erp-btn text-red-600" onClick={() => handleDeleteOrder(detailOrder)}>
 								Xóa đơn
 							</button>

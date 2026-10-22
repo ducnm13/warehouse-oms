@@ -14,6 +14,24 @@ export const devtoolsController = {
     res.json({ success: true, message: "OK", data });
   },
 
+  tableData: async (req: any, res: any) => {
+    const data = await devtoolsService.tableData(
+      String(req.params.name),
+      Number(req.query?.limit) || 100,
+      Number(req.query?.offset) || 0,
+    );
+    res.json({ success: true, message: "OK", data });
+  },
+
+  updateRow: async (req: any, res: any) => {
+    const data = await devtoolsService.updateRow(
+      req.body,
+      req.auth.userId,
+      req.auth.username,
+    );
+    res.json({ success: true, message: "Đã lưu thay đổi", data });
+  },
+
   scripts: async (_req: any, res: any) => {
     res.json({
       success: true,

@@ -1,4 +1,5 @@
 import type ExcelJS from "exceljs";
+import { formatProductName } from "./utils";
 
 export const cellText = (value: any): string => {
 	if (value === null || value === undefined) return "";
@@ -796,9 +797,7 @@ export const fillWarehouseTransfer = (
 		writeDataRow(worksheet, dataStart + index, {
 			A: index + 1,
 			B: line.sku || "",
-			D: [line.productName, line.packagingName]
-				.filter(name => Boolean(name))
-				.join(" - "),
+			D: formatProductName(line.productName, line.packagingName),
 			I: line.unit || "",
 			J: Number(line.quantity || 0),
 			K: Number(line.unitCost || 0),
@@ -984,9 +983,7 @@ export const fillWarehouseDocument = (
 		writeDataRow(worksheet, dataStart + index, {
 			A: index + 1,
 			B: line.sku || "",
-			D: [line.productName, line.packagingName]
-				.filter(name => Boolean(name))
-				.join(" - "),
+			D: formatProductName(line.productName, line.packagingName),
 			G: line.unit || "",
 			H: Number(line.quantity || 0),
 			I: Number(line.unitCost || 0),

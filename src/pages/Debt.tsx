@@ -5,6 +5,7 @@ import {
 	BanknoteArrowUp,
 	CheckCircle2,
 	Clock3,
+	Copy,
 	Edit,
 	Eye,
 	PackagePlus,
@@ -17,8 +18,9 @@ import {
 import toast from "../components/ui/toast";
 import { confirm } from "../components/ui/confirm";
 import { apiV1 } from "../lib/apiV1";
-import { formatDate, formatNumber } from "../lib/utils";
+import { formatDate, formatNumber, formatProductName } from "../lib/utils";
 import PrintPreview from "../components/PrintPreview";
+import TableActions from "../components/TableActions";
 import {
 	fillGenericDocument,
 	GENERIC_LAYOUTS,
@@ -257,6 +259,22 @@ export default function Debt() {
 		setEditing(document);
 		setPartnerId(document.partnerId);
 		setPaymentDate(document.paymentDate);
+		setMethod(document.method);
+		setNote(document.note || "");
+		setAllocations(
+			document.allocations.map(row => ({
+				documentId: row.documentId,
+				amount: row.amount,
+			})),
+		);
+		setOpen(true);
+	};
+	const duplicate = (document: DebtPaymentV1) => {
+		setSelected(null);
+		setView(document.kind === "RECEIPT" ? "receipts" : "vouchers");
+		setEditing(null);
+		setPartnerId(document.partnerId);
+		setPaymentDate(today());
 		setMethod(document.method);
 		setNote(document.note || "");
 		setAllocations(
@@ -521,37 +539,47 @@ export default function Debt() {
 												</span>
 											</td>
 											<td>
-												<div className="flex gap-1">
-													<button
-														className="erp-icon-btn"
-														onClick={() => setSelected(document)}
-													>
-														<Eye size={16} />
-													</button>
-													<button
-														className="erp-icon-btn"
-														disabled={!canManage || document.status !== "DRAFT"}
-														onClick={() => edit(document)}
-													>
-														<Edit size={16} />
-													</button>
-													<button
-														className="erp-icon-btn text-emerald-600"
-														disabled={!canManage || document.status !== "DRAFT"}
-														onClick={() => act(document, "post")}
-													>
-														<CheckCircle2 size={16} />
-													</button>
-													<button
-														className="erp-icon-btn text-red-600"
-														disabled={
-															!canManage || document.status !== "POSTED"
-														}
-														onClick={() => act(document, "cancel")}
-													>
-														<Undo2 size={16} />
-													</button>
-												</div>
+												<TableActions
+													actions={[
+														{
+															key: "view",
+															label: "Xem chi tiết",
+															icon: <Eye size={15} />,
+															onClick: () => setSelected(document),
+														},
+														{
+															key: "duplicate",
+															label: "Nhân bản",
+															icon: <Copy size={15} />,
+															hidden: !canManage,
+															onClick: () => duplicate(document),
+														},
+														{
+															key: "print",
+															label: "In phiếu",
+															icon: <Printer size={15} />,
+															onClick: () => setPrintTarget(document),
+														},
+														{
+															key: "post",
+															label: "Ghi sổ",
+															icon: <CheckCircle2 size={15} />,
+															tone: "success",
+															hidden:
+																!canManage || document.status !== "DRAFT",
+															onClick: () => act(document, "post"),
+														},
+														{
+															key: "cancel",
+															label: "Bỏ ghi sổ",
+															icon: <Undo2 size={15} />,
+															tone: "danger",
+															hidden:
+																!canManage || document.status !== "POSTED",
+															onClick: () => act(document, "cancel"),
+														},
+													]}
+												/>
 											</td>
 										</tr>
 									);
@@ -780,7 +808,13 @@ export default function Debt() {
 								</button>
 								{(selected.kind === "RECEIPT" ? canReceive : canPay) &&
 									selected.status === "DRAFT" && (
-										<button className="erp-btn" onClick={() => edit(selected)}>
+										<button
+											className="erp-btn"
+											onClick={() => {
+												setSelected(null);
+												edit(selected);
+											}}
+										>
 											<Edit size={16} /> Sửa
 										</button>
 									)}
@@ -790,7 +824,7 @@ export default function Debt() {
 											className="erp-btn erp-btn-post"
 											onClick={() => act(selected, "post")}
 										>
-											<CheckCircle2 size={16} /> Ghi sổ
+											<CheckCircle2 size={16} /> Lưu
 										</button>
 									)}
 								{(selected.kind === "RECEIPT" ? canReceive : canPay) &&
@@ -896,7 +930,10 @@ export default function Debt() {
 												{allocationDoc.details.map((line: any, idx: number) => (
 													<tr key={idx}>
 														<td>
-															{line.productName} - {line.packagingName}
+															{formatProductName(
+																line.productName,
+																line.packagingName,
+															)}
 															{line.sku && (
 																<small className="text-slate-400">
 																	{" "}

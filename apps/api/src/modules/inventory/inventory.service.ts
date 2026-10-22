@@ -350,31 +350,12 @@ export const stocktakeService = {
       for (const originalDirection of ["IN", "OUT"] as const) {
         const group = entries.filter(entry => entry.direction === originalDirection);
         if (!group.length) continue;
-        const reversalType = originalDirection === "IN" ? "EXPORT" : "IMPORT";
-        const scope = reversalType === "IMPORT" ? "inventory_import" : "inventory_export";
-        const reversalCode = await nextDocumentCode(scope);
-        const reversal = await tx.inventorytransactions.create({ data: {
-          code: reversalCode, type: reversalType, transaction_date: now.slice(0, 10),
-          entry_date: reversalType === "IMPORT" ? now.slice(0, 10) : null,
-          exit_date: reversalType === "EXPORT" ? now.slice(0, 10) : null,
-          warehouseId: document.warehouseId, note: `Đảo kiểm kê ${document.code}: ${input.reason}`,
-          reason: "Hủy kiểm kê v1", createdBy: userId, createdAt: now, updatedAt: now,
-          documentStatus: "POSTED", postedAt: occurredAt, postedBy: userId, sourceModule: "STOCKTAKE_REVERSAL_V1",
-        } });
         for (const entry of group) {
           const balance = await lockBalance(tx, entry.packagingId, entry.warehouseId), quantity = Number(entry.quantity);
           if (originalDirection === "IN" && balance < quantity) throw new HttpError(409, "REVERSAL_STOCK_SHORTAGE", "Không đủ tồn để đảo kiểm kê");
-          const reversalLine = await tx.inventorytransactiondetails.create({ data: {
-            transactionId: reversal.id, packagingId: entry.packagingId, quantity,
-            unitCost: entry.unitCost, totalValue: entry.totalValue, note: input.reason, createdAt: now, updatedAt: now,
-          } });
           await tx.productwarehouses.update({ where: { packagingId_warehouseId: { packagingId: entry.packagingId, warehouseId: entry.warehouseId } }, data: { stock_quantity: originalDirection === "IN" ? { decrement: quantity } : { increment: quantity }, updatedAt: now } });
-          await tx.inventory_ledger.create({ data: { sourceType: "STOCKTAKE_CANCEL", sourceId: id, sourceLineId: reversalLine.id, documentCode: reversalCode, direction: originalDirection === "IN" ? "OUT" : "IN", packagingId: entry.packagingId, warehouseId: entry.warehouseId, quantity: entry.quantity, unitCost: entry.unitCost, totalValue: entry.totalValue, reversalOfId: entry.id, occurredAt, createdBy: userId } });
+          await tx.inventory_ledger.create({ data: { sourceType: "STOCKTAKE_CANCEL", sourceId: id, sourceLineId: entry.sourceLineId, documentCode: document.code || String(id), direction: originalDirection === "IN" ? "OUT" : "IN", packagingId: entry.packagingId, warehouseId: entry.warehouseId, quantity: entry.quantity, unitCost: entry.unitCost, totalValue: entry.totalValue, reversalOfId: entry.id, occurredAt, createdBy: userId } });
         }
-        await tx.stocktake_document_links_v1.create({ data: {
-          stocktakeId: id, linkType: reversalType === "IMPORT" ? "REVERSAL_IMPORT" : "REVERSAL_EXPORT",
-          linkedId: BigInt(reversal.id), linkedCode: reversalCode,
-        } });
       }
       const row = await tx.stocktakes.update({ where: { id }, data: { status: "CANCELLED", cancelledAt: occurredAt, cancelledBy: userId, cancelReason: input.reason, version: { increment: 1 } }, include: stocktakeInclude });
       await tx.audit_logs.create({ data: { action: "Hủy kiểm kê v1", details: `${row.code}: ${input.reason}`, userId, userName: String(userId), createdAt: now } });

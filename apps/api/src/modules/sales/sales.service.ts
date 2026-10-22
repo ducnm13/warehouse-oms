@@ -306,16 +306,8 @@ export const salesService = {
       }
       const now = nowIso();
       const cancelledAt = new Date();
-      const reversalCode = `H-PX-${document.code}`;
-      const reversalTransaction = await tx.inventorytransactions.create({ data: {
-        code: reversalCode, type: "IMPORT", transaction_date: now.slice(0, 10), entry_date: now.slice(0, 10),
-        warehouseId: document.warehouseId, note: `Hoàn nhập do hủy ${document.code}`, reason: "Hủy bán hàng",
-        recipient: document.customers?.name || "Khách hàng", customerId: document.customerId,
-        createdBy: userId, createdAt: now, updatedAt: now,
-      } });
       for (const line of document.sales_order_details) {
         const original = await tx.inventory_ledger.findFirst({ where: { sourceType: "SALE", sourceId: id, sourceLineId: line.id, direction: "OUT" } });
-        await tx.inventorytransactiondetails.create({ data: { transactionId: reversalTransaction.id, packagingId: line.packagingId, quantity: Number(line.quantity), note: input.reason, createdAt: now, updatedAt: now } });
         await tx.productwarehouses.upsert({
           where: { packagingId_warehouseId: { packagingId: line.packagingId, warehouseId: document.warehouseId } },
           create: { packagingId: line.packagingId, warehouseId: document.warehouseId, stock_quantity: Number(line.quantity), updatedAt: now },
@@ -334,7 +326,6 @@ export const salesService = {
         entryType: "REVERSAL", amount: money(-Number(document.totalAmount || 0)), occurredAt: cancelledAt,
         reversalOfId: charge?.id, createdBy: userId,
       } });
-      await tx.sales_document_links_v1.create({ data: { salesOrderId: id, linkType: "INVENTORY_REVERSAL", linkedId: BigInt(reversalTransaction.id), linkedCode: reversalCode } });
       await tx.sales_document_links_v1.create({ data: { salesOrderId: id, linkType: "RECEIVABLE_REVERSAL", linkedId: reversal.id, linkedCode: document.code } });
 
       if (Number(document.paidAmount || 0) > 0) {

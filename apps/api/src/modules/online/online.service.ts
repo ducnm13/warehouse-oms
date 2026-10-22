@@ -25,10 +25,39 @@ async function sendZaloNotification(message: string) {
 const productInclude = { productpackagings: { select: { id: true, name: true, sku: true, unit: true } } } as const;
 const orderInclude = { items: true } as const;
 
+// Tránh lặp tên: "A - A" hoặc "A - B - A - B" chỉ còn "A" / "A - B"
+function collapseRepeatedName(value?: string | null) {
+  const normalized = (value || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+  const parts = normalized.split(/\s+-\s+/).map(part => part.trim()).filter(Boolean);
+  if (parts.length < 2) return normalized;
+  const seen = new Set<string>();
+  return parts
+    .filter(part => {
+      const key = part.toLocaleLowerCase("vi");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .join(" - ");
+}
+
+function formatProductDisplayName(productName?: string | null, packagingName?: string | null) {
+  const product = collapseRepeatedName(productName);
+  const packaging = collapseRepeatedName(packagingName);
+  if (!product) return packaging;
+  if (!packaging) return product;
+  const productKey = product.toLocaleLowerCase("vi");
+  const packagingKey = packaging.toLocaleLowerCase("vi");
+  if (productKey === packagingKey || productKey.includes(packagingKey)) return product;
+  if (packagingKey.includes(productKey)) return packaging;
+  return collapseRepeatedName(`${product} - ${packaging}`);
+}
+
 const mapProduct = (row: any) => ({
   id: row.id,
   packagingId: row.packagingId,
-  name: row.name,
+  name: collapseRepeatedName(row.name),
   price: Number(row.price || 0),
   unit: row.unit,
   isActive: row.isActive,
@@ -71,7 +100,7 @@ export const onlineService = {
     const row = await prisma.online_products.create({
       data: {
         packagingId: input.packagingId || null,
-        name: input.name,
+        name: collapseRepeatedName(input.name) || input.name,
         price: money(input.price),
         unit: input.unit || "Cái",
       },
@@ -86,7 +115,7 @@ export const onlineService = {
       where: { id },
       data: {
         packagingId: input.packagingId || null,
-        name: input.name,
+        name: collapseRepeatedName(input.name) || input.name,
         price: money(input.price),
         unit: input.unit || "Cái",
         ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
@@ -105,7 +134,8 @@ export const onlineService = {
         include: { products: { select: { name: true } } },
       });
       if (!pkg) continue;
-      const name = `${pkg.products?.name || ""} - ${pkg.name}`.replace(/^ - | - $/g, "").trim() || row.name;
+      const name =
+        formatProductDisplayName(pkg.products?.name, pkg.name) || collapseRepeatedName(row.name) || row.name;
       if (name !== row.name || (pkg.unit && pkg.unit !== row.unit)) {
         await prisma.online_products.update({
           where: { id: row.id },

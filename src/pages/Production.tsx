@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useReactToPrint } from "react-to-print";
 import {
 	CheckCircle2,
+	Copy,
 	Edit,
 	Eye,
 	Factory,
@@ -35,6 +36,7 @@ import {
 import type { Product, ProductionOrderV1, User, Warehouse } from "../types";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
+import TableActions from "../components/TableActions";
 
 interface OrderLine {
 	packagingId: number;
@@ -471,7 +473,15 @@ export default function Production({
 		order: ProductionOrderV1,
 		type: "IMPORT" | "EXPORT",
 	) => {
-		const details = type === "EXPORT" ? order.materials : baseOutputs(order);
+		// Phiếu nhập thành phẩm lấy đúng số lượng thực tế đã chốt bên Quản lý sản xuất.
+		// Lệnh đã chốt có thể phát sinh dòng bổ sung (plannedQuantity = 0) nên không dùng baseOutputs.
+		const hasActual = order.outputs.some(o => Number(o.actualQuantity || 0) > 0);
+		const details =
+			type === "EXPORT"
+				? order.materials
+				: hasActual
+					? order.outputs.filter(o => Number(o.actualQuantity || 0) > 0)
+					: baseOutputs(order);
 		if (!details.length) {
 			toast.error("Lệnh chưa có dòng để lập phiếu");
 			return;
@@ -509,14 +519,15 @@ export default function Production({
 					packagingOptions.find(p => p.id === item.packagingId)?.unit ||
 					(item as any).unit ||
 					itemBomUnit;
+				const actualQuantity = Number((item as any).actualQuantity || 0);
+				const sourceQuantity =
+					type === "IMPORT" && actualQuantity > 0
+						? actualQuantity
+						: Number(item.plannedQuantity || 0);
 				const quantity =
 					type === "EXPORT" && itemBomUnit && itemPkgUnit
-						? convertUnitValue(
-								Number(item.plannedQuantity || 0),
-								itemBomUnit,
-								itemPkgUnit,
-							)
-						: Number(item.plannedQuantity || 0);
+						? convertUnitValue(sourceQuantity, itemBomUnit, itemPkgUnit)
+						: sourceQuantity;
 				return {
 					packagingId: item.packagingId,
 					quantity: Number(quantity.toFixed(3)),
@@ -539,7 +550,7 @@ export default function Production({
 		toast.success(
 			type === "EXPORT"
 				? "Đã mở phiếu xuất NVL nháp, chỉnh số lượng rồi lưu để trừ kho"
-				: "Đã mở phiếu nhập thành phẩm nháp, nhập số lượng tay rồi lưu",
+				: "Đã mở phiếu nhập thành phẩm nháp với số lượng thực tế đã chốt, kho xác nhận và lưu",
 		);
 	};
 
@@ -567,6 +578,22 @@ export default function Production({
 		setNote((d as any).note || "");
 		setBatchNumber((d as any).batchNumber || "");
 		setOrderDate(d.orderDate);
+		setWarehouseId(d.warehouseId);
+		setLines(
+			d.outputs.map(x => ({
+				packagingId: x.packagingId,
+				plannedQuantity: x.plannedQuantity,
+				note: x.note || "",
+			})),
+		);
+		setOpen(true);
+	};
+	const duplicate = (d: ProductionOrderV1) => {
+		setEditing(null);
+		setCode(nextCode.data || "LSX00001");
+		setNote((d as any).note || "");
+		setBatchNumber((d as any).batchNumber || "");
+		setOrderDate(today());
 		setWarehouseId(d.warehouseId);
 		setLines(
 			d.outputs.map(x => ({
@@ -742,59 +769,65 @@ export default function Production({
 										</span>
 									</td>
 									<td>
-										<div className="flex gap-1">
-											<button
-												className="erp-icon-btn"
-												onClick={() => setSelected(d)}
-											>
-												<Eye size={16} />
-											</button>
-											{manage && (
-												<>
-													<button
-														className="erp-icon-btn"
-														disabled={d.status !== "DRAFT"}
-														onClick={() => edit(d)}
-													>
-														<Edit size={16} />
-													</button>
-													<button
-														className="erp-icon-btn text-amber-600"
-														disabled={d.status !== "DRAFT"}
-														onClick={() => handleConfirm(d)}
-													>
-														<Play size={16} />
-													</button>
-													<button
-														className="erp-icon-btn text-emerald-600"
-														disabled={d.status !== "IN_PROGRESS"}
-														onClick={() => handleComplete(d)}
-													>
-														<CheckCircle2 size={16} />
-													</button>
-													<button
-														className="erp-icon-btn text-red-600"
-														disabled={d.status === "CANCELLED"}
-														onClick={() => cancel(d)}
-													>
-														<Undo2 size={16} />
-													</button>
-													{["DRAFT", "CANCELLED"].includes(d.status) &&
-														manage && (
-															<button
-																className="erp-icon-btn text-red-600"
-																onClick={async () => {
-																	if (await confirm(`Xóa lệnh ${d.code}?`))
-																		deleteMutation.mutate(d);
-																}}
-																title="Xóa"
-															>
-																<Trash2 size={16} />
-															</button>
-														)}
-												</>
-											)}
-										</div>
+										<TableActions
+											actions={[
+												{
+													key: "view",
+													label: "Xem chi tiết",
+													icon: <Eye size={15} />,
+													onClick: () => setSelected(d),
+												},
+												{
+													key: "duplicate",
+													label: "Nhân bản",
+													icon: <Copy size={15} />,
+													onClick: () => duplicate(d),
+												},
+												{
+													key: "print",
+													label: "In lệnh",
+													icon: <Printer size={15} />,
+													onClick: () => setReportOrder(d),
+												},
+												{
+													key: "confirm",
+													label: "Bắt đầu sản xuất",
+													icon: <Play size={15} />,
+													tone: "warning",
+													hidden: !manage || d.status !== "DRAFT",
+													onClick: () => handleConfirm(d),
+												},
+												{
+													key: "complete",
+													label: "Hoàn thành",
+													icon: <CheckCircle2 size={15} />,
+													tone: "success",
+													hidden: !manage || d.status !== "IN_PROGRESS",
+													onClick: () => handleComplete(d),
+												},
+												{
+													key: "cancel",
+													label: "Hủy lệnh",
+													icon: <Undo2 size={15} />,
+													tone: "danger",
+													hidden: !manage || d.status !== "DRAFT",
+													onClick: () => cancel(d),
+												},
+												{
+													key: "delete",
+													label: "Xóa lệnh",
+													icon: <Trash2 size={15} />,
+													tone: "danger",
+													hidden:
+														!manage ||
+														!["DRAFT", "CANCELLED"].includes(d.status),
+													onClick: async () => {
+														if (await confirm(`Xóa lệnh ${d.code}?`))
+															deleteMutation.mutate(d);
+													},
+												},
+											]}
+										/>
 									</td>
 								</tr>
 							))}
@@ -1204,14 +1237,16 @@ export default function Production({
 									<FileSpreadsheet size={15} /> Lập phiếu nhập
 								</button>
 							)}
-							{manage && selected.status !== "CANCELLED" && (
+							{manage && ["DRAFT", "IN_PROGRESS"].includes(selected.status) && (
 								<button
 									type="button"
-									className="erp-btn erp-btn-unpost"
-									disabled={action.isPending}
-									onClick={() => cancel(selected)}
+									className="erp-btn erp-btn-primary"
+									onClick={() => {
+										setSelected(null);
+										edit(selected);
+									}}
 								>
-									<Undo2 size={15} /> Bỏ ghi
+									<Edit size={15} /> Sửa lệnh
 								</button>
 							)}
 							<button

@@ -19,10 +19,10 @@ import Customers from './pages/Customers';
 import OnlineOrders from './pages/OnlineOrders';
 import AuditLogs from './pages/AuditLogs';
 import DevTools from './pages/DevTools';
-import SalesOrders from './pages/SalesOrdersV1';
+import SalesOrders from './pages/SalesOrders';
 import WarehouseTransfers from './pages/WarehouseTransfers';
 import Suppliers from './pages/Suppliers';
-import PurchasesV1 from './pages/PurchasesV1';
+import Purchases from './pages/Purchases';
 import FinancialDashboard from './pages/FinancialDashboard';
 import Debt from './pages/Debt';
 import ReportsIndex from './pages/reports/ReportsIndex';
@@ -153,7 +153,7 @@ const AppRoutes = () => {
           <Route path="/customer-groups" element={<Customers initialTab="groups" />} />
           <Route path="/debt" element={<Debt />} />
           <Route path="/warehouse-transfers" element={<WarehouseTransfers />} />
-          <Route path="/purchases" element={<PurchasesV1 />} />
+          <Route path="/purchases" element={<Purchases />} />
           <Route path="/suppliers" element={<Suppliers />} />
           <Route path="/inventory-import" element={<Transactions initialType="IMPORT" />} />
           <Route path="/inventory-export" element={<Transactions initialType="EXPORT" />} />

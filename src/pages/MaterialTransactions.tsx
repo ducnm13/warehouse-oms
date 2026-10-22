@@ -8,6 +8,8 @@ import {
   Trash2,
   Settings2,
   Calendar,
+  Copy,
+  Edit,
 } from "lucide-react";
 import DatePicker, { registerLocale } from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -18,9 +20,10 @@ import toast from "../components/ui/toast";
 import { confirm } from "../components/ui/confirm";
 import { useReactToPrint } from "react-to-print";
 import { Transaction, Product, Warehouse, User, Customer } from "../types";
-import { formatDate, quantityAllowsDecimal } from "../lib/utils";
+import { formatDate, formatProductName, quantityAllowsDecimal } from "../lib/utils";
 import { InventoryDocument } from "../components/InventoryDocument";
 import NumberInput from "../components/NumberInput";
+import TableActions from "../components/TableActions";
 
 // Hàm chuẩn hóa Date sang chuỗi YYYY-MM để lọc dữ liệu tháng
 const formatToYYYYMM = (date: Date | null) => {
@@ -77,7 +80,7 @@ const SearchableSelect = ({
       products.forEach((p) => {
         const pk = p.packagings?.find((x: any) => x.id === value);
         if (pk) {
-          setSearch(`${p.name} - ${pk.name}`);
+                      setSearch(formatProductName(p.name, pk.name));
           found = true;
         }
       });
@@ -97,7 +100,7 @@ const SearchableSelect = ({
         if (value) {
           products.forEach((p) => {
             const pk = p.packagings?.find((x: any) => x.id === value);
-            if (pk) setSearch(`${p.name} - ${pk.name}`);
+            if (pk) setSearch(formatProductName(p.name, pk.name));
           });
         } else {
           setSearch("");
@@ -152,7 +155,7 @@ const SearchableSelect = ({
                     className="cursor-pointer px-4 py-2.5 text-sm hover:bg-indigo-50 hover:text-indigo-700 transition-colors flex items-center justify-between"
                     onClick={() => {
                       onChange(pk.id);
-                      setSearch(`${p.name} - ${pk.name}`);
+          setSearch(formatProductName(p.name, pk.name));
                       setIsOpen(false);
                     }}
                   >
@@ -387,6 +390,29 @@ const MaterialTransactions = () => {
     setIsModalOpen(true);
   };
 
+  const duplicateTransaction = (tx: Transaction) => {
+    setIsDetailModalOpen(false);
+    setEditingId(null);
+    setType(tx.type as "IMPORT" | "EXPORT");
+    setWarehouseId(tx.warehouseId);
+    setNote(tx.note || "");
+    setRecipient(tx.recipient || "");
+    setCustomerId(tx.customerId || 0);
+    setReason(tx.reason || "");
+    setEntryDate(formatToYYYYMMDD(new Date()));
+    setExitDate(formatToYYYYMMDD(new Date()));
+    setCreatedBySelected(tx.createdBy || currentUser.id);
+    setDetails(
+      tx.details.map(d => ({
+        packagingId: d.packagingId,
+        quantity: d.quantity,
+        note: d.note || "",
+      })),
+    );
+    setIsModalOpen(true);
+    toast.success(`Đã sao chép phiếu ${tx.code}`);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (details.length === 0 || details.some((d) => d.packagingId === 0)) {
@@ -577,44 +603,46 @@ const MaterialTransactions = () => {
                         {tx.note}
                       </td>
                       <td className="py-4 px-4 text-right">
-                        <div className="flex items-center justify-end gap-3 text-gray-400">
-                          <button
-                            className="hover:text-primary transition-colors hidden md:inline"
-                            onClick={() => {
-                              setViewTransaction(tx);
-                              setIsDetailModalOpen(true);
-                            }}
-                            title="Xem chi tiết"
-                          >
-                            <Eye size={18} />
-                          </button>
-                          <button
-                            className="hover:text-indigo-600 transition-colors"
-                            onClick={() => openPreview(tx)}
-                            title="In phiếu"
-                          >
-                            <Printer size={18} />
-                          </button>
-                          <button
-                            className="hover:text-amber-500 transition-colors ml-2"
-                            onClick={() => handleEditTransaction(tx)}
-                            title="Sửa phiếu"
-                          >
-                            <Settings2 size={18} />
-                          </button>
-
-                          {isAdmin && (
-                            <button
-                              onClick={() =>
-                                handleDeleteTransaction(tx.id, tx.code)
-                              }
-                              className="hover:text-red-500 transition-colors ml-1 border-l pl-3 border-gray-100"
-                              title="Xóa phiếu và khôi phục tồn kho"
-                            >
-                              <Trash2 size={18} />
-                            </button>
-                          )}
-                        </div>
+                        <TableActions
+                          actions={[
+                            {
+                              key: "view",
+                              label: "Xem chi tiết",
+                              icon: <Eye size={15} />,
+                              onClick: () => {
+                                setViewTransaction(tx);
+                                setIsDetailModalOpen(true);
+                              },
+                            },
+                            {
+                              key: "duplicate",
+                              label: "Nhân bản",
+                              icon: <Copy size={15} />,
+                              onClick: () => duplicateTransaction(tx),
+                            },
+                            {
+                              key: "print",
+                              label: "In phiếu",
+                              icon: <Printer size={15} />,
+                              onClick: () => openPreview(tx),
+                            },
+                            {
+                              key: "edit",
+                              label: "Sửa phiếu",
+                              icon: <Edit size={15} />,
+                              onClick: () => handleEditTransaction(tx),
+                            },
+                            {
+                              key: "delete",
+                              label: "Xóa phiếu",
+                              icon: <Trash2 size={15} />,
+                              tone: "danger",
+                              hidden: !isAdmin,
+                              onClick: () =>
+                                handleDeleteTransaction(tx.id, tx.code),
+                            },
+                          ]}
+                        />
                       </td>
                     </tr>
                   ))
@@ -1046,6 +1074,15 @@ const MaterialTransactions = () => {
                   className="erp-btn uppercase tracking-widest text-[10px]"
                 >
                   <Printer size={18} /> XEM TRƯỚC VÀ IN
+                </button>
+                <button
+                  onClick={() => {
+                    setIsDetailModalOpen(false);
+                    handleEditTransaction(viewTransaction);
+                  }}
+                  className="erp-btn uppercase tracking-widest text-[10px]"
+                >
+                  <Edit size={18} /> SỬA
                 </button>
                 <button
                   onClick={() => setIsDetailModalOpen(false)}

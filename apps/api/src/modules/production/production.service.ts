@@ -261,36 +261,8 @@ export const productionService = {
   async cancel(id: number, i: ProductionCancelInput, u: number) {
     return prisma.$transaction(async tx => {
       const r = await lock(tx, id); ver(r, i.version);
-      if (!["DRAFT", "IN_PROGRESS", "COMPLETED"].includes(r.status)) throw new HttpError(409, "INVALID_STATUS", "Không thể hủy");
-      const o = await tx.productionorders.findUnique({ where: { id }, include: productionInclude });
-      if (!o?.warehouseId) throw new HttpError(409, "WAREHOUSE_REQUIRED", "Thiếu kho");
+      if (r.status !== "DRAFT") throw new HttpError(409, "INVALID_STATUS", "Chỉ được hủy lệnh sản xuất nháp. Lệnh đang sản xuất hoặc đã hoàn thành không được hủy");
       const t = now(), at = new Date();
-      // Từ khi CHỐT chỉ khóa số (không sinh bút toán), hủy lệnh COMPLETED chỉ đổi trạng thái.
-      // Lệnh cũ đã từng sinh phiếu nhập thì vẫn đảo kho như trước.
-      const hasPostings = r.status === "COMPLETED" && !!(await tx.inventory_ledger.findFirst({ where: { sourceType: "PRODUCTION_OUTPUT", sourceId: id }, select: { id: true } }));
-      if (hasPostings) {
-        const outputDoc = await inventoryDoc(tx, { code: `H-PN-${o.code}`, type: "EXPORT", date: t.slice(0, 10), warehouseId: o.warehouseId, note: `Thu hồi output ${o.code}`, sourceModule: "PRODUCTION_OUTPUT_CANCEL_V1", userId: u });
-        const materialDoc = await inventoryDoc(tx, { code: `H-PX-${o.code}`, type: "IMPORT", date: t.slice(0, 10), warehouseId: o.warehouseId, note: `Trả NVL ${o.code}`, sourceModule: "PRODUCTION_MATERIAL_CANCEL_V1", userId: u });
-        for (const d of o.productiondetails) {
-          const q = Number(d.actual_quantity || 0);
-          if (!d.packagingId || q <= 0) continue;
-          const b = await bal(tx, d.packagingId, o.warehouseId);
-          if (b < q) throw new HttpError(409, "REVERSAL_OUTPUT_SHORTAGE", "Không đủ output để hủy");
-          const original = await tx.inventory_ledger.findFirst({ where: { sourceType: "PRODUCTION_OUTPUT", sourceId: id, sourceLineId: d.id } });
-          if (!original) throw new HttpError(409, "LEDGER_NOT_FOUND", "Thiếu output ledger");
-          const line = await tx.inventorytransactiondetails.create({ data: { transactionId: outputDoc.id, packagingId: d.packagingId, quantity: q, unitCost: d.unitCost, totalValue: d.totalValue, note: i.reason, createdAt: t, updatedAt: t } });
-          await tx.productwarehouses.update({ where: { packagingId_warehouseId: { packagingId: d.packagingId, warehouseId: o.warehouseId } }, data: { stock_quantity: { decrement: q }, updatedAt: t } });
-          await tx.inventory_ledger.create({ data: { sourceType: "PRODUCTION_OUTPUT_CANCEL", sourceId: id, sourceLineId: line.id, documentCode: o.code!, direction: "OUT", packagingId: d.packagingId, warehouseId: o.warehouseId, quantity: dec(q), unitCost: d.unitCost, totalValue: d.totalValue, reversalOfId: original.id, occurredAt: at, createdBy: u } });
-        }
-        for (const m of o.production_order_materials_v1) {
-          const q = Number(m.actualQuantity || 0);
-          if (q <= 0) continue;
-          await tx.inventorytransactiondetails.create({ data: { transactionId: materialDoc.id, packagingId: m.packagingId, quantity: q, unitCost: m.unitCost, totalValue: m.totalValue, note: i.reason, createdAt: t, updatedAt: t } });
-          await tx.productwarehouses.update({ where: { packagingId_warehouseId: { packagingId: m.packagingId, warehouseId: o.warehouseId } }, data: { stock_quantity: { increment: q }, updatedAt: t } });
-          const original = await tx.inventory_ledger.findFirst({ where: { sourceType: "PRODUCTION_MATERIAL_RETURN", sourceId: id, sourceLineId: Number(m.id) } });
-          if (original) await tx.inventory_ledger.create({ data: { sourceType: "PRODUCTION_MATERIAL_RETURN_CANCEL", sourceId: id, sourceLineId: Number(m.id), documentCode: o.code!, direction: "OUT", packagingId: m.packagingId, warehouseId: o.warehouseId, quantity: dec(q), unitCost: m.unitCost, totalValue: m.totalValue, reversalOfId: original.id, occurredAt: at, createdBy: u } });
-        }
-      }
       const updated = await tx.productionorders.update({ where: { id }, data: { status: "CANCELLED", cancelledAt: at, cancelledBy: u, cancelReason: i.reason, version: { increment: 1 }, updatedAt: t }, include: productionInclude });
       await tx.audit_logs.create({ data: { action: "Hủy lệnh sản xuất v1", details: `${updated.code}: ${i.reason}`, userId: u, userName: String(u), createdAt: t } });
       return mapOneProductionWithDocuments(tx, updated);

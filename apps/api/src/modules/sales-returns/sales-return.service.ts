@@ -214,12 +214,6 @@ export const salesReturnService = {
       if (!document) throw new HttpError(404, "SALES_RETURN_NOT_FOUND", "Không tìm thấy phiếu trả hàng");
       await tx.$queryRawUnsafe("SELECT id FROM sales_orders WHERE id=? FOR UPDATE", document.originalSalesOrderId);
       const now = nowIso(), occurredAt = new Date();
-      const inventory = await tx.inventorytransactions.create({ data: {
-        code: `H-PN-${document.code}`, type: "EXPORT", transaction_date: now.slice(0, 10), exit_date: now.slice(0, 10),
-        warehouseId: document.warehouseId, note: `Đảo trả hàng ${document.code}`, reason: input.reason,
-        customerId: document.customerId, createdBy: userId, createdAt: now, updatedAt: now,
-        documentStatus: "POSTED", postedAt: occurredAt, postedBy: userId, sourceModule: "SALES_RETURN_CANCEL_V1",
-      } });
       for (const line of document.lines) {
         const balances = await tx.$queryRawUnsafe(
           "SELECT stock_quantity FROM productwarehouses WHERE packagingId=? AND warehouseId=? FOR UPDATE",
@@ -228,10 +222,6 @@ export const salesReturnService = {
         if (Number(balances[0]?.stock_quantity || 0) < Number(line.quantity)) throw new HttpError(409, "RETURN_REVERSAL_STOCK_SHORTAGE", "Không đủ tồn để đảo phiếu trả");
         const original = await tx.inventory_ledger.findFirst({ where: { sourceType: "SALES_RETURN", sourceId: id, sourceLineId: line.id } });
         if (!original) throw new HttpError(409, "RETURN_INVENTORY_LEDGER_NOT_FOUND", "Không tìm thấy ledger nhập trả gốc");
-        await tx.inventorytransactiondetails.create({ data: {
-          transactionId: inventory.id, packagingId: line.packagingId, quantity: Number(line.quantity),
-          unitCost: line.unitCost, totalValue: line.costAmount, note: input.reason, createdAt: now, updatedAt: now,
-        } });
         await tx.productwarehouses.update({
           where: { packagingId_warehouseId: { packagingId: line.packagingId, warehouseId: document.warehouseId } },
           data: { stock_quantity: { decrement: Number(line.quantity) }, updatedAt: now },
@@ -253,7 +243,6 @@ export const salesReturnService = {
       } });
       await updatePaymentProjection(tx, document.originalSalesOrderId, document.customerId, now);
       await tx.sales_return_document_links.createMany({ data: [
-        { salesReturnId: id, linkType: "INVENTORY_REVERSAL", linkedId: BigInt(inventory.id), linkedCode: inventory.code },
         { salesReturnId: id, linkType: "RECEIVABLE_REVERSAL", linkedId: reversal.id, linkedCode: document.code },
       ] });
       const row = await tx.sales_returns.update({ where: { id }, data: {

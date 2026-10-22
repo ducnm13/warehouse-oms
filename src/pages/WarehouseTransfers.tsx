@@ -4,6 +4,7 @@ import {
 	ArrowRight,
 	ArrowRightLeft,
 	CheckCircle2,
+	Copy,
 	Edit,
 	Eye,
 	PackageCheck,
@@ -20,11 +21,12 @@ import { confirm, prompt } from "../components/ui/confirm";
 import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
 import PrintPreview from "../components/PrintPreview";
-import { formatDate, formatNumber } from "../lib/utils";
+import { formatDate, formatNumber, formatProductName } from "../lib/utils";
 import { fillWarehouseTransfer, type CompanyPrintProfile } from "../lib/printTemplate";
 import type { Product, Warehouse, WarehouseTransferV1 } from "../types";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
+import TableActions from "../components/TableActions";
 
 type TransferLine = { packagingId: number; quantity: number; note: string };
 type TransferForm = {
@@ -246,6 +248,23 @@ export default function WarehouseTransfers() {
 		);
 		setOpen(true);
 	};
+	const duplicate = (document: WarehouseTransferV1) => {
+		setEditing(null);
+		setForm({
+			transferDate: today(),
+			fromWarehouseId: document.fromWarehouseId,
+			toWarehouseId: document.toWarehouseId,
+			note: document.note || "",
+		});
+		setLines(
+			document.details.map(line => ({
+				packagingId: line.packagingId,
+				quantity: line.quantity,
+				note: line.note || "",
+			})),
+		);
+		setOpen(true);
+	};
 	const act = async (
 		document: WarehouseTransferV1,
 		action: "ship" | "receive" | "cancel",
@@ -434,7 +453,11 @@ export default function WarehouseTransfers() {
 											<td>
 												{document.details.slice(0, 2).map(line => (
 													<div key={line.id} className="text-sm">
-														{line.productName} - {line.packagingName}:{" "}
+														{formatProductName(
+															line.productName,
+															line.packagingName,
+														)}
+														:{" "}
 														<b>
 															{formatNumber(line.quantity)} {line.unit}
 														</b>
@@ -453,77 +476,78 @@ export default function WarehouseTransfers() {
 												</span>
 											</td>
 											<td>
-												<div className="flex gap-1">
-													<button
-														className="erp-icon-btn"
-														title="Xem"
-														onClick={() => setSelected(document)}
-													>
-														<Eye size={16} />
-													</button>
-													<button
-														className="erp-icon-btn"
-														title="Sửa nháp"
-														disabled={document.status !== "DRAFT"}
-														onClick={() => edit(document)}
-													>
-														<Edit size={16} />
-													</button>
-													<button
-														className="erp-icon-btn text-amber-600"
-														title="Xuất giao"
-														disabled={
-															document.status !== "DRAFT" ||
-															actionMutation.isPending
-														}
-														onClick={() => act(document, "ship")}
-													>
-														<Truck size={16} />
-													</button>
-													<button
-														className="erp-icon-btn text-emerald-600"
-														title="Xác nhận nhận"
-														disabled={
-															document.status !== "IN_TRANSIT" ||
-															actionMutation.isPending
-														}
-														onClick={() => act(document, "receive")}
-													>
-														<PackageCheck size={16} />
-													</button>
-												<button
-													className="erp-icon-btn text-red-600"
-													title="Hủy"
-													disabled={
-														!(["DRAFT", "IN_TRANSIT"] as string[]).includes(
-															document.status,
-														) || actionMutation.isPending
-													}
-													onClick={() => act(document, "cancel")}
-												>
-													<Undo2 size={16} />
-												</button>
-												{(["DRAFT", "CANCELLED"] as string[]).includes(
-													document.status,
-												) && (
-													<button
-														className="erp-icon-btn text-red-600"
-														title="Xóa"
-														disabled={deleteMutation.isPending}
-															onClick={async () => {
+												<TableActions
+													actions={[
+														{
+															key: "view",
+															label: "Xem chi tiết",
+															icon: <Eye size={15} />,
+															onClick: () => setSelected(document),
+														},
+														{
+															key: "duplicate",
+															label: "Nhân bản",
+															icon: <Copy size={15} />,
+															onClick: () => duplicate(document),
+														},
+														{
+															key: "print",
+															label: "In phiếu",
+															icon: <Printer size={15} />,
+															onClick: () => setPrintTarget(document),
+														},
+														{
+															key: "ship",
+															label: "Xuất giao",
+															icon: <Truck size={15} />,
+															tone: "warning",
+															disabled:
+																actionMutation.isPending,
+															hidden: document.status !== "DRAFT",
+															onClick: () => act(document, "ship"),
+														},
+														{
+															key: "receive",
+															label: "Xác nhận nhận",
+															icon: <PackageCheck size={15} />,
+															tone: "success",
+															disabled:
+																actionMutation.isPending,
+															hidden: document.status !== "IN_TRANSIT",
+															onClick: () => act(document, "receive"),
+														},
+														{
+															key: "cancel",
+															label: "Hủy phiếu",
+															icon: <Undo2 size={15} />,
+															tone: "danger",
+															disabled: actionMutation.isPending,
+															hidden: !(["DRAFT", "IN_TRANSIT"] as string[]).includes(
+																document.status,
+															),
+															onClick: () => act(document, "cancel"),
+														},
+														{
+															key: "delete",
+															label: "Xóa phiếu",
+															icon: <Trash2 size={15} />,
+															tone: "danger",
+															disabled: deleteMutation.isPending,
+															hidden: !(["DRAFT", "CANCELLED"] as string[]).includes(
+																document.status,
+															),
+															onClick: async () => {
 																if (
 																	await confirm(
 																		`Xóa phiếu chuyển kho ${document.code}?`,
 																	)
 																)
 																	deleteMutation.mutate(document);
-														}}
-													>
-														<Trash2 size={16} />
-													</button>
-												)}
-											</div>
-										</td>
+															},
+														},
+													]}
+												/>
+											</td>
 										</tr>
 									);
 								})
@@ -771,7 +795,10 @@ export default function WarehouseTransfers() {
 										<tr key={line.id}>
 											<td>
 												<b>
-													{line.productName} - {line.packagingName}
+													{formatProductName(
+														line.productName,
+														line.packagingName,
+													)}
 												</b>
 												<small>
 													{line.sku} · {line.note}
@@ -818,7 +845,13 @@ export default function WarehouseTransfers() {
 									<Printer size={16} /> In phiếu
 								</button>
 								{selected.status === "DRAFT" && (
-									<button className="erp-btn" onClick={() => edit(selected)}>
+									<button
+										className="erp-btn erp-btn-primary"
+										onClick={() => {
+											edit(selected);
+											setSelected(null);
+										}}
+									>
 										<Edit size={16} /> Sửa
 									</button>
 								)}

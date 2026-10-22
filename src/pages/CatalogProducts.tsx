@@ -27,7 +27,7 @@ import { Card } from "../components/ui/card";
 import { Field, FieldLabel, Input, Select } from "../components/ui/input";
 import { apiV1 } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
-import { formatNumber } from "../lib/utils";
+import { formatNumber, formatProductName } from "../lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface ProductPrice {
@@ -1790,7 +1790,10 @@ export default function CatalogProducts({
 																const displayName =
 																	line.materialName ||
 																	(selectedMaterial
-																		? `${selectedMaterial.prod.name} - ${selectedMaterial.pk.name}`
+																		? formatProductName(
+																				selectedMaterial.prod.name,
+																				selectedMaterial.pk.name,
+																			)
 																		: "");
 																return (
 																	<tr key={index}>
@@ -1804,7 +1807,10 @@ export default function CatalogProducts({
 																					const material =
 																						findMaterial(packagingId);
 																					const materialName = material
-																						? `${material.prod.name} - ${material.pk.name}`
+																						? formatProductName(
+																								material.prod.name,
+																								material.pk.name,
+																							)
 																						: "";
 																					const materialUnit =
 																						material?.pk.unit || "g";

@@ -59,10 +59,10 @@ export default function DocumentActions({
           <span className="inline-flex items-center gap-2">
             <CheckCircle2 size={15} />
             {posting
-              ? "Đang ghi sổ..."
+              ? "Đang lưu..."
               : isCancelled
-                ? "Ghi sổ lại"
-                : "Ghi sổ"}
+                ? "Lưu lại"
+                : "Lưu"}
           </span>
         </button>
       )}

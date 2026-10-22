@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+	Copy,
 	Edit,
 	Eye,
 	FileSpreadsheet,
@@ -17,9 +18,10 @@ import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
 import RightDrawer from "../components/RightDrawer";
 import DocumentActions from "../components/DocumentActions";
+import TableActions from "../components/TableActions";
 import PrintPreview from "../components/PrintPreview";
 import NumberInput from "../components/NumberInput";
-import { formatDate, formatNumber } from "../lib/utils";
+import { formatDate, formatNumber, formatProductName } from "../lib/utils";
 import { fillProductionOrder, type CompanyPrintProfile } from "../lib/printTemplate";
 import { DateInput } from "../components/DateRangeCalendar";
 import type {
@@ -393,6 +395,60 @@ quantity: Number(Number(line.quantity || 0).toFixed(3)),
     }
   };
 
+	const openEditor = (order: any, duplicate = false) => {
+		setSelected(null);
+		setEditing(duplicate ? null : order);
+		setCode(
+			duplicate
+				? nextCode.data || (tab === "ASSEMBLY" ? "LR00001" : "TD00001")
+				: order.code,
+		);
+		setNote(duplicate ? "" : order.note || "");
+		setOrderDate(duplicate ? today() : order.orderDate);
+		const sourceLines = order.outputs?.length
+			? order.outputs
+			: order.sources || [];
+		setLines(
+			sourceLines.map((row: any) => ({
+				packagingId:
+					row.packagingId ||
+					row.outputPackagingId ||
+					row.sourcePackagingId ||
+					0,
+				plannedQuantity: Number(row.plannedQuantity || 0),
+				note: row.note || "",
+			})),
+		);
+		setOpen(true);
+	};
+
+	const printOrder = async (row: AssemblyOrderV1 | DisassemblyOrderV1) => {
+		try {
+			const base =
+				tab === "ASSEMBLY"
+					? "/api/v1/assembly/orders"
+					: "/api/v1/assembly/disassembly-orders";
+			const response = await apiV1<any>(`${base}/${row.id}`);
+			setPrintTarget(response.data);
+		} catch (e: any) {
+			toast.error(e.message || "Không tải được lệnh để in");
+		}
+	};
+
+	const duplicateOrder = async (row: AssemblyOrderV1 | DisassemblyOrderV1) => {
+		try {
+			const base =
+				tab === "ASSEMBLY"
+					? "/api/v1/assembly/orders"
+					: "/api/v1/assembly/disassembly-orders";
+			const response = await apiV1<any>(`${base}/${row.id}`);
+			openEditor(response.data, true);
+			toast.success(`Đã sao chép lệnh ${row.code}`);
+		} catch (e: any) {
+			toast.error(e.message || "Không sao chép được lệnh");
+		}
+	};
+
 	const viewOrder = async (row: AssemblyOrderV1 | DisassemblyOrderV1) => {
 		try {
 			const base =
@@ -509,22 +565,38 @@ quantity: Number(Number(line.quantity || 0).toFixed(3)),
 									</span>
 								</td>
 								<td>
-									<div className="flex gap-1">
-										<button
-											className="erp-icon-btn"
-											onClick={() => viewOrder(row)}
-										>
-											<Eye size={16} />
-										</button>
-										{manage && row.status !== "CANCELLED" && (
-											<button
-												className="erp-icon-btn text-red-500"
-												onClick={() => cancelOrder.mutate(row)}
-											>
-												<Undo2 size={16} />
-											</button>
-										)}
-									</div>
+									<TableActions
+										actions={[
+											{
+												key: "view",
+												label: "Xem chi tiết",
+												icon: <Eye size={15} />,
+												onClick: () => viewOrder(row),
+											},
+											{
+												key: "duplicate",
+												label: "Nhân bản",
+												icon: <Copy size={15} />,
+												hidden: !manage,
+												onClick: () => duplicateOrder(row),
+											},
+											{
+												key: "print",
+												label: "In lệnh",
+												icon: <Printer size={15} />,
+												onClick: () => printOrder(row),
+											},
+											{
+												key: "cancel",
+												label: "Hủy lệnh",
+												icon: <Undo2 size={15} />,
+												tone: "danger",
+												hidden:
+													!manage || row.status === "CANCELLED",
+												onClick: () => cancelOrder.mutate(row),
+											},
+										]}
+									/>
 								</td>
 							</tr>
 						))}
@@ -658,11 +730,13 @@ quantity: Number(Number(line.quantity || 0).toFixed(3)),
 													<td
 														className="max-w-56 truncate"
 														title={
-															item ? `${item.productName} - ${item.name}` : ""
+															item
+																? formatProductName(item.productName, item.name)
+																: ""
 														}
 													>
 														{item ? (
-															`${item.productName} - ${item.name}`
+															formatProductName(item.productName, item.name)
 														) : (
 															<span className="text-slate-400">Chưa chọn</span>
 														)}
@@ -765,7 +839,7 @@ quantity: Number(Number(line.quantity || 0).toFixed(3)),
 													<td>
 														<b className="font-mono">{row.sku}</b>
 														<small>
-															{row.productName} - {row.packagingName}
+															{formatProductName(row.productName, row.packagingName)}
 														</small>
 													</td>
 													<td>{row.unit || ""}</td>
@@ -803,20 +877,7 @@ quantity: Number(Number(line.quantity || 0).toFixed(3)),
 							onPost={() => selected && postOrder.mutate(selected)}
 							onUnpost={() => selected && cancelOrder.mutate(selected)}
 							onPrint={() => selected && setPrintTarget(selected)}
-							onEdit={() => {
-								if (!selected) return;
-								setSelected(null);
-								setEditing(selected);
-								setCode(selected.code);
-								setNote(selected.note || "");
-								setOrderDate(selected.orderDate);
-								setLines(((selected as any).outputs?.length ? (selected as any).outputs : (selected as any).sources || []).map((row: any) => ({
-									packagingId: row.packagingId || row.outputPackagingId || row.sourcePackagingId || 0,
-									plannedQuantity: Number(row.plannedQuantity || 0),
-									note: row.note || "",
-								})));
-								setOpen(true);
-							}}
+							onEdit={() => selected && openEditor(selected)}
 						/>
 						{selected && ["DRAFT"].includes(selected.status) && !(selected.links || []).some((link: any) => link.linkType === "INVENTORY_ISSUE") && (
 							<button
@@ -994,7 +1055,7 @@ quantity: Number(Number(line.quantity || 0).toFixed(3)),
 										<tr key={index}>
 											<td>{index + 1}</td>
 											<td className="font-mono font-semibold">{line.sku || "-"}</td>
-											<td>{[line.productName, line.packagingName].filter(Boolean).join(" - ") || "-"}</td>
+											<td>{formatProductName(line.productName, line.packagingName) || "-"}</td>
 											<td>{line.unit || ""}</td>
 											<td><NumberInput value={line.quantity} onChange={v => setVoucherDraft(current => current ? { ...current, lines: current.lines.map((l, i) => i === index ? { ...l, quantity: v } : l) } : current)} min={0.0001} decimals={3} className="w-28"/></td>
 											<td className="text-right">{formatNumber(line.unitCost)}</td>

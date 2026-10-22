@@ -4,6 +4,7 @@ import { useReactToPrint } from "react-to-print";
 import {
 	AlertCircle,
 	CheckCircle2,
+	Copy,
 	Edit,
 	Eye,
 	Factory,
@@ -28,6 +29,7 @@ import type { Product, ProductionOrderV1, User, Warehouse } from "../types";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
 import SearchableSelect from "../components/SearchableSelect";
+import TableActions from "../components/TableActions";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -420,6 +422,41 @@ export default function ProductionManagement({
 		setAllocRows([]);
 		setPickSku(0);
 	};
+	const duplicate = async (order: ProductionOrderV1) => {
+		const mfgDate = today();
+		const shelf = order.outputs?.[0]?.shelfLifeMonths ?? 24;
+		try {
+			const response = await apiV1<ProductionOrderV1>(
+				"/api/v1/production-orders",
+				{
+					method: "POST",
+					body: JSON.stringify({
+						code: "",
+						orderDate: today(),
+						mfgDate,
+						expDate: addMonths(mfgDate, shelf),
+						warehouseId: order.warehouseId,
+						batchNumber: "",
+						totalPowderKg: order.totalPowderKg || 0,
+						targetSachets: order.targetSachets || 0,
+						lossPercent: order.lossPercent || 0,
+						note: (order as any).note || "",
+						outputs: (order.outputs || []).map(output => ({
+							packagingId: output.packagingId,
+							plannedQuantity: output.plannedQuantity,
+							allocationPercent: output.allocationPercent || 0,
+							note: output.note || "",
+						})),
+					}),
+				},
+			);
+			toast.success(`Đã nhân bản lệnh ${order.code}`);
+			setSelected(response.data);
+			invalidate();
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : "Không nhân bản được lệnh");
+		}
+	};
 
 	const handleMfgDateChange = (newMfgDate: string) => {
 		if (!editForm) return;
@@ -775,57 +812,52 @@ export default function ProductionManagement({
 											))}
 										</td>
 										<td>
-											<div className="flex flex-wrap gap-1">
-												<button
-													className="erp-icon-btn"
-													onClick={() => setSelected(order)}
-													title="Xem"
-												>
-													<Eye size={16} />
-												</button>
-												{/* {(order.status === "DRAFT" ||
-													order.status === "IN_PROGRESS" ||
-													order.status === "COMPLETED") &&
-													manage && (
-														<button
-															className="erp-icon-btn"
-															onClick={() => openEdit(order)}
-															title={
-																order.status === "DRAFT"
-																	? "Bổ sung thông tin lệnh"
-																	: order.status === "COMPLETED"
-																		? "Bổ sung số lượng & chốt lại"
-																		: "Sửa thông tin mẻ & nhập thực tế"
-															}
-														>
-															<Edit size={16} />
-														</button>
-													)} */}
-												{order.status === "DRAFT" && manage && (
-													<>
-														<button
-															className="erp-icon-btn text-emerald-700"
-															onClick={() => handleConfirmSx(order)}
-															title="Xác nhận sản xuất"
-														>
-															<Play size={16} />
-														</button>
-														<button
-															className="erp-icon-btn text-red-600"
-															onClick={async () => {
-																if (await confirm(`Xóa lệnh ${order.code}?`))
-																	deleteMutation.mutate(order);
-															}}
-															title="Xóa"
-														>
-															<Trash2 size={16} />
-														</button>
-													</>
-												)}
-												{order.status === "COMPLETED" && manage && (
-													<button
-														className="erp-icon-btn text-red-500"
-														onClick={async () => {
+											<TableActions
+												actions={[
+													{
+														key: "view",
+														label: "Xem chi tiết",
+														icon: <Eye size={15} />,
+														onClick: () => setSelected(order),
+													},
+													{
+														key: "duplicate",
+														label: "Nhân bản",
+														icon: <Copy size={15} />,
+														onClick: () => duplicate(order),
+													},
+													{
+														key: "print",
+														label: "In lệnh",
+														icon: <Printer size={15} />,
+														onClick: () => setReportOrder(order),
+													},
+													{
+														key: "confirm",
+														label: "Xác nhận sản xuất",
+														icon: <Play size={15} />,
+														tone: "success",
+														hidden: !manage || order.status !== "DRAFT",
+														onClick: () => handleConfirmSx(order),
+													},
+													{
+														key: "delete",
+														label: "Xóa lệnh",
+														icon: <Trash2 size={15} />,
+														tone: "danger",
+														hidden: !manage || order.status !== "DRAFT",
+														onClick: async () => {
+															if (await confirm(`Xóa lệnh ${order.code}?`))
+																deleteMutation.mutate(order);
+														},
+													},
+													{
+														key: "cancel",
+														label: "Hủy & Đảo",
+														icon: <Undo2 size={15} />,
+														tone: "danger",
+														hidden: !manage || order.status !== "COMPLETED",
+														onClick: async () => {
 															const reason = await prompt({
 																title: "Hủy lệnh sản xuất",
 																message: "Nhập lý do hủy:",
@@ -837,22 +869,10 @@ export default function ProductionManagement({
 																	version: order.version,
 																	reason,
 																});
-														}}
-														title="Hủy & Đảo"
-													>
-														<Undo2 size={16} />
-													</button>
-												)}
-												{order.status === "COMPLETED" && (
-													<button
-														className="erp-icon-btn"
-														onClick={() => setReportOrder(order)}
-														title="In lệnh"
-													>
-														<Printer size={16} />
-													</button>
-												)}
-											</div>
+														},
+													},
+												]}
+											/>
 										</td>
 									</tr>
 								))}
@@ -1574,7 +1594,10 @@ export default function ProductionManagement({
 								manage && (
 									<button
 										className="erp-btn erp-btn-primary"
-										onClick={() => openEdit(selected)}
+										onClick={() => {
+											setSelected(null);
+											openEdit(selected);
+										}}
 									>
 										<Edit size={15} />{" "}
 										{selected.status === "DRAFT"
@@ -1590,7 +1613,7 @@ export default function ProductionManagement({
 									onClick={() => handleConfirmSx(selected)}
 									disabled={confirmMutation.isPending}
 								>
-									<Play size={15} /> Ghi sổ
+									<Play size={15} /> Lưu
 								</button>
 							)}
 							{selected.status === "COMPLETED" && manage && (

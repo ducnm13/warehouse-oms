@@ -33,11 +33,39 @@ export function formatDate(dateString: string) {
   return new Date(dateString).toLocaleDateString('vi-VN');
 }
 
-export function formatProductName(productName?: string, packagingName?: string) {
-  const pn = (productName || '').trim();
-  const pkn = (packagingName || '').trim();
+function normalizeProductPart(value?: string | null) {
+  return (value || '').replace(/\s+/g, ' ').trim();
+}
+
+export function collapseRepeatedName(value?: string | null) {
+  const normalized = normalizeProductPart(value);
+  if (!normalized) return '';
+  const parts = normalized
+    .split(/\s+-\s+/)
+    .map(part => part.trim())
+    .filter(Boolean);
+  if (parts.length < 2) return normalized;
+  const seen = new Set<string>();
+  const unique = parts.filter(part => {
+    const key = part.toLocaleLowerCase('vi');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return unique.join(' - ');
+}
+
+export function formatProductName(
+  productName?: string | null,
+  packagingName?: string | null,
+) {
+  const pn = collapseRepeatedName(productName);
+  const pkn = collapseRepeatedName(packagingName);
   if (!pn) return pkn;
   if (!pkn) return pn;
-  if (pn === pkn) return pn;
-  return `${pn} - ${pkn}`;
+  const pnKey = pn.toLocaleLowerCase('vi');
+  const pknKey = pkn.toLocaleLowerCase('vi');
+  if (pnKey === pknKey || pnKey.includes(pknKey)) return pn;
+  if (pknKey.includes(pnKey)) return pkn;
+  return collapseRepeatedName(`${pn} - ${pkn}`);
 }

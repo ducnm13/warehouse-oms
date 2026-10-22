@@ -22,7 +22,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { formatNumber } from "../lib/utils";
+import { formatNumber, formatProductName } from "../lib/utils";
 import { Transaction, Product } from "../types";
 import DatePicker, { registerLocale } from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -191,7 +191,7 @@ const Dashboard = ({ setActiveItem }: DashboardProps) => {
         .filter((t: Transaction) => t.type === "EXPORT")
         .forEach((t: Transaction) => {
           t.details.forEach((d) => {
-            const name = d.productName + " - " + d.packagingName;
+            const name = formatProductName(d.productName, d.packagingName);
             productQuantities[name] =
               (productQuantities[name] || 0) + d.quantity;
           });

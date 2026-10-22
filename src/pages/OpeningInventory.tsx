@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	CheckCircle,
+	Copy,
 	Edit,
 	Eye,
 	FileSpreadsheet,
@@ -16,7 +17,8 @@ import toast from "../components/ui/toast";
 import ExcelImportWizard, { type ExcelImportField } from "../components/ExcelImportWizard";
 import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
-import { formatDate, formatNumber } from "../lib/utils";
+import TableActions from "../components/TableActions";
+import { formatDate, formatNumber, formatProductName } from "../lib/utils";
 import PrintPreview from "../components/PrintPreview";
 import {
 	fillGenericDocument,
@@ -345,6 +347,31 @@ export default function OpeningInventory() {
 		setOpen(true);
 	};
 
+	const duplicate = async (doc: OpeningDocument) => {
+		let detail = doc;
+		if (!doc.lines?.length) {
+			try {
+				const res = await apiV1<OpeningDocument>(
+					`/api/v1/opening-inventory/${doc.id}`,
+				);
+				if (res.data) detail = res.data;
+			} catch (e: any) {
+				toast.error(e?.message || "Không tải được chi tiết phiếu");
+				return;
+			}
+		}
+		setViewDoc(null);
+		setEditing(null);
+		setForm({
+			documentDate: new Date().toISOString().slice(0, 10),
+			warehouseId: detail.warehouseId,
+			note: detail.note ?? "",
+			lines: detail.lines?.map(l => ({ ...l })) ?? [],
+		});
+		setOpen(true);
+		toast.success(`Đã sao chép phiếu ${doc.code}`);
+	};
+
 	const openEdit = async (doc: OpeningDocument) => {
 		let detail = doc;
 		if (!doc.lines?.length) {
@@ -619,24 +646,28 @@ export default function OpeningInventory() {
 											{doc.note || "—"}
 										</td>
 										<td>
-											<div className="flex justify-end gap-1">
-												<button
-													className="erp-icon-btn"
-													title="Xem"
-													onClick={() => setViewDoc(doc)}
-												>
-													<Eye size={15} />
-												</button>
-												{doc.status !== "CANCELLED" && (
-													<button
-														className="erp-icon-btn"
-														title="Sửa"
-														onClick={() => openEdit(doc)}
-													>
-														<Edit size={15} />
-													</button>
-												)}
-											</div>
+											<TableActions
+												actions={[
+													{
+														key: "view",
+														label: "Xem chi tiết",
+														icon: <Eye size={15} />,
+														onClick: () => setViewDoc(doc),
+													},
+													{
+														key: "duplicate",
+														label: "Nhân bản",
+														icon: <Copy size={15} />,
+														onClick: () => duplicate(doc),
+													},
+													{
+														key: "print",
+														label: "In biên bản",
+														icon: <Printer size={15} />,
+														onClick: () => setPrintTarget(doc),
+													},
+												]}
+											/>
 										</td>
 									</tr>
 								))}
@@ -778,7 +809,7 @@ export default function OpeningInventory() {
 											onClick={() => post.mutate(viewDocDetail)}
 										>
 											<CheckCircle size={15} />{" "}
-											{post.isPending ? "Đang ghi sổ..." : "Ghi sổ"}
+											{post.isPending ? "Đang lưu..." : "Lưu"}
 									</button>
 								</>
 							)}
@@ -1120,9 +1151,10 @@ export default function OpeningInventory() {
 							(l, index) => ({
 								stt: index + 1,
 								sku: l.sku || l.packaging?.sku || "",
-								name: [l.packagingName ?? l.packaging?.name, l.productName ?? l.packaging?.products?.name]
-									.filter(Boolean)
-									.join(" - "),
+								name: formatProductName(
+									l.packagingName ?? l.packaging?.name,
+									l.productName ?? l.packaging?.products?.name,
+								),
 								unit: l.unit || l.packaging?.unit || "",
 								quantity: Number(l.quantity || 0),
 								unitPrice: Number(l.unitCost || 0),

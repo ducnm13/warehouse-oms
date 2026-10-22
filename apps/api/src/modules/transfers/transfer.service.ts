@@ -218,37 +218,25 @@ export const transferService = {
       const document = await tx.warehouse_transfers.findUnique({ where: { id }, include: transferInclude });
       if (!document) throw new HttpError(404, "TRANSFER_NOT_FOUND", "Không tìm thấy phiếu chuyển kho");
       const occurredAt = new Date(), now = nowIso();
-      let cancellationTransactionId: number | undefined;
       if (current.status === "IN_TRANSIT") {
-        const reversalCode = `H-${document.code}`;
-        const header = await createInventoryDocument(tx, {
-          code: reversalCode, type: "IMPORT", date: now.slice(0, 10), warehouseId: document.fromWarehouseId,
-          note: `Hoàn kho do hủy ${document.code}: ${input.reason}`, reason: "Hủy chuyển kho v1", userId, sourceModule: "TRANSFER_CANCEL_V1",
-        });
-        cancellationTransactionId = header.id;
         const originals = await tx.inventory_ledger.findMany({ where: { sourceType: "TRANSFER_SHIPMENT", sourceId: id } });
         if (originals.length !== document.warehouse_transfer_details.length) throw new HttpError(409, "LEDGER_NOT_FOUND", "Không đủ ledger giao hàng để hoàn kho");
         for (const line of document.warehouse_transfer_details) {
           const quantity = Number(line.quantity), balance = await lockBalance(tx, line.packagingId, document.fromWarehouseId);
-          const inventoryLine = await tx.inventorytransactiondetails.create({ data: {
-            transactionId: header.id, packagingId: line.packagingId, quantity,
-            unitCost: line.unitCost, totalValue: line.totalValue, note: input.reason, createdAt: now, updatedAt: now,
-          } });
           await tx.productwarehouses.update({ where: { packagingId_warehouseId: { packagingId: line.packagingId, warehouseId: document.fromWarehouseId } }, data: { stock_quantity: { increment: quantity }, updatedAt: now } });
           const original = originals.find(entry => entry.sourceLineId === line.id);
           await tx.inventory_ledger.create({ data: {
-            sourceType: "TRANSFER_CANCEL", sourceId: id, sourceLineId: inventoryLine.id, documentCode: document.code,
+            sourceType: "TRANSFER_CANCEL", sourceId: id, sourceLineId: line.id, documentCode: document.code,
             direction: "IN", packagingId: line.packagingId, warehouseId: document.fromWarehouseId,
             quantity: decimal(quantity), unitCost: line.unitCost, totalValue: line.totalValue,
             reversalOfId: original?.id, occurredAt, createdBy: userId,
           } });
           void balance;
         }
-        await tx.warehouse_transfer_document_links_v1.create({ data: { transferId: id, linkType: "CANCELLATION_IMPORT", linkedId: BigInt(header.id), linkedCode: reversalCode } });
       }
       const row = await tx.warehouse_transfers.update({ where: { id }, data: {
         status: "CANCELLED", cancelledAt: occurredAt, cancelledBy: userId, cancelReason: input.reason,
-        cancellationTransactionId, version: { increment: 1 },
+        version: { increment: 1 },
       }, include: transferInclude });
       await tx.audit_logs.create({ data: { action: "Hủy chuyển kho v1", details: `${row.code}: ${input.reason}`, userId, userName: String(userId), createdAt: now } });
       return mapTransfer(row);

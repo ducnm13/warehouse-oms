@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	CheckCircle2,
 	ClipboardCheck,
+	Copy,
 	Download,
 	Edit,
 	Eye,
@@ -17,7 +18,7 @@ import { useReactToPrint } from "react-to-print";
 import toast from "../components/ui/toast";
 import { confirm, prompt } from "../components/ui/confirm";
 import { apiV1, legacyApi } from "../lib/apiV1";
-import { formatDate, formatNumber } from "../lib/utils";
+import { formatDate, formatNumber, formatProductName } from "../lib/utils";
 import {
 	buildCompanyPrintProfile,
 	type CompanyPrintProfile,
@@ -26,6 +27,7 @@ import { StocktakeDocument } from "../components/StocktakeDocument";
 import type { InventoryBalanceV1, StocktakeV1, Warehouse } from "../types";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
+import TableActions from "../components/TableActions";
 
 type CountLine = {
 	packagingId: number;
@@ -145,7 +147,7 @@ export default function Stocktake() {
 		for (const line of lines.slice(0, 20)) {
 			sheet.addRow({
 				sku: line.sku || "",
-				name: [line.productName, line.packagingName].filter(Boolean).join(" - "),
+				name: formatProductName(line.productName, line.packagingName),
 				unit: line.unit || "",
 				expected: line.expectedQuantity,
 				actual: line.expectedQuantity,
@@ -327,6 +329,24 @@ export default function Stocktake() {
 		);
 		setOpen(true);
 	};
+	const duplicate = (document: StocktakeV1) => {
+		setEditing(null);
+		setDate(today());
+		setWarehouseId(document.warehouseId);
+		setNote(document.note || "");
+		setLines(
+			document.details.map(line => ({
+				packagingId: line.packagingId,
+				productName: line.productName,
+				packagingName: line.packagingName,
+				sku: line.sku,
+				unit: line.unit,
+				expectedQuantity: Number(line.expectedQuantity),
+				actualQuantity: Number(line.actualQuantity),
+			})),
+		);
+		setOpen(true);
+	};
 	const rows = documents.data?.data || [],
 		meta = documents.data?.meta || {};
 	const changed = lines.filter(
@@ -463,67 +483,70 @@ export default function Stocktake() {
 												</span>
 											</td>
 											<td>
-												<div className="flex gap-1">
-													<button
-														className="erp-icon-btn"
-														title="Xem"
-														onClick={() => setSelected(document)}
-													>
-														<Eye size={16} />
-													</button>
-													<button
-														className="erp-icon-btn"
-														title="Sửa"
-														disabled={document.status !== "DRAFT"}
-														onClick={() => edit(document)}
-													>
-														<Edit size={16} />
-													</button>
-													<button
-														className="erp-icon-btn text-emerald-600"
-														title="Chốt"
-														disabled={
-															document.status !== "DRAFT" ||
-															actionMutation.isPending
-														}
-											onClick={async () => {
-												if (
-													await confirm(
-														`Chốt ${document.code} và tạo điều chỉnh kho?`,
-													)
-												)
-													actionMutation.mutate({
-														document,
-														action: "complete",
-													});
-											}}
-										>
-														<CheckCircle2 size={16} />
-													</button>
-													<button
-														className="erp-icon-btn text-red-600"
-														title="Hủy và đảo"
-														disabled={
-															document.status !== "COMPLETED" ||
-															actionMutation.isPending
-														}
-											onClick={async () => {
-												const reason = await prompt({
-													title: "Hủy kiểm kê",
-													message: "Nhập lý do hủy:",
-													minLength: 3,
-												});
-												if (reason)
-													actionMutation.mutate({
-														document,
-														action: "cancel",
-														reason: reason.trim(),
-													});
-											}}
-													>
-														<Undo2 size={16} />
-													</button>
-												</div>
+												<TableActions
+													actions={[
+														{
+															key: "view",
+															label: "Xem chi tiết",
+															icon: <Eye size={15} />,
+															onClick: () => setSelected(document),
+														},
+														{
+															key: "duplicate",
+															label: "Nhân bản",
+															icon: <Copy size={15} />,
+															onClick: () => duplicate(document),
+														},
+														{
+															key: "print",
+															label: "In biên bản",
+															icon: <Printer size={15} />,
+															onClick: () => setPrintTarget(document),
+														},
+														{
+															key: "complete",
+															label: "Chốt kiểm kê",
+															icon: <CheckCircle2 size={15} />,
+															tone: "success",
+															disabled:
+																document.status !== "DRAFT" ||
+																actionMutation.isPending,
+															hidden: document.status !== "DRAFT",
+															onClick: async () => {
+																if (
+																	await confirm(
+																		`Chốt ${document.code} và tạo điều chỉnh kho?`,
+																	)
+																)
+																	actionMutation.mutate({
+																		document,
+																		action: "complete",
+																	});
+															},
+														},
+														{
+															key: "cancel",
+															label: "Hủy và đảo",
+															icon: <Undo2 size={15} />,
+															tone: "danger",
+															disabled: actionMutation.isPending,
+															hidden: document.status !== "COMPLETED",
+															onClick: async () => {
+																const reason = await prompt({
+																	title: "Hủy kiểm kê",
+																	message: "Nhập lý do hủy:",
+																	minLength: 3,
+																});
+																if (reason)
+																	actionMutation.mutate({
+																		document,
+																		action: "cancel",
+																		reason: reason.trim(),
+																	});
+															},
+														},
+													]}
+												/>
 											</td>
 										</tr>
 									);
@@ -765,7 +788,10 @@ export default function Stocktake() {
 									{selected.details.map(line => (
 										<tr key={line.id}>
 											<td>
-												{line.productName} - {line.packagingName}
+												{formatProductName(
+													line.productName,
+													line.packagingName,
+												)}
 												<small>{line.sku}</small>
 											</td>
 											<td className="text-right">
@@ -806,6 +832,18 @@ export default function Stocktake() {
 							)}
 						</div>
 						<div className="erp-modal-footer">
+							{selected.status === "DRAFT" && (
+								<button
+									type="button"
+									className="erp-btn erp-btn-primary"
+									onClick={() => {
+										edit(selected);
+										setSelected(null);
+									}}
+								>
+									<Edit size={16} /> Sửa
+								</button>
+							)}
 							<button
 								type="button"
 								className="erp-btn"
@@ -830,7 +868,7 @@ export default function Stocktake() {
 											});
 									}}
 								>
-									<CheckCircle2 size={16} /> Ghi sổ
+									<CheckCircle2 size={16} /> Lưu
 								</button>
 							)}
 							{selected.status === "COMPLETED" && (

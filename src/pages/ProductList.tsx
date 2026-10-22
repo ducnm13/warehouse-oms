@@ -13,7 +13,7 @@ import {
 import toast from "../components/ui/toast";
 import { confirm } from "../components/ui/confirm";
 import { Product, ProductPackaging } from "../types";
-import { cn, formatNumber } from "../lib/utils";
+import { cn, formatNumber, formatProductName } from "../lib/utils";
 
 const ProductList = ({ isArchive = false }: { isArchive?: boolean }) => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -749,7 +749,7 @@ const ProductList = ({ isArchive = false }: { isArchive?: boolean }) => {
                                   <optgroup label={m.name} key={m.id}>
                                     {m.packagings?.map((mp: any) => (
                                       <option value={mp.id} key={mp.id}>
-                                        {m.name} - {mp.name}
+                                        {formatProductName(m.name, mp.name)}
                                       </option>
                                     ))}
                                   </optgroup>

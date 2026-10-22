@@ -1,34 +1,64 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useReactToPrint } from "react-to-print";
 import {
 	Banknote,
+	CheckCircle2,
 	Copy,
+	Edit,
 	Eye,
+	FileClock,
+	PackagePlus,
 	Plus,
+	Printer,
 	Search,
 	ShoppingBag,
+	Trash2,
+	Undo2,
 	X,
 } from "lucide-react";
 import toast from "../components/ui/toast";
-import { prompt } from "../components/ui/confirm";
-import {
+import { confirm, prompt } from "../components/ui/confirm";
+import type {
 	Product,
 	PurchaseDocument,
 	PurchaseDocumentDetail,
-	PurchaseDocumentType,
 	Supplier,
 	Warehouse,
 } from "../types";
 import { formatDate, formatNumber } from "../lib/utils";
-import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { apiV1, legacyApi } from "../lib/apiV1";
-import { useQuery } from "@tanstack/react-query";
+import SearchableSelect from "../components/SearchableSelect";
+import { PurchaseDocumentPrint } from "../components/PurchaseDocumentPrint";
+import { buildCompanyPrintProfile } from "../lib/printTemplate";
+import { useMultiEscapeKey } from "../hooks/useEscapeKey";
+import { DateInput } from "../components/DateRangeCalendar";
+import TableActions from "../components/TableActions";
 
-const auth = (json = false) => ({
-	Authorization: `Bearer ${localStorage.getItem("token")}`,
-	...(json ? { "Content-Type": "application/json" } : {}),
+const headerSchema = z.object({
+	documentDate: z.string().min(1, "Chọn ngày chứng từ"),
+	dueDate: z.string().optional(),
+	type: z.enum(["DOMESTIC_INVENTORY", "DOMESTIC_NO_INVENTORY"]),
+	paymentIntent: z.enum(["UNPAID", "PAID"]),
+	paymentMethod: z.enum(["CASH", "BANK"]),
+	invoiceOption: z.enum(["WITH_INVOICE", "NO_INVOICE"]),
+	supplierId: z.number().positive("Chọn nhà cung cấp"),
+	deliveryPerson: z.string().max(255),
+	buyerName: z.string().max(255),
+	description: z.string().max(1000),
+	purchaseCost: z.number().min(0),
 });
+type HeaderForm = z.infer<typeof headerSchema>;
+
+type Line = Pick<
+	PurchaseDocumentDetail,
+	"packagingId" | "warehouseId" | "quantity" | "unitPrice" | "taxRate" | "note"
+>;
 const today = () => new Date().toISOString().slice(0, 10);
-const emptyLine = (): PurchaseDocumentDetail => ({
+const emptyLine = (): Line => ({
 	packagingId: 0,
 	warehouseId: 0,
 	quantity: 1,
@@ -36,50 +66,107 @@ const emptyLine = (): PurchaseDocumentDetail => ({
 	taxRate: 8,
 	note: "",
 });
-const paymentLabel = {
-	UNPAID: "Chưa thanh toán",
-	PARTIAL: "Thanh toán một phần",
-	PAID: "Đã thanh toán",
+const statusMeta = {
+	DRAFT: { label: "Nháp", css: "bg-slate-100 text-slate-700" },
+	POSTED: { label: "Đã ghi sổ", css: "bg-emerald-100 text-emerald-700" },
+	CANCELLED: { label: "Đã hủy", css: "bg-red-100 text-red-700" },
+} as const;
+
+const linkTypeLabel = (type: string) => {
+	switch (type) {
+		case "INVENTORY_RECEIPT":
+			return "Phiếu nhập kho";
+		case "INVENTORY_ISSUE":
+			return "Phiếu xuất kho";
+		case "PAYMENT_VOUCHER":
+			return "Phiếu chi";
+		case "PAYMENT_RECEIPT":
+			return "Phiếu thu";
+		case "PAYABLE_CHARGE":
+			return "Phiếu chi phí";
+		case "PRODUCTION":
+			return "Lệnh sản xuất";
+		case "INVENTORY_REVERSAL":
+			return "Phiếu đảo";
+		default:
+			return type;
+	}
 };
 
 export default function Purchases() {
-	const [documents, setDocuments] = useState<PurchaseDocument[]>([]),
-		[suppliers, setSuppliers] = useState<Supplier[]>([]),
-		[warehouses, setWarehouses] = useState<Warehouse[]>([]),
-		[products, setProducts] = useState<Product[]>([]);
-	const [loading, setLoading] = useState(true),
-		[saving, setSaving] = useState(false),
-		[open, setOpen] = useState(false),
-		[selected, setSelected] = useState<PurchaseDocument | null>(null),
-		[search, setSearch] = useState("");
-	const [form, setForm] = useState({
-		documentDate: today(),
-		dueDate: "",
-		type: "DOMESTIC_INVENTORY" as PurchaseDocumentType,
-		paymentStatus: "UNPAID",
-		paymentMethod: "CASH",
-		invoiceOption: "WITH_INVOICE",
-		supplierId: 0,
-		deliveryPerson: "",
-		buyerName: "",
-		description: "",
-		purchaseCost: 0,
+	const queryClient = useQueryClient();
+	const [search, setSearch] = useState("");
+	const [status, setStatus] = useState<"" | keyof typeof statusMeta>("");
+	const [page, setPage] = useState(1);
+	const [open, setOpen] = useState(false);
+	const [editing, setEditing] = useState<PurchaseDocument | null>(null);
+	const [selected, setSelected] = useState<PurchaseDocument | null>(null);
+	const [printTarget, setPrintTarget] = useState<PurchaseDocument | null>(null);
+	const [lines, setLines] = useState<Line[]>([emptyLine()]);
+	const [supplierModal, setSupplierModal] = useState(false);
+	const [supplierSaving, setSupplierSaving] = useState(false);
+	const [nextSupplierCode, setNextSupplierCode] = useState("NCC00001");
+	const [supplierForm, setSupplierForm] = useState({
+		name: "",
+		phone: "",
+		taxCode: "",
+		address: "",
+		contactPerson: "",
+		paymentTermDays: 0,
 	});
-	const [details, setDetails] = useState<PurchaseDocumentDetail[]>([
-		emptyLine(),
-	]);
 
 	useMultiEscapeKey([
 		{ isOpen: open, onClose: () => setOpen(false), priority: 1 },
-		{ isOpen: !!selected, onClose: () => setSelected(null), priority: 2 },
+		{ isOpen: !!editing, onClose: () => setEditing(null), priority: 2 },
+		{ isOpen: !!selected, onClose: () => setSelected(null), priority: 3 },
+		{ isOpen: !!printTarget, onClose: () => setPrintTarget(null), priority: 4 },
+		{
+			isOpen: supplierModal,
+			onClose: () => setSupplierModal(false),
+			priority: 5,
+		},
 	]);
 
-	const request = async (url: string, options?: RequestInit) => {
-		const r = await fetch(url, { ...options, headers: auth(!!options?.body) });
-		const d = await r.json();
-		if (!r.ok) throw new Error(d.error || "Có lỗi xảy ra");
-		return d;
-	};
+	// In chứng từ mua hàng (xem trước + in HTML, cùng giao diện phiếu nhập kho)
+	const printRef = useRef<HTMLDivElement>(null);
+	const handlePrintReport = useReactToPrint({
+		contentRef: printRef,
+		documentTitle: printTarget
+			? `Chung-tu-mua-hang-${printTarget.code}`
+			: "Chung-tu-mua-hang",
+		pageStyle: "@page { size: A4; margin: 0; }",
+	});
+	const companyQuery = useQuery({
+		queryKey: ["company-profile"],
+		queryFn: async () => {
+			try {
+				const res = await apiV1("/api/v1/company");
+				return buildCompanyPrintProfile(res.data);
+			} catch {
+				return null;
+			}
+		},
+		staleTime: 5 * 60_000,
+	});
+
+	const form = useForm<HeaderForm>({
+		resolver: zodResolver(headerSchema),
+		defaultValues: {
+			documentDate: today(),
+			dueDate: "",
+			type: "DOMESTIC_INVENTORY",
+			paymentIntent: "UNPAID",
+			paymentMethod: "CASH",
+			invoiceOption: "WITH_INVOICE",
+			supplierId: 0,
+			deliveryPerson: "",
+			buyerName: "",
+			description: "",
+			purchaseCost: 0,
+		},
+	});
+	const type = form.watch("type");
+	const purchaseCost = Number(form.watch("purchaseCost") || 0);
 
 	const references = useQuery({
 		queryKey: ["purchase-references"],
@@ -100,165 +187,339 @@ export default function Purchases() {
 			return { suppliers, warehouses, products, costPriceMap };
 		},
 	});
-
-	const options = useMemo(
-		() =>
-			(references.data?.products || []).flatMap(p =>
-				(p.packagings || []).map(pk => ({ ...pk, productName: p.name })),
+	const documents = useQuery({
+		queryKey: ["purchase-documents-v1", page, search, status],
+		queryFn: () =>
+			apiV1<PurchaseDocument[]>(
+				`/api/v1/purchase-documents?page=${page}&limit=20&search=${encodeURIComponent(search)}${status ? `&status=${status}` : ""}`,
 			),
+	});
+	const packagingOptions = useMemo(
+		() =>
+			(references.data?.products || []).flatMap(product =>
+				(product.packagings || []).map(packaging => ({
+					...packaging,
+					productName: product.name,
+				})),
+			),
+		[references.data],
+	);
+	const productSearchOptions = useMemo(
+		() =>
+			packagingOptions.map(item => ({
+				value: item.id,
+				label: item.productName,
+				subLabel:
+					item.name !== item.productName
+						? `${item.name}${item.sku ? ` | SKU: ${item.sku}` : ""}`
+						: item.sku
+							? `SKU: ${item.sku}`
+							: undefined,
+			})),
+		[packagingOptions],
+	);
+
+	const supplierSearchOptions = useMemo(
+		() =>
+			(references.data?.suppliers || []).map(supplier => ({
+				value: supplier.id,
+				label: supplier.code
+					? `${supplier.code} - ${supplier.name}`
+					: supplier.name,
+				subLabel:
+					[
+						supplier.phone ? `ĐT: ${supplier.phone}` : "",
+						supplier.taxCode ? `MST: ${supplier.taxCode}` : "",
+					]
+						.filter(Boolean)
+						.join(" · ") || undefined,
+			})),
 		[references.data],
 	);
 
 	const applyPackagingCost = (index: number, packagingId: number) => {
 		const cost = references.data?.costPriceMap?.get(packagingId) || 0;
-		if (cost > 0) update(index, { packagingId, unitPrice: cost });
-		else update(index, { packagingId });
+		if (cost > 0) updateLine(index, { packagingId, unitPrice: cost });
+		else updateLine(index, { packagingId });
 	};
 
-	const filtered = documents.filter(d =>
-		`${d.code} ${d.supplierName}`.toLowerCase().includes(search.toLowerCase()),
-	);
-	const goods = details.reduce((s, d) => s + d.quantity * d.unitPrice, 0);
-	const tax = details.reduce(
-		(s, d) => s + (d.quantity * d.unitPrice * d.taxRate) / 100,
-		0,
-	);
-	const total = goods + tax + Number(form.purchaseCost || 0);
+	const invalidate = () =>
+		queryClient.invalidateQueries({ queryKey: ["purchase-documents-v1"] });
+	const saveMutation = useMutation({
+		mutationFn: async (input: HeaderForm) => {
+			if (
+				lines.some(
+					line =>
+						!line.packagingId ||
+						line.quantity <= 0 ||
+						line.unitPrice < 0 ||
+						(input.type === "DOMESTIC_INVENTORY" && !line.warehouseId),
+				)
+			) {
+				throw new Error("Kiểm tra lại hàng hóa, kho, số lượng và đơn giá");
+			}
+			const payload = { ...input, details: lines };
+			return editing
+				? apiV1<PurchaseDocument>(`/api/v1/purchase-documents/${editing.id}`, {
+						method: "PUT",
+						body: JSON.stringify({ ...payload, version: editing.version }),
+					})
+				: apiV1<PurchaseDocument>("/api/v1/purchase-documents", {
+						method: "POST",
+						body: JSON.stringify(payload),
+					});
+		},
+		onSuccess: response => {
+			toast.success(response.message);
+			setSelected(response.data);
+			setOpen(false);
+			setEditing(null);
+			invalidate();
+		},
+		onError: (error: Error) => toast.error(error.message),
+	});
+	const actionMutation = useMutation({
+		mutationFn: ({
+			document,
+			action,
+			reason,
+		}: {
+			document: PurchaseDocument;
+			action: "post" | "unpost" | "cancel";
+			reason?: string;
+		}) =>
+			apiV1<PurchaseDocument>(
+				`/api/v1/purchase-documents/${document.id}/${action}`,
+				{
+					method: "POST",
+					body: JSON.stringify(
+						action === "cancel"
+							? { version: document.version, reason }
+							: { version: document.version },
+					),
+				},
+			),
+		onSuccess: response => {
+			toast.success(response.message);
+			setSelected(response.data);
+			invalidate();
+		},
+		onError: (error: Error) => toast.error(error.message),
+	});
+	const deleteMutation = useMutation({
+		mutationFn: (document: PurchaseDocument) =>
+			apiV1<PurchaseDocument>(
+				`/api/v1/purchase-documents/${document.id}/delete`,
+				{
+					method: "POST",
+					body: JSON.stringify({ version: document.version }),
+				},
+			),
+		onSuccess: response => {
+			toast.success(response.message);
+			setSelected(null);
+			invalidate();
+		},
+		onError: (error: Error) => toast.error(error.message),
+	});
 
-	const update = (i: number, p: Partial<PurchaseDocumentDetail>) =>
-		setDetails(rs => rs.map((r, x) => (x === i ? { ...r, ...p } : r)));
-
-	const reset = (source?: PurchaseDocument) => {
-		if (source) {
-			setForm({
-				documentDate: today(),
-				dueDate: source.dueDate || "",
-				type: source.type,
-				paymentStatus: "UNPAID",
-				paymentMethod: "CASH",
-				invoiceOption: source.invoiceOption,
-				supplierId: source.supplierId,
-				deliveryPerson: source.deliveryPerson || "",
-				buyerName: source.buyerName || "",
-				description: `Nhân bản từ ${source.code}`,
-				purchaseCost: Number(source.purchaseCost),
-			});
-			setDetails(
-				source.details.map(d => ({
-					packagingId: d.packagingId,
-					warehouseId: d.warehouseId || 0,
-					quantity: Number(d.quantity),
-					unitPrice: Number(d.unitPrice),
-					taxRate: Number(d.taxRate),
-					note: d.note || "",
-				})),
-			);
-		} else {
-			setDetails([emptyLine()]);
-			setForm(f => ({
-				...f,
-				documentDate: today(),
-				dueDate: "",
-				deliveryPerson: "",
-				description: "",
-				purchaseCost: 0,
-			}));
-		}
+	const openCreate = () => {
+		setEditing(null);
+		setLines([emptyLine()]);
+		form.reset({
+			documentDate: today(),
+			dueDate: "",
+			type: "DOMESTIC_INVENTORY",
+			paymentIntent: "UNPAID",
+			paymentMethod: "CASH",
+			invoiceOption: "WITH_INVOICE",
+			supplierId: references.data?.suppliers[0]?.id || 0,
+			deliveryPerson: "",
+			buyerName: "",
+			description: "",
+			purchaseCost: 0,
+		});
 		setOpen(true);
 	};
-
-	const submit = async (e: React.FormEvent) => {
-		e.preventDefault();
-		setSaving(true);
+	// Mở popup tạo nhanh NCC + lấy mã tự sinh
+	const openSupplierModal = async () => {
+		setSupplierForm({
+			name: "",
+			phone: "",
+			taxCode: "",
+			address: "",
+			contactPerson: "",
+			paymentTermDays: 0,
+		});
+		setSupplierModal(true);
 		try {
-			await request("/api/purchase-documents", {
-				method: "POST",
-				body: JSON.stringify({ ...form, details }),
+			const res = await fetch("/api/next-code/supplier", {
+				headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
 			});
-			toast.success("Đã lưu chứng từ và cập nhật kho");
-			setOpen(false);
-			references.refetch();
-		} catch (e: any) {
-			toast.error(e.message);
-		} finally {
-			setSaving(false);
+			if (res.ok) {
+				const data = await res.json();
+				if (data.code) setNextSupplierCode(data.code);
+			}
+		} catch {
+			// Giữ mã mặc định khi không lấy được sequence
 		}
 	};
-	const pay = async (d: PurchaseDocument) => {
-		const remaining = Number(d.totalAmount) - Number(d.paidAmount);
-		const input = await prompt({
-			title: "Thanh toán",
-			message: `Công nợ còn lại ${formatNumber(remaining)} ₫. Nhập số tiền thanh toán:`,
-			defaultValue: String(remaining),
-			inputMode: "decimal",
-			tone: "primary",
-		});
-		if (!input) return;
+	// Lưu NCC mới rồi tự động chọn vào chứng từ đang lập
+	const saveSupplier = async (e: React.FormEvent) => {
+		e.preventDefault();
+		if (!supplierForm.name.trim()) {
+			toast.error("Tên nhà cung cấp là bắt buộc");
+			return;
+		}
+		setSupplierSaving(true);
 		try {
-			await request(`/api/purchase-documents/${d.id}/payments`, {
+			const res = await fetch("/api/suppliers", {
 				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${localStorage.getItem("token")}`,
+				},
 				body: JSON.stringify({
-					amount: Number(input),
-					paymentDate: today(),
-					method: "BANK",
+					code: nextSupplierCode,
+					name: supplierForm.name.trim(),
+					phone: supplierForm.phone.trim(),
+					taxCode: supplierForm.taxCode.trim(),
+					address: supplierForm.address.trim(),
+					contactPerson: supplierForm.contactPerson.trim(),
+					paymentTermDays: Math.max(
+						0,
+						Number(supplierForm.paymentTermDays) || 0,
+					),
 				}),
 			});
-			toast.success("Đã ghi nhận thanh toán");
-			references.refetch();
-		} catch (e: any) {
-			toast.error(e.message);
+			const data = await res.json().catch(() => ({}));
+			if (!res.ok)
+				throw new Error(data.error || data.message || "Có lỗi xảy ra");
+			const newId = Number(data.id || 0);
+			toast.success("Đã thêm nhà cung cấp");
+			setSupplierModal(false);
+			await queryClient.refetchQueries({ queryKey: ["purchase-references"] });
+			if (newId) form.setValue("supplierId", newId, { shouldValidate: true });
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : "Có lỗi hệ thống");
+		} finally {
+			setSupplierSaving(false);
 		}
 	};
+	const openEdit = (document: PurchaseDocument) => {
+		setEditing(document);
+		setLines(
+			document.details.map(line => ({
+				packagingId: line.packagingId,
+				warehouseId: line.warehouseId || 0,
+				quantity: Number(line.quantity),
+				unitPrice: Number(line.unitPrice),
+				taxRate: Number(line.taxRate),
+				note: line.note || "",
+			})),
+		);
+		form.reset({
+			documentDate: document.documentDate,
+			dueDate: document.dueDate || "",
+			type: document.type,
+			paymentIntent: document.paymentIntent || "UNPAID",
+			paymentMethod: document.paymentMethod || "CASH",
+			invoiceOption: document.invoiceOption,
+			supplierId: document.supplierId,
+			deliveryPerson: document.deliveryPerson || "",
+			buyerName: document.buyerName || "",
+			description: document.description || "",
+			purchaseCost: Number(document.purchaseCost),
+		});
+		setOpen(true);
+	};
+	const duplicate = (document: PurchaseDocument) => {
+		setEditing(null);
+		setLines(
+			document.details.map(line => ({
+				packagingId: line.packagingId,
+				warehouseId: line.warehouseId || 0,
+				quantity: Number(line.quantity),
+				unitPrice: Number(line.unitPrice),
+				taxRate: Number(line.taxRate),
+				note: line.note || "",
+			})),
+		);
+		form.reset({
+			documentDate: today(),
+			dueDate: "",
+			type: document.type,
+			paymentIntent: document.paymentIntent || "UNPAID",
+			paymentMethod: document.paymentMethod || "CASH",
+			invoiceOption: document.invoiceOption,
+			supplierId: document.supplierId,
+			deliveryPerson: document.deliveryPerson || "",
+			buyerName: document.buyerName || "",
+			description: document.description || "",
+			purchaseCost: Number(document.purchaseCost),
+		});
+		setOpen(true);
+	};
+	const updateLine = (index: number, patch: Partial<Line>) =>
+		setLines(current =>
+			current.map((line, position) =>
+				position === index ? { ...line, ...patch } : line,
+			),
+		);
+	const goods = lines.reduce(
+		(sum, line) => sum + Number(line.quantity) * Number(line.unitPrice),
+		0,
+	);
+	const tax = lines.reduce(
+		(sum, line) =>
+			sum +
+			(Number(line.quantity) * Number(line.unitPrice) * Number(line.taxRate)) /
+				100,
+		0,
+	);
+	const total = goods + tax + purchaseCost;
+	const rows = documents.data?.data || [];
+	const meta = documents.data?.meta as any;
+
 	return (
 		<div className="erp-page">
 			<div className="erp-page-header">
 				<div>
 					<h1>Mua hàng</h1>
-					<p>Chứng từ mua hàng, nhập kho và công nợ phải trả</p>
+					<p>Quản lý việc mua hàng, lập chứng từ mua hàng đến nhập kho</p>
 				</div>
 				<button
 					className="erp-btn erp-btn-primary"
-					onClick={() => reset()}
-					disabled={!suppliers.length}
+					onClick={openCreate}
+					disabled={!references.data?.suppliers.length}
 				>
 					<Plus size={17} /> Thêm chứng từ
 				</button>
 			</div>
-			{!suppliers.length && !loading && (
-				<div className="rounded border border-amber-200 bg-amber-50 p-4 text-amber-800">
-					Cần tạo nhà cung cấp trước khi lập chứng từ mua hàng.
-				</div>
-			)}
 			<div className="grid gap-4 md:grid-cols-3">
 				<div className="erp-stat">
 					<ShoppingBag />
 					<div>
 						<span>Tổng chứng từ</span>
-						<strong>{documents.length}</strong>
+						<strong>{meta?.total || 0}</strong>
 					</div>
 				</div>
 				<div className="erp-stat">
-					<Banknote />
+					<FileClock />
 					<div>
-						<span>Tổng mua hàng</span>
+						<span>Chứng từ nháp trang này</span>
 						<strong>
-							{formatNumber(
-								documents.reduce((s, d) => s + Number(d.totalAmount), 0),
-							)}{" "}
-							₫
+							{rows.filter(x => x.documentStatus === "DRAFT").length}
 						</strong>
 					</div>
 				</div>
 				<div className="erp-stat">
 					<Banknote />
 					<div>
-						<span>Công nợ phải trả</span>
+						<span>Tổng thanh toán trang này</span>
 						<strong>
 							{formatNumber(
-								documents.reduce(
-									(s, d) => s + Number(d.totalAmount) - Number(d.paidAmount),
-									0,
-								),
+								rows.reduce((sum, row) => sum + Number(row.totalAmount), 0),
 							)}{" "}
 							₫
 						</strong>
@@ -271,221 +532,325 @@ export default function Purchases() {
 						<Search size={17} />
 						<input
 							value={search}
-							onChange={e => setSearch(e.target.value)}
+							onChange={event => {
+								setSearch(event.target.value);
+								setPage(1);
+							}}
 							placeholder="Tìm số chứng từ, nhà cung cấp..."
 						/>
 					</div>
+					<select
+						value={status}
+						onChange={event => {
+							setStatus(event.target.value as any);
+							setPage(1);
+						}}
+					>
+						<option value="">Tất cả trạng thái</option>
+						<option value="DRAFT">Nháp</option>
+						<option value="POSTED">Đã ghi sổ</option>
+						<option value="CANCELLED">Đã hủy</option>
+					</select>
 				</div>
-				<div className="overflow-x-auto">
-					<table className="erp-table">
-						<thead>
-							<tr>
-								<th>Số chứng từ / Ngày</th>
-								<th>Nhà cung cấp</th>
-								<th className="text-right">Tổng tiền hàng</th>
-								<th className="text-right">Giá trị nhập kho</th>
-								<th>Thanh toán</th>
-								<th>Loại chứng từ</th>
-								<th></th>
-							</tr>
-						</thead>
-						<tbody>
-							{loading ? (
+				{documents.isLoading ? (
+					<div className="p-12 text-center">Đang tải chứng từ...</div>
+				) : documents.isError ? (
+					<div className="p-12 text-center text-red-600">
+						{(documents.error as Error).message}
+					</div>
+				) : rows.length === 0 ? (
+					<div className="erp-empty">
+						<PackagePlus size={48} />
+						<p>Chưa có bảng giá nào</p>
+					</div>
+				) : (
+					<div className="overflow-x-auto">
+						<table className="erp-table">
+							<thead>
 								<tr>
-									<td colSpan={7} className="text-center">
-										Đang tải...
-									</td>
+									<th>Số chứng từ / Ngày</th>
+									<th>Nhà cung cấp</th>
+									<th>Trạng thái</th>
+									<th className="text-right">Tiền hàng</th>
+									<th className="text-right">Thanh toán</th>
+									<th></th>
 								</tr>
-							) : (
-								filtered.map(d => (
-									<tr key={d.id}>
+							</thead>
+							<tbody>
+								{rows.map(document => (
+									<tr key={document.id}>
 										<td>
 											<button
 												className="font-bold text-[#422afb] hover:underline"
-												onClick={() => setSelected(d)}
+												onClick={() => setSelected(document)}
 											>
-												{d.code}
+												{document.code}
 											</button>
-											<small>{formatDate(d.documentDate)}</small>
-										</td>
-										<td>
-											<b>{d.supplierName}</b>
-											<small>{d.supplierCode}</small>
-										</td>
-										<td className="text-right font-semibold">
-											{formatNumber(d.goodsAmount)} ₫
-										</td>
-										<td className="text-right">
-											{formatNumber(d.inventoryValue)} ₫
-										</td>
-										<td>
-											<span
-												className={`erp-badge ${d.paymentStatus === "PAID" ? "bg-emerald-100 text-emerald-700" : d.paymentStatus === "PARTIAL" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"}`}
-											>
-												{paymentLabel[d.paymentStatus]}
-											</span>
 											<small>
-												Còn: {formatNumber(d.totalAmount - d.paidAmount)} ₫
+												{formatDate(document.documentDate)}
+												{/* · v {document.version} */}
 											</small>
 										</td>
 										<td>
-											{d.type === "DOMESTIC_INVENTORY"
-												? "Mua nhập kho"
-												: "Không qua kho"}
+											<b>{document.supplierName}</b>
+											<small>{document.supplierCode}</small>
 										</td>
 										<td>
-											<div className="flex justify-end">
-												<button
-													className="erp-icon-btn"
-													title="Xem"
-													onClick={() => setSelected(d)}
-												>
-													<Eye size={16} />
-												</button>
-												<button
-													className="erp-icon-btn"
-													title="Nhân bản"
-													onClick={() => reset(d)}
-												>
-													<Copy size={16} />
-												</button>
-												{d.paymentStatus !== "PAID" && (
-													<button
-														className="erp-icon-btn text-emerald-700"
-														title="Thanh toán"
-														onClick={() => pay(d)}
-													>
-														<Banknote size={16} />
-													</button>
-												)}
-											</div>
+											<span
+												className={`erp-badge ${statusMeta[document.documentStatus || "POSTED"].css}`}
+											>
+												{statusMeta[document.documentStatus || "POSTED"].label}
+											</span>
+											{document.paymentStatus === "PAID" && (
+												<small>Đã thanh toán</small>
+											)}
+										</td>
+										<td className="text-right">
+											{formatNumber(document.goodsAmount)} ₫
+										</td>
+										<td className="text-right font-semibold">
+											{formatNumber(document.totalAmount)} ₫
+										</td>
+										<td>
+											<TableActions
+												actions={[
+													{
+														key: "view",
+														label: "Xem chi tiết",
+														icon: <Eye size={15} />,
+														onClick: () => setSelected(document),
+													},
+													{
+														key: "duplicate",
+														label: "Nhân bản",
+														icon: <Copy size={15} />,
+														onClick: () => duplicate(document),
+													},
+													{
+														key: "print",
+														label: "In chứng từ",
+														icon: <Printer size={15} />,
+														onClick: () => setPrintTarget(document),
+													},
+													{
+														key: "post",
+														label: "Lưu",
+														icon: <CheckCircle2 size={15} />,
+														tone: "success",
+														hidden: document.documentStatus !== "DRAFT",
+														disabled: actionMutation.isPending,
+														onClick: () =>
+															actionMutation.mutate({
+																document,
+																action: "post",
+															}),
+													},
+													{
+														key: "delete",
+														label: "Xóa chứng từ",
+														icon: <Trash2 size={15} />,
+														tone: "danger",
+														disabled: deleteMutation.isPending,
+														hidden: !["DRAFT", "CANCELLED"].includes(
+															document.documentStatus,
+														),
+														onClick: async () => {
+															if (
+																await confirm(
+																	`Xóa chứng từ ${document.code}?`,
+																)
+															)
+																deleteMutation.mutate(document);
+														},
+													},
+													{
+														key: "unpost",
+														label: "Bỏ ghi để chỉnh sửa",
+														icon: <Undo2 size={15} />,
+														tone: "warning",
+														disabled: actionMutation.isPending,
+														hidden:
+															document.documentStatus !== "POSTED" ||
+															!document.links?.some(
+																link => link.linkType === "PAYABLE_CHARGE",
+															),
+														onClick: async () => {
+															if (
+																await confirm(
+																	`Bỏ ghi chứng từ ${document.code} để chỉnh sửa?`,
+																)
+															)
+																actionMutation.mutate({
+																	document,
+																	action: "unpost",
+																});
+														},
+													},
+													{
+														key: "cancel",
+														label: "Hủy và đảo",
+														icon: <Trash2 size={15} />,
+														tone: "danger",
+														disabled: actionMutation.isPending,
+														hidden:
+															document.documentStatus !== "POSTED" ||
+															!document.links?.some(
+																link => link.linkType === "PAYABLE_CHARGE",
+															),
+														onClick: async () => {
+															const reason = await prompt({
+																title: "Hủy chứng từ mua hàng",
+																message: "Nhập lý do hủy chứng từ:",
+																minLength: 3,
+															});
+															if (reason)
+																actionMutation.mutate({
+																	document,
+																	action: "cancel",
+																	reason,
+																});
+														},
+													},
+												]}
+											/>
 										</td>
 									</tr>
-								))
-							)}
-						</tbody>
-					</table>
-				</div>
+								))}
+							</tbody>
+						</table>
+					</div>
+				)}
+				{meta?.totalPages > 1 && (
+					<div className="flex justify-end gap-2 p-3">
+						<button
+							className="erp-btn"
+							disabled={page <= 1}
+							onClick={() => setPage(value => value - 1)}
+						>
+							Trước
+						</button>
+						<span className="px-3 py-2 text-sm">
+							Trang {page}/{meta.totalPages}
+						</span>
+						<button
+							className="erp-btn"
+							disabled={page >= meta.totalPages}
+							onClick={() => setPage(value => value + 1)}
+						>
+							Sau
+						</button>
+					</div>
+				)}
 			</div>
 			{open && (
 				<div className="erp-modal-backdrop">
 					<div className="erp-modal max-w-6xl">
 						<div className="erp-modal-header">
 							<div>
-								<h2>Thêm chứng từ mua hàng</h2>
-								<p>Lưu chứng từ sẽ tự động tạo phiếu nhập theo từng kho</p>
+								<h2>
+									{editing ? "Sửa chứng từ nháp" : "Thêm chứng từ mua hàng"}
+								</h2>
+								<p>Lưu nháp không ảnh hưởng kho và công nợ</p>
 							</div>
 							<button onClick={() => setOpen(false)}>
 								<X />
 							</button>
 						</div>
-						<form onSubmit={submit}>
+						<form
+							onSubmit={form.handleSubmit(values =>
+								saveMutation.mutate(values),
+							)}
+						>
 							<div className="erp-modal-body space-y-5">
 								<div className="grid gap-4 md:grid-cols-4">
 									<label>
 										Loại chứng từ
-										<select
-											value={form.type}
-											onChange={e =>
-												setForm({
-													...form,
-													type: e.target.value as PurchaseDocumentType,
-												})
-											}
-										>
-											<option value="DOMESTIC_INVENTORY">
-												Mua trong nước nhập kho
-											</option>
+										<select {...form.register("type")}>
+											<option value="DOMESTIC_INVENTORY">Mua nhập kho</option>
 											<option value="DOMESTIC_NO_INVENTORY">
-												Mua không qua kho
+												Không qua kho
 											</option>
 										</select>
 									</label>
 									<label>
 										Nhà cung cấp
-										<select
-											required
-											value={form.supplierId}
-											onChange={e =>
-												setForm({ ...form, supplierId: +e.target.value })
-											}
-										>
-											{suppliers.map(s => (
-												<option key={s.id} value={s.id}>
-													{s.code} - {s.name}
-												</option>
-											))}
-										</select>
+										<div className="flex gap-2">
+											<div className="min-w-0 flex-1">
+												<SearchableSelect
+													value={form.watch("supplierId") || 0}
+													options={supplierSearchOptions}
+													onChange={supplierId =>
+														form.setValue("supplierId", supplierId, {
+															shouldValidate: true,
+														})
+													}
+													placeholder="Nhập tên/mã/SĐT nhà cung cấp"
+													required
+												/>
+											</div>
+											<button
+												type="button"
+												title="Thêm nhà cung cấp mới"
+												onClick={() => void openSupplierModal()}
+												className="erp-btn erp-btn-primary shrink-0 !px-3"
+											>
+												<Plus size={16} />
+											</button>
+										</div>
+										<small className="text-red-500">
+											{form.formState.errors.supplierId?.message}
+										</small>
 									</label>
 									<label>
 										Ngày chứng từ
-										<input
-											type="date"
-											required
-											value={form.documentDate}
-											onChange={e =>
-												setForm({ ...form, documentDate: e.target.value })
+										<DateInput
+											value={form.watch("documentDate") || ""}
+											onChange={value =>
+												form.setValue("documentDate", value, {
+													shouldValidate: true,
+												})
 											}
 										/>
+										<small className="text-red-500">
+											{form.formState.errors.documentDate?.message}
+										</small>
 									</label>
 									<label>
 										Hạn thanh toán
-										<input
-											type="date"
-											value={form.dueDate}
-											onChange={e =>
-												setForm({ ...form, dueDate: e.target.value })
+										<DateInput
+											value={form.watch("dueDate") || ""}
+											placeholder="Không thời hạn"
+											onChange={value =>
+												form.setValue("dueDate", value, {
+													shouldValidate: true,
+												})
 											}
 										/>
 									</label>
 									<label>
-										Trạng thái thanh toán
-										<select
-											value={form.paymentStatus}
-											onChange={e =>
-												setForm({ ...form, paymentStatus: e.target.value })
-											}
-										>
+										Ý định thanh toán
+										<select {...form.register("paymentIntent")}>
 											<option value="UNPAID">Chưa thanh toán</option>
-											<option value="PAID">Thanh toán ngay</option>
+											<option value="PAID">Thanh toán khi lưu</option>
 										</select>
 									</label>
-									{form.paymentStatus === "PAID" && (
-										<label>
-											Phương thức
-											<select
-												value={form.paymentMethod}
-												onChange={e =>
-													setForm({ ...form, paymentMethod: e.target.value })
-												}
-											>
-												<option value="CASH">Tiền mặt</option>
-												<option value="BANK">Chuyển khoản</option>
-											</select>
-										</label>
-									)}
+									<label>
+										Phương thức
+										<select {...form.register("paymentMethod")}>
+											<option value="CASH">Tiền mặt</option>
+											<option value="BANK">Chuyển khoản</option>
+										</select>
+									</label>
 									<label>
 										Hóa đơn
-										<select
-											value={form.invoiceOption}
-											onChange={e =>
-												setForm({ ...form, invoiceOption: e.target.value })
-											}
-										>
-											<option value="WITH_INVOICE">
-												Nhận kèm hóa đơn GTGT
-											</option>
+										<select {...form.register("invoiceOption")}>
+											<option value="WITH_INVOICE">Có hóa đơn GTGT</option>
 											<option value="NO_INVOICE">Không có hóa đơn</option>
 										</select>
 									</label>
 									<label>
-										Người giao hàng
-										<input
-											value={form.deliveryPerson}
-											onChange={e =>
-												setForm({ ...form, deliveryPerson: e.target.value })
-											}
-										/>
+										Người giao
+										<input {...form.register("deliveryPerson")} />
 									</label>
 								</div>
 								<div className="overflow-x-auto border rounded">
@@ -493,7 +858,7 @@ export default function Purchases() {
 										<thead>
 											<tr>
 												<th>Hàng hóa / Quy cách</th>
-												{form.type === "DOMESTIC_INVENTORY" && <th>Kho</th>}
+												{type === "DOMESTIC_INVENTORY" && <th>Kho</th>}
 												<th>SL</th>
 												<th>Đơn giá</th>
 												<th>Thuế %</th>
@@ -502,35 +867,31 @@ export default function Purchases() {
 											</tr>
 										</thead>
 										<tbody>
-											{details.map((d, i) => (
-												<tr key={i}>
-													<td>
-														<select
-															required
-															value={d.packagingId}
-															onChange={e =>
-																applyPackagingCost(i, +e.target.value)
+											{lines.map((line, index) => (
+												<tr key={index}>
+													<td className="min-w-64">
+														<SearchableSelect
+															value={line.packagingId}
+															options={productSearchOptions}
+															onChange={packagingId =>
+																applyPackagingCost(index, packagingId)
 															}
-														>
-															<option value={0}>Chọn hàng hóa</option>
-															{options.map(p => (
-																<option key={p.id} value={p.id}>
-																	{p.productName} - {p.name} ({p.sku})
-																</option>
-															))}
-														</select>
+															placeholder="Nhập tên/SKU để chọn hàng hóa"
+															required
+														/>
 													</td>
-													{form.type === "DOMESTIC_INVENTORY" && (
+													{type === "DOMESTIC_INVENTORY" && (
 														<td>
 															<select
-																required
-																value={d.warehouseId || 0}
-																onChange={e =>
-																	update(i, { warehouseId: +e.target.value })
+																value={line.warehouseId || 0}
+																onChange={event =>
+																	updateLine(index, {
+																		warehouseId: +event.target.value,
+																	})
 																}
 															>
 																<option value={0}>Chọn kho</option>
-																{warehouses.map(w => (
+																{references.data?.warehouses.map(w => (
 																	<option key={w.id} value={w.id}>
 																		{w.name}
 																	</option>
@@ -542,11 +903,13 @@ export default function Purchases() {
 														<input
 															className="w-24"
 															type="number"
-															min="0.01"
+															min="0.0001"
 															step="any"
-															value={d.quantity}
-															onChange={e =>
-																update(i, { quantity: +e.target.value })
+															value={line.quantity}
+															onChange={event =>
+																updateLine(index, {
+																	quantity: +event.target.value,
+																})
 															}
 														/>
 													</td>
@@ -556,9 +919,11 @@ export default function Purchases() {
 															type="number"
 															min="0"
 															step="any"
-															value={d.unitPrice}
-															onChange={e =>
-																update(i, { unitPrice: +e.target.value })
+															value={line.unitPrice}
+															onChange={event =>
+																updateLine(index, {
+																	unitPrice: +event.target.value,
+																})
 															}
 														/>
 													</td>
@@ -567,24 +932,33 @@ export default function Purchases() {
 															className="w-20"
 															type="number"
 															min="0"
-															value={d.taxRate}
-															onChange={e =>
-																update(i, { taxRate: +e.target.value })
+															max="100"
+															value={line.taxRate}
+															onChange={event =>
+																updateLine(index, {
+																	taxRate: +event.target.value,
+																})
 															}
 														/>
 													</td>
 													<td className="text-right font-semibold">
 														{formatNumber(
-															d.quantity * d.unitPrice * (1 + d.taxRate / 100),
+															line.quantity *
+																line.unitPrice *
+																(1 + line.taxRate / 100),
 														)}
 													</td>
 													<td>
 														<button
 															type="button"
 															className="erp-icon-btn text-red-500"
-															disabled={details.length === 1}
+															disabled={lines.length === 1}
 															onClick={() =>
-																setDetails(r => r.filter((_, x) => x !== i))
+																setLines(current =>
+																	current.filter(
+																		(_, position) => position !== index,
+																	),
+																)
 															}
 														>
 															<X size={15} />
@@ -595,36 +969,21 @@ export default function Purchases() {
 										</tbody>
 									</table>
 								</div>
-								<div className="flex gap-2">
-									<button
-										type="button"
-										className="erp-btn"
-										onClick={() => setDetails(r => [...r, emptyLine()])}
-									>
-										<Plus size={15} /> Thêm dòng sản phẩm
-									</button>
-									<button
-										type="button"
-										className="erp-btn"
-										onClick={() => setDetails([emptyLine()])}
-									>
-										Xóa hết dòng
-									</button>
-								</div>
+								<button
+									type="button"
+									className="erp-btn"
+									onClick={() => setLines(current => [...current, emptyLine()])}
+								>
+									<Plus size={15} /> Thêm dòng
+								</button>
 								<div className="grid gap-4 md:grid-cols-2">
 									<label>
-										Diễn giải mua hàng
-										<textarea
-											rows={3}
-											value={form.description}
-											onChange={e =>
-												setForm({ ...form, description: e.target.value })
-											}
-										/>
+										Diễn giải
+										<textarea rows={3} {...form.register("description")} />
 									</label>
 									<div className="ml-auto w-full max-w-sm space-y-2">
 										<div className="flex justify-between">
-											<span>Tổng tiền hàng</span>
+											<span>Tiền hàng</span>
 											<b>{formatNumber(goods)} ₫</b>
 										</div>
 										<div className="flex justify-between">
@@ -632,15 +991,14 @@ export default function Purchases() {
 											<b>{formatNumber(tax)} ₫</b>
 										</div>
 										<div className="flex items-center justify-between">
-											<span>Chi phí mua hàng</span>
+											<span>Chi phí mua</span>
 											<input
 												className="w-32"
 												type="number"
 												min="0"
-												value={form.purchaseCost}
-												onChange={e =>
-													setForm({ ...form, purchaseCost: +e.target.value })
-												}
+												{...form.register("purchaseCost", {
+													valueAsNumber: true,
+												})}
 											/>
 										</div>
 										<div className="flex justify-between border-t pt-2 text-lg text-emerald-700">
@@ -658,8 +1016,11 @@ export default function Purchases() {
 								>
 									Hủy
 								</button>
-								<button disabled={saving} className="erp-btn erp-btn-primary">
-									{saving ? "Đang lưu..." : "Lưu và đóng"}
+								<button
+									disabled={saveMutation.isPending}
+									className="erp-btn erp-btn-primary"
+								>
+									{saveMutation.isPending ? "Đang lưu..." : "Lưu nháp"}
 								</button>
 							</div>
 						</form>
@@ -673,7 +1034,8 @@ export default function Purchases() {
 							<div>
 								<h2>{selected.code}</h2>
 								<p>
-									{selected.supplierName} · {formatDate(selected.documentDate)}
+									{selected.supplierName} ·{" "}
+									{statusMeta[selected.documentStatus || "POSTED"].label}
 								</p>
 							</div>
 							<button onClick={() => setSelected(null)}>
@@ -681,26 +1043,6 @@ export default function Purchases() {
 							</button>
 						</div>
 						<div className="erp-modal-body space-y-4">
-							<div className="grid gap-3 md:grid-cols-3">
-								<div>
-									<small>Người giao</small>
-									<b className="block">{selected.deliveryPerson || "-"}</b>
-								</div>
-								<div>
-									<small>Nhân viên mua hàng</small>
-									<b className="block">
-										{selected.buyerName || selected.creatorName}
-									</b>
-								</div>
-								<div>
-									<small>Phiếu nhập liên kết</small>
-									<b className="block">
-										{selected.inventoryLinks
-											?.map(x => x.inventoryCode)
-											.join(", ") || "Không qua kho"}
-									</b>
-								</div>
-							</div>
 							<table className="erp-table">
 								<thead>
 									<tr>
@@ -712,22 +1054,22 @@ export default function Purchases() {
 									</tr>
 								</thead>
 								<tbody>
-									{selected.details.map(d => (
-										<tr key={d.id}>
+									{selected.details.map(line => (
+										<tr key={line.id}>
 											<td>
-												{d.productName}
-												<small>{d.sku}</small>
+												{line.productName}
+												<small>{line.sku}</small>
 											</td>
-											<td>{d.warehouseName || "-"}</td>
+											<td>{line.warehouseName || "-"}</td>
 											<td>
-												{formatNumber(d.quantity)} {d.unit}
+												{formatNumber(line.quantity)} {line.unit}
 											</td>
 											<td className="text-right">
-												{formatNumber(d.unitPrice)}
+												{formatNumber(line.unitPrice)}
 											</td>
 											<td className="text-right font-semibold">
 												{formatNumber(
-													Number(d.lineAmount) + Number(d.taxAmount),
+													Number(line.lineAmount) + Number(line.taxAmount),
 												)}{" "}
 												₫
 											</td>
@@ -735,9 +1077,336 @@ export default function Purchases() {
 									))}
 								</tbody>
 							</table>
-							<div className="text-right text-xl font-bold text-emerald-700">
-								Tổng thanh toán: {formatNumber(selected.totalAmount)} ₫
+							<div className="rounded bg-slate-50 p-3">
+								<b>Chứng từ liên quan</b>
+								{(() => {
+									const relatedLinks = (selected.links || []).filter(
+										link =>
+											link.linkType === "INVENTORY_RECEIPT" ||
+											link.linkType === "INVENTORY_ISSUE",
+									);
+									if (!relatedLinks.length)
+										return (
+											<p className="mt-1 text-sm text-slate-400">
+												Chưa phát sinh phiếu nhập/xuất kho.
+											</p>
+										);
+									return (
+										<div className="mt-2 flex flex-wrap gap-2">
+											{relatedLinks.map(link => {
+												const linkedCode =
+													link.linkedCode || String(link.linkedId);
+												return (
+													<span
+														className="erp-badge bg-blue-100 text-blue-700 cursor-pointer hover:bg-blue-200"
+														key={link.id}
+														onClick={() => {
+															if (!linkedCode) return;
+															window.open(
+																link.linkType === "INVENTORY_RECEIPT"
+																	? `/inventory-import?code=${encodeURIComponent(linkedCode)}`
+																	: `/inventory-export?code=${encodeURIComponent(linkedCode)}`,
+																"_blank",
+															);
+														}}
+														title={`Mở ${linkTypeLabel(link.linkType)}: ${linkedCode}`}
+													>
+														{linkTypeLabel(link.linkType)}: {linkedCode}
+													</span>
+												);
+											})}
+										</div>
+									);
+								})()}
 							</div>
+							{selected.cancelReason && (
+								<div className="rounded bg-red-50 p-3 text-red-700">
+									Lý do hủy: {selected.cancelReason}
+								</div>
+							)}
+							<div className="mt-4 ml-auto w-fit p-4 text-right bg-emerald-50 border-2 border-emerald-200 rounded-xl">
+								<div className="text-sm text-emerald-700 font-medium uppercase tracking-wider mb-1">
+									Tổng thanh toán
+								</div>
+								<div className="text-2xl font-extrabold text-emerald-800">
+									{formatNumber(selected.totalAmount)} ₫
+								</div>
+							</div>
+						</div>
+						<div className="erp-modal-footer">
+							<button
+								type="button"
+								className="erp-btn"
+								onClick={() => setPrintTarget(selected)}
+							>
+								<Printer size={16} /> In chứng từ
+							</button>
+							{selected.documentStatus === "DRAFT" && (
+								<>
+									<button
+										type="button"
+										className="erp-btn erp-btn-primary"
+										disabled={actionMutation.isPending}
+										onClick={() => {
+											openEdit(selected);
+											setSelected(null);
+										}}
+									>
+										<Edit size={16} /> Sửa
+									</button>
+									<button
+										type="button"
+										className="erp-btn erp-btn-post"
+										disabled={actionMutation.isPending}
+										onClick={() =>
+											actionMutation.mutate({
+												document: selected,
+												action: "post",
+											})
+										}
+									>
+										<CheckCircle2 size={16} />{" "}
+										{actionMutation.isPending ? "Đang lưu..." : "Lưu"}
+									</button>
+								</>
+							)}
+							{selected.documentStatus === "POSTED" && (
+								<>
+									<button
+										type="button"
+										className="erp-btn erp-btn-unpost"
+										disabled={actionMutation.isPending}
+										onClick={async () => {
+											if (
+												await confirm(
+													`Bỏ ghi chứng từ ${selected.code} để chỉnh sửa?`,
+												)
+											)
+												actionMutation.mutate({
+													document: selected,
+													action: "unpost",
+												});
+										}}
+									>
+										<Undo2 size={16} />{" "}
+										{actionMutation.isPending ? "Đang bỏ ghi..." : "Bỏ ghi"}
+									</button>
+									{selected.links?.some(
+										link => link.linkType === "PAYABLE_CHARGE",
+									) && (
+										<button
+											type="button"
+											className="erp-btn !border-red-200 !bg-red-50 !text-red-700 hover:!bg-red-100"
+											disabled={actionMutation.isPending}
+											onClick={async () => {
+												const reason = await prompt({
+													title: "Hủy chứng từ mua hàng",
+													message: "Nhập lý do hủy chứng từ:",
+													minLength: 3,
+												});
+												if (reason)
+													actionMutation.mutate({
+														document: selected,
+														action: "cancel",
+														reason,
+													});
+											}}
+										>
+											<Trash2 size={16} /> Hủy
+										</button>
+									)}
+								</>
+							)}
+							{selected.documentStatus === "CANCELLED" && (
+								<button
+									type="button"
+									className="erp-btn !border-red-200 !bg-red-50 !text-red-700 hover:!bg-red-100"
+									onClick={async () => {
+										if (await confirm(`Xóa chứng từ đã hủy ${selected.code}?`))
+											deleteMutation.mutate(selected);
+									}}
+								>
+									<Trash2 size={16} /> Xóa
+								</button>
+							)}
+							<button
+								type="button"
+								className="erp-btn"
+								onClick={() => setSelected(null)}
+							>
+								Đóng
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+			{supplierModal && (
+				<div className="erp-modal-backdrop" style={{ zIndex: 300 }}>
+					<div className="erp-modal max-w-2xl">
+						<div className="erp-modal-header">
+							<div>
+								<h2>Thêm nhà cung cấp mới</h2>
+								<p>
+									Nhà cung cấp mới sẽ được tự động chọn vào chứng từ đang lập
+								</p>
+							</div>
+							<button type="button" onClick={() => setSupplierModal(false)}>
+								<X size={18} />
+							</button>
+						</div>
+						<form onSubmit={saveSupplier}>
+							<div className="erp-modal-body space-y-4">
+								<div className="grid gap-4 md:grid-cols-2">
+									<label>
+										Mã nhà cung cấp (tự sinh)
+										<input
+											type="text"
+											readOnly
+											value={nextSupplierCode}
+											className="font-mono bg-slate-50 text-slate-600"
+										/>
+									</label>
+									<label>
+										Số điện thoại
+										<input
+											type="text"
+											placeholder="09xxx..."
+											value={supplierForm.phone}
+											onChange={e =>
+												setSupplierForm({
+													...supplierForm,
+													phone: e.target.value,
+												})
+											}
+										/>
+									</label>
+									<label className="md:col-span-2">
+										Tên nhà cung cấp <span className="text-red-500">*</span>
+										<input
+											type="text"
+											required
+											placeholder="Công ty TNHH..."
+											value={supplierForm.name}
+											onChange={e =>
+												setSupplierForm({
+													...supplierForm,
+													name: e.target.value,
+												})
+											}
+										/>
+									</label>
+									<label>
+										Mã số thuế
+										<input
+											type="text"
+											placeholder="370xxxxx..."
+											value={supplierForm.taxCode}
+											onChange={e =>
+												setSupplierForm({
+													...supplierForm,
+													taxCode: e.target.value,
+												})
+											}
+										/>
+									</label>
+									<label>
+										Người liên hệ
+										<input
+											type="text"
+											placeholder="Nguyễn Văn A"
+											value={supplierForm.contactPerson}
+											onChange={e =>
+												setSupplierForm({
+													...supplierForm,
+													contactPerson: e.target.value,
+												})
+											}
+										/>
+									</label>
+									<label>
+										Công nợ (ngày)
+										<input
+											type="number"
+											min="0"
+											value={supplierForm.paymentTermDays}
+											onChange={e =>
+												setSupplierForm({
+													...supplierForm,
+													paymentTermDays: Number(e.target.value) || 0,
+												})
+											}
+										/>
+									</label>
+									<label className="md:col-span-2">
+										Địa chỉ
+										<textarea
+											rows={2}
+											placeholder="Số nhà, đường, phường/xã..."
+											value={supplierForm.address}
+											onChange={e =>
+												setSupplierForm({
+													...supplierForm,
+													address: e.target.value,
+												})
+											}
+										/>
+									</label>
+								</div>
+							</div>
+							<div className="erp-modal-footer">
+								<button
+									type="button"
+									className="erp-btn"
+									onClick={() => setSupplierModal(false)}
+								>
+									Hủy
+								</button>
+								<button
+									className="erp-btn erp-btn-primary"
+									disabled={supplierSaving}
+								>
+									{supplierSaving ? "Đang lưu..." : "Thêm nhà cung cấp"}
+								</button>
+							</div>
+						</form>
+					</div>
+				</div>
+			)}
+			{printTarget && (
+				<div className="sales-print-view fixed inset-0 z-[9999] flex flex-col bg-gray-900/90 backdrop-blur-md">
+					<div className="bg-white border-b p-4 flex items-center justify-between no-print shadow-md">
+						<div className="flex items-center gap-4">
+							<h3 className="text-lg font-black text-gray-800 uppercase tracking-tighter">
+								Chứng từ mua hàng
+							</h3>
+							<span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-500">
+								{printTarget.code}
+							</span>
+						</div>
+						<div className="flex items-center gap-3">
+							<button
+								onClick={() => setPrintTarget(null)}
+								className="px-6 py-2 border rounded-lg font-black text-gray-500 hover:bg-gray-50 transition-all uppercase text-[10px] tracking-widest"
+							>
+								Đóng
+							</button>
+							<button
+								onClick={handlePrintReport}
+								className="erp-btn erp-btn-primary !px-6 uppercase tracking-widest text-[10px]"
+							>
+								<Printer size={16} /> In chứng từ ngay
+							</button>
+						</div>
+					</div>
+					<div className="flex-1 overflow-auto p-8 bg-gray-200/50">
+						<div
+							ref={printRef}
+							className="sales-print-view shadow-2xl bg-white mx-auto mb-8 w-[210mm] max-w-full"
+						>
+							<PurchaseDocumentPrint
+								document={printTarget}
+								company={companyQuery.data}
+							/>
 						</div>
 					</div>
 				</div>
