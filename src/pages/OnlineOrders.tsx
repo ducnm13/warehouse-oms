@@ -691,7 +691,10 @@ const OnlineOrders = () => {
 				</div>
 			</div>
 
-			<div className="mb-4 flex items-center gap-1 border-b border-slate-200">
+			<div
+				data-tour="online-tabs"
+				className="mb-4 flex items-center gap-1 border-b border-slate-200"
+			>
 				{(
 					[
 						["dashboard", "Tổng quan"],
@@ -1138,21 +1141,39 @@ const OnlineOrders = () => {
 																tone: "danger",
 																onClick: () => handleDeleteOrder(order),
 															},
+															...(order.status === "Pending"
+																? [
+																		{
+																			key: "pack",
+																			label: "Đóng gói",
+																			icon: <Package size={15} />,
+																			tone: "warning" as const,
+																			onClick: () =>
+																				handleUpdateStatus(
+																					order.id,
+																					"Packing",
+																				),
+																		},
+																	]
+																: []),
+															...(order.status === "Pending" ||
+															order.status === "Packing"
+																? [
+																		{
+																			key: "ship",
+																			label: "Giao vận chuyển",
+																			icon: <Truck size={15} />,
+																			tone: "primary" as const,
+																			onClick: () =>
+																				setTrackingOrderId(order.id),
+																		},
+																	]
+																: []),
 														]}
 													/>
-													{order.status === "Pending" && (
-														<button
-															onClick={() =>
-																handleUpdateStatus(order.id, "Packing")
-															}
-															className="erp-btn"
-														>
-															Đóng gói
-														</button>
-													)}
-													{(order.status === "Pending" ||
-														order.status === "Packing") &&
-														(trackingOrderId === order.id ? (
+													{trackingOrderId === order.id &&
+														(order.status === "Pending" ||
+															order.status === "Packing") && (
 															<div className="flex gap-1">
 																<input
 																	autoFocus
@@ -1180,14 +1201,7 @@ const OnlineOrders = () => {
 																	Hủy
 																</button>
 															</div>
-														) : (
-															<button
-																onClick={() => setTrackingOrderId(order.id)}
-																className="erp-btn"
-															>
-																Giao vận chuyển
-															</button>
-														))}
+														)}
 													{order.status === "Shipped" && (
 														<button
 															onClick={() =>

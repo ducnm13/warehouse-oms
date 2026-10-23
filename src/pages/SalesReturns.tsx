@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	CheckCircle2,
@@ -9,20 +9,19 @@ import {
 	Plus,
 	Printer,
 	Search,
+	Trash2,
 	Undo2,
 	X,
 } from "lucide-react";
 import toast from "../components/ui/toast";
-import { prompt } from "../components/ui/confirm";
+import { confirm, prompt } from "../components/ui/confirm";
 import { apiV1, legacyApi } from "../lib/apiV1";
 import { formatDate, formatNumber, formatProductName } from "../lib/utils";
 import { finishedGoodsWarehouseId } from "../lib/warehouse-defaults";
-import PrintPreview from "../components/PrintPreview";
-import {
-	fillGenericDocument,
-	GENERIC_LAYOUTS,
-	type CompanyPrintProfile,
-} from "../lib/printTemplate";
+import SearchableSelect from "../components/SearchableSelect";
+import { useReactToPrint } from "react-to-print";
+import { buildCompanyPrintProfile } from "../lib/printTemplate";
+import { SalesReturnDocument } from "../components/SalesReturnDocument";
 import type { SalesOrder, SalesReturnV1, Warehouse } from "../types";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
@@ -33,6 +32,11 @@ const badge = {
 	DRAFT: "bg-slate-100 text-slate-600",
 	POSTED: "bg-emerald-100 text-emerald-700",
 	CANCELLED: "bg-red-100 text-red-700",
+};
+const statusLabel: Record<string, string> = {
+	DRAFT: "Nháp",
+	POSTED: "Đã lưu",
+	CANCELLED: "Đã hủy",
 };
 type ReturnLineInput = {
 	originalSalesOrderLineId: number;
@@ -50,10 +54,30 @@ export default function SalesReturns() {
 		[selected, setSelected] = useState<SalesReturnV1 | null>(null);
 	const [printTarget, setPrintTarget] = useState<SalesReturnV1 | null>(null);
 	const [orderId, setOrderId] = useState(0),
+		[orderMonth, setOrderMonth] = useState(""),
 		[warehouseId, setWarehouseId] = useState(0),
 		[returnDate, setReturnDate] = useState(today()),
 		[reason, setReason] = useState("");
 	const [lines, setLines] = useState<ReturnLineInput[]>([]);
+	const reportRef = useRef<HTMLDivElement>(null);
+	const handlePrint = useReactToPrint({
+		contentRef: reportRef,
+		documentTitle: printTarget
+			? `Phieu-tra-hang-${printTarget.code}`
+			: "Phieu-tra-hang",
+		pageStyle: "@page { size: A4; margin: 0; }",
+	});
+	const companyQuery = useQuery({
+		queryKey: ["company-profile"],
+		queryFn: async () => {
+			try {
+				const res = await apiV1("/api/v1/company");
+				return buildCompanyPrintProfile(res.data);
+			} catch {
+				return null;
+			}
+		},
+	});
 
 	useMultiEscapeKey([
 		{ isOpen: open, onClose: () => setOpen(false), priority: 1 },
@@ -104,6 +128,28 @@ export default function SalesReturns() {
 		() => references.data?.orders.find(row => row.id === orderId),
 		[references.data, orderId],
 	);
+	const orderMonths = useMemo(() => {
+		const months = new Set<string>();
+		for (const row of references.data?.orders || []) {
+			if (row.orderDate) months.add(row.orderDate.slice(0, 7));
+		}
+		return [...months].sort().reverse();
+	}, [references.data]);
+	const filteredOrders = useMemo(() => {
+		const rows = references.data?.orders || [];
+		return orderMonth
+			? rows.filter(row => row.orderDate?.slice(0, 7) === orderMonth)
+			: rows;
+	}, [references.data, orderMonth]);
+	const orderOptions = useMemo(
+		() =>
+			filteredOrders.map(row => ({
+				value: row.id,
+				label: `${row.code} - ${row.customerName || ""}`,
+				subLabel: `${formatDate(row.orderDate)} • ${formatNumber(row.totalAmount)} đ`,
+			})),
+		[filteredOrders],
+	);
 
 	const chooseOrder = (id: number) => {
 		setOrderId(id);
@@ -126,13 +172,8 @@ export default function SalesReturns() {
 	});
 	const save = useMutation({
 		mutationFn: () => {
-			if (
-				!orderId ||
-				!warehouseId ||
-				reason.trim().length < 3 ||
-				!lines.some(line => line.quantity > 0)
-			)
-				throw new Error("Chọn đơn, kho, lý do và số lượng trả");
+			if (!orderId || !warehouseId || reason.trim().length < 3)
+				throw new Error("Chọn đơn bán, kho nhận và nhập lý do trả (ít nhất 3 ký tự)");
 			return editing
 				? apiV1<SalesReturnV1>(`/api/v1/sales-returns/${editing.id}`, {
 						method: "PUT",
@@ -157,19 +198,23 @@ export default function SalesReturns() {
 			reason,
 		}: {
 			document: SalesReturnV1;
-			action: "post" | "cancel";
+			action: "post" | "cancel" | "unpost" | "delete";
 			reason?: string;
 		}) =>
-			apiV1<SalesReturnV1>(`/api/v1/sales-returns/${document.id}/${action}`, {
-				method: "POST",
-				body: JSON.stringify({
-					version: document.version,
-					...(reason ? { reason } : {}),
-				}),
-			}),
-		onSuccess: response => {
+			apiV1<SalesReturnV1 | { success: boolean; message: string }>(
+				`/api/v1/sales-returns/${document.id}/${action}`,
+				{
+					method: "POST",
+					body: JSON.stringify({
+						version: document.version,
+						...(reason ? { reason } : {}),
+					}),
+				},
+			),
+		onSuccess: (response, variables) => {
 			toast.success(response.message);
-			setSelected(response.data);
+			if (variables.action === "delete") setSelected(null);
+			else setSelected(response.data as SalesReturnV1);
 			void Promise.all([
 				queryClient.invalidateQueries({ queryKey: ["sales-returns"] }),
 				queryClient.invalidateQueries({
@@ -183,6 +228,7 @@ export default function SalesReturns() {
 	const create = () => {
 		setEditing(null);
 		setOrderId(0);
+		setOrderMonth("");
 		setWarehouseId(finishedGoodsWarehouseId(references.data?.warehouses));
 		setReturnDate(today());
 		setReason("");
@@ -192,6 +238,11 @@ export default function SalesReturns() {
 	const edit = (document: SalesReturnV1) => {
 		setEditing(document);
 		setOrderId(document.originalSalesOrderId);
+		setOrderMonth(
+			references.data?.orders
+				.find(row => row.id === document.originalSalesOrderId)
+				?.orderDate.slice(0, 7) || "",
+		);
 		setWarehouseId(document.warehouseId);
 		setReturnDate(document.returnDate);
 		setReason(document.reason);
@@ -207,6 +258,11 @@ export default function SalesReturns() {
 	const duplicate = (document: SalesReturnV1) => {
 		setEditing(null);
 		setOrderId(document.originalSalesOrderId);
+		setOrderMonth(
+			references.data?.orders
+				.find(row => row.id === document.originalSalesOrderId)
+				?.orderDate.slice(0, 7) || "",
+		);
 		setWarehouseId(document.warehouseId);
 		setReturnDate(today());
 		setReason(document.reason);
@@ -219,6 +275,10 @@ export default function SalesReturns() {
 		);
 		setOpen(true);
 	};
+	const removeLine = (lineId: number) =>
+		setLines(current =>
+			current.filter(row => row.originalSalesOrderLineId !== lineId),
+		);
 	const rows = documents.data?.data || [],
 		meta = documents.data?.meta as any;
 
@@ -229,7 +289,7 @@ export default function SalesReturns() {
 					<h1>Trả hàng bán</h1>
 					<p>
 						Đối soát chứng từ bán hàng với khách hàng, lập phiếu trả hàng để
-						giảm công nợ và nhập lại hàng hóa về kho. Chỉ phiếu đã ghi sổ mới
+						giảm công nợ và nhập lại hàng hóa về kho. Chỉ phiếu đã lưu mới
 						tác động tồn và công nợ.
 					</p>
 				</div>
@@ -256,7 +316,7 @@ export default function SalesReturns() {
 					>
 						<option value="">Mọi trạng thái</option>
 						<option value="DRAFT">Nháp</option>
-						<option value="POSTED">Đã ghi sổ</option>
+						<option value="POSTED">Đã lưu</option>
 						<option value="CANCELLED">Đã hủy</option>
 					</select>
 				</div>
@@ -279,6 +339,7 @@ export default function SalesReturns() {
 									<th>Phiếu / Ngày</th>
 									<th>Đơn gốc / Khách hàng</th>
 									<th>Kho nhận</th>
+									<th>Lý do</th>
 									<th>Giảm công nợ</th>
 									<th>Giá vốn nhập</th>
 									<th>Trạng thái</th>
@@ -304,11 +365,14 @@ export default function SalesReturns() {
 											<small>{document.customerName}</small>
 										</td>
 										<td>{document.warehouseName}</td>
+										<td className="max-w-[240px]" title={document.reason}>
+											{document.reason}
+										</td>
 										<td>{formatNumber(document.totalAmount)} ₫</td>
 										<td>{formatNumber(document.costAmount)} ₫</td>
 										<td>
 											<span className={`erp-badge ${badge[document.status]}`}>
-												{document.status}
+												{statusLabel[document.status] || document.status}
 											</span>
 										</td>
 										<td>
@@ -343,21 +407,40 @@ export default function SalesReturns() {
 															action.mutate({ document, action: "post" }),
 													},
 													{
-														key: "cancel",
-														label: "Hủy phiếu",
+														key: "unpost",
+														label: "Hủy lưu",
 														icon: <Undo2 size={15} />,
 														tone: "danger",
 														hidden: document.status !== "POSTED",
 														onClick: async () => {
-															const cancellationReason = await prompt({
-																title: "Hủy phiếu trả",
-																message: "Nhập lý do hủy phiếu trả:",
-															});
-															if (cancellationReason)
+															if (
+																await confirm(
+																	`Hủy lưu phiếu ${document.code}? Tồn kho và công nợ sẽ được hoàn lại, phiếu trở về nháp.`,
+																)
+															)
 																action.mutate({
 																	document,
-																	action: "cancel",
-																	reason: cancellationReason,
+																	action: "unpost",
+																});
+														},
+													},
+													{
+														key: "delete",
+														label: "Xóa phiếu",
+														icon: <Trash2 size={15} />,
+														tone: "danger",
+														hidden: !["DRAFT", "CANCELLED"].includes(
+															document.status,
+														),
+														onClick: async () => {
+															if (
+																await confirm(
+																	`Xóa phiếu ${document.code}? Thao tác không thể hoàn tác.`,
+																)
+															)
+																action.mutate({
+																	document,
+																	action: "delete",
 																});
 														},
 													},
@@ -400,7 +483,7 @@ export default function SalesReturns() {
 								<h2>
 									{editing ? `Sửa ${editing.code}` : "Lập phiếu trả hàng"}
 								</h2>
-								<p>Chỉ phiếu đã ghi sổ mới tác động tồn và công nợ.</p>
+								<p>Chỉ phiếu đã lưu mới tác động tồn và công nợ.</p>
 							</div>
 							<button onClick={() => setOpen(false)}>
 								<X />
@@ -413,21 +496,43 @@ export default function SalesReturns() {
 							}}
 						>
 							<div className="erp-modal-body space-y-5">
-								<div className="grid gap-4 md:grid-cols-4">
+								<div className="grid gap-4 md:grid-cols-5">
 									<label>
-										Đơn bán gốc
+										Tháng đơn bán
 										<select
 											disabled={Boolean(editing)}
-											value={orderId}
-											onChange={event => chooseOrder(+event.target.value)}
+											value={orderMonth}
+											onChange={event => {
+												const value = event.target.value;
+												setOrderMonth(value);
+												const current = references.data?.orders.find(
+													row => row.id === orderId,
+												);
+												if (
+													value &&
+													current &&
+													current.orderDate?.slice(0, 7) !== value
+												)
+													chooseOrder(0);
+											}}
 										>
-											<option value={0}>Chọn đơn đã ghi sổ</option>
-											{references.data?.orders.map(order => (
-												<option key={order.id} value={order.id}>
-													{order.code} - {order.customerName}
+											<option value="">Tất cả các tháng</option>
+											{orderMonths.map(month => (
+												<option key={month} value={month}>
+													Tháng {month.slice(5, 7)}/{month.slice(0, 4)}
 												</option>
 											))}
 										</select>
+									</label>
+									<label>
+										Đơn bán gốc
+										<SearchableSelect
+											value={orderId}
+											options={orderOptions}
+											onChange={chooseOrder}
+											disabled={Boolean(editing)}
+											placeholder="Chọn đơn đã lưu"
+										/>
 									</label>
 								<label>
 									Ngày trả
@@ -471,10 +576,17 @@ export default function SalesReturns() {
 													<th>SL trả lần này</th>
 													<th>Doanh thu dòng</th>
 													<th>Giá vốn</th>
+													<th className="w-24 text-right">Chức năng</th>
 												</tr>
 											</thead>
 											<tbody>
-												{order.details.map(line => {
+												{order.details
+													.filter(line =>
+														lines.some(
+															row => row.originalSalesOrderLineId === line.id,
+														),
+													)
+													.map(line => {
 													const input = lines.find(
 														row => row.originalSalesOrderLineId === line.id,
 													);
@@ -527,6 +639,16 @@ export default function SalesReturns() {
 															</td>
 															<td>{formatNumber(line.lineTotal || 0)} ₫</td>
 															<td>{formatNumber(line.costAmount || 0)} ₫</td>
+															<td className="text-right">
+																<button
+																	type="button"
+																	className="erp-btn text-red-600 !px-2"
+																	title="Xóa mặt hàng khỏi phiếu trả"
+																	onClick={() => removeLine(line.id!)}
+																>
+																	<Trash2 size={15} />
+																</button>
+															</td>
 														</tr>
 													);
 												})}
@@ -534,6 +656,10 @@ export default function SalesReturns() {
 										</table>
 									</div>
 								)}
+								<p className="text-xs text-[#a3aed0]">
+									Giá trị trả được giảm trừ công nợ; trường hợp giá trị trả vượt
+									công nợ, V1 chưa hỗ trợ hoàn tiền.
+								</p>
 							</div>
 							<div className="erp-modal-footer">
 								<button
@@ -570,7 +696,7 @@ export default function SalesReturns() {
 						</div>
 						<div className="erp-modal-body space-y-4">
 							<span className={`erp-badge ${badge[selected.status]}`}>
-								{selected.status}
+								{statusLabel[selected.status] || selected.status}
 							</span>
 							<table className="erp-table">
 								<thead>
@@ -614,17 +740,21 @@ export default function SalesReturns() {
 							)}
 						</div>
 						<div className="erp-modal-footer">
-							{selected.status === "DRAFT" && (
-								<button
-									className="erp-btn erp-btn-primary"
-									onClick={() => {
-										edit(selected);
-										setSelected(null);
-									}}
-								>
-									<Edit size={16} /> Sửa
-								</button>
-							)}
+							<button
+								className="erp-btn erp-btn-primary"
+								disabled={selected.status !== "DRAFT"}
+								title={
+									selected.status === "DRAFT"
+										? "Sửa phiếu"
+										: "Phiếu đã lưu — hủy lưu để khôi phục tồn kho trước khi sửa"
+								}
+								onClick={() => {
+									edit(selected);
+									setSelected(null);
+								}}
+							>
+								<Edit size={16} /> Sửa
+							</button>
 							<button
 								className="erp-btn"
 								onClick={() => setPrintTarget(selected)}
@@ -648,19 +778,37 @@ export default function SalesReturns() {
 									className="erp-btn erp-btn-unpost"
 									disabled={action.isPending}
 									onClick={async () => {
-										const reason = await prompt({
-											title: "Bỏ ghi phiếu trả",
-											message: "Nhập lý do bỏ ghi:",
-										});
-										if (reason)
+										if (
+											await confirm(
+												`Hủy lưu phiếu ${selected.code}? Tồn kho và công nợ sẽ được hoàn lại, phiếu trở về nháp.`,
+											)
+										)
 											action.mutate({
 												document: selected,
-												action: "cancel",
-												reason,
+												action: "unpost",
 											});
 									}}
 								>
-									<Undo2 size={16} /> Bỏ ghi
+									<Undo2 size={16} /> Hủy lưu
+								</button>
+							)}
+							{["DRAFT", "CANCELLED"].includes(selected.status) && (
+								<button
+									className="erp-btn erp-btn-danger"
+									disabled={action.isPending}
+									onClick={async () => {
+										if (
+											await confirm(
+												`Xóa phiếu ${selected.code}? Thao tác không thể hoàn tác.`,
+											)
+										)
+											action.mutate({
+												document: selected,
+												action: "delete",
+											});
+									}}
+								>
+									<Trash2 size={16} /> Xóa phiếu
 								</button>
 							)}
 							<button className="erp-btn" onClick={() => setSelected(null)}>
@@ -670,47 +818,45 @@ export default function SalesReturns() {
 					</div>
 				</div>
 			)}
-			<PrintPreview
-				open={!!printTarget}
-				title={
-					printTarget
-						? `Xem trước phiếu trả hàng ${printTarget.code}`
-						: "Xem trước in"
-				}
-				fill={
-					printTarget
-						? (worksheet: any, company: any) => {
-								fillGenericDocument(
-									worksheet,
-									company as CompanyPrintProfile | null,
-									GENERIC_LAYOUTS.salesReturn,
-									{
-										code: printTarget.code,
-										documentDate: printTarget.returnDate,
-										partner: printTarget.customerName || "",
-										dienGiai: printTarget.reason || "",
-										total: Number(printTarget.totalAmount || 0),
-										rows: printTarget.lines.map((line, index) => ({
-											stt: index + 1,
-											sku: line.sku || "",
-											name: formatProductName(
-												line.productName,
-												line.packagingName,
-											),
-											unit: line.unit || "",
-											quantity: Number(line.quantity || 0),
-											unitPrice: Number(line.unitPrice || 0),
-											amount:
-												Number(line.lineTotal || 0) +
-												Number(line.taxAmount || 0),
-										})),
-									},
-								);
-							}
-						: null
-				}
-				onClose={() => setPrintTarget(null)}
-			/>
+			{printTarget && (
+				<div className="sales-print-view fixed inset-0 z-[9999] flex flex-col bg-gray-900/90 backdrop-blur-md">
+					<div className="bg-white border-b p-4 flex items-center justify-between no-print shadow-md">
+						<div className="flex items-center gap-4">
+							<h3 className="text-lg font-black text-gray-800 uppercase tracking-tighter">
+								Phiếu trả hàng
+							</h3>
+							<span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-500">
+								{printTarget.code}
+							</span>
+						</div>
+						<div className="flex items-center gap-3">
+							<button
+								onClick={() => setPrintTarget(null)}
+								className="px-6 py-2 border rounded-lg font-black text-gray-500 hover:bg-gray-50 transition-all uppercase text-[10px] tracking-widest"
+							>
+								Đóng
+							</button>
+							<button
+								onClick={handlePrint}
+								className="erp-btn erp-btn-primary !px-6 uppercase tracking-widest text-[10px]"
+							>
+								<Printer size={16} /> In phiếu ngay
+							</button>
+						</div>
+					</div>
+					<div className="flex-1 overflow-auto p-8 bg-gray-200/50">
+						<div
+							ref={reportRef}
+							className="sales-print-view shadow-2xl bg-white mx-auto mb-8 w-[210mm] max-w-full"
+						>
+							<SalesReturnDocument
+								document={printTarget}
+								company={companyQuery.data}
+							/>
+						</div>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }

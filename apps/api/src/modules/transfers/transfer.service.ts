@@ -242,6 +242,61 @@ export const transferService = {
       return mapTransfer(row);
     }, { timeout: 30_000 });
   },
+  async unpost(id: number, version: number, userId: number) {
+    return prisma.$transaction(async tx => {
+      const current = await lockTransfer(tx, id); assertVersion(current, version);
+      if (!(["IN_TRANSIT", "RECEIVED"] as string[]).includes(current.status)) throw new HttpError(409, "INVALID_STATUS", "Chỉ được hủy lưu phiếu đã xuất hoặc đã nhận");
+      const document = await tx.warehouse_transfers.findUnique({ where: { id }, include: transferInclude });
+      if (!document) throw new HttpError(404, "TRANSFER_NOT_FOUND", "Không tìm thấy phiếu chuyển kho");
+      const occurredAt = new Date(), now = nowIso();
+
+      if (current.status === "RECEIVED") {
+        const receipts = await tx.inventory_ledger.findMany({ where: { sourceType: "TRANSFER_RECEIPT", sourceId: id } });
+        if (receipts.length !== document.warehouse_transfer_details.length) throw new HttpError(409, "LEDGER_NOT_FOUND", "Không đủ ledger nhận hàng để đảo kho");
+        for (const line of document.warehouse_transfer_details) {
+          const quantity = Number(line.quantity);
+          await tx.productwarehouses.update({ where: { packagingId_warehouseId: { packagingId: line.packagingId, warehouseId: document.toWarehouseId } }, data: { stock_quantity: { decrement: quantity }, updatedAt: now } });
+          const original = receipts.find(entry => entry.sourceLineId === line.id);
+          await tx.inventory_ledger.create({ data: {
+            sourceType: "TRANSFER_CANCEL", sourceId: id, sourceLineId: line.id, documentCode: document.code,
+            direction: "OUT", packagingId: line.packagingId, warehouseId: document.toWarehouseId,
+            quantity: decimal(quantity), unitCost: line.unitCost, totalValue: line.totalValue,
+            reversalOfId: original?.id, occurredAt, createdBy: userId,
+          } });
+        }
+      }
+
+      const shipments = await tx.inventory_ledger.findMany({ where: { sourceType: "TRANSFER_SHIPMENT", sourceId: id } });
+      if (shipments.length !== document.warehouse_transfer_details.length) throw new HttpError(409, "LEDGER_NOT_FOUND", "Không đủ ledger giao hàng để hoàn kho");
+      for (const line of document.warehouse_transfer_details) {
+        const quantity = Number(line.quantity);
+        await tx.productwarehouses.update({ where: { packagingId_warehouseId: { packagingId: line.packagingId, warehouseId: document.fromWarehouseId } }, data: { stock_quantity: { increment: quantity }, updatedAt: now } });
+        const original = shipments.find(entry => entry.sourceLineId === line.id);
+        await tx.inventory_ledger.create({ data: {
+          sourceType: "TRANSFER_CANCEL", sourceId: id, sourceLineId: line.id, documentCode: document.code,
+          direction: "IN", packagingId: line.packagingId, warehouseId: document.fromWarehouseId,
+          quantity: decimal(quantity), unitCost: line.unitCost, totalValue: line.totalValue,
+          reversalOfId: original?.id, occurredAt, createdBy: userId,
+        } });
+      }
+
+      await tx.warehouse_transfer_document_links_v1.deleteMany({ where: { transferId: id } });
+      const autoDocs = await tx.inventorytransactions.findMany({ where: { code: { in: [`PX-${document.code}`, `PN-${document.code}`] } } });
+      for (const autoDoc of autoDocs) {
+        await tx.inventorytransactiondetails.deleteMany({ where: { transactionId: autoDoc.id } });
+        await tx.inventorytransactions.delete({ where: { id: autoDoc.id } });
+      }
+
+      const row = await tx.warehouse_transfers.update({ where: { id }, data: {
+        status: "DRAFT", exportTransactionId: null, importTransactionId: null,
+        shippedAt: null, shippedBy: null, receivedAt: null, receivedBy: null,
+        cancelledAt: null, cancelledBy: null, cancelReason: null,
+        version: { increment: 1 },
+      }, include: transferInclude });
+      await tx.audit_logs.create({ data: { action: "Hủy lưu chuyển kho v1", details: row.code, userId, userName: String(userId), createdAt: now } });
+      return mapTransfer(row);
+    }, { timeout: 30_000 });
+  },
   async remove(id: number, version: number, userId: number) {
     return prisma.$transaction(async tx => {
       const current = await lockTransfer(tx, id); assertVersion(current, version);

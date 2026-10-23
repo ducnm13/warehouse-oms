@@ -75,14 +75,20 @@ export default function DocumentActions({
         >
           <span className="inline-flex items-center gap-2">
             <Undo2 size={15} />
-            {unposting ? "Đang bỏ ghi..." : "Bỏ ghi"}
+            {unposting ? "Đang hủy lưu..." : "Hủy lưu"}
           </span>
         </button>
       )}
-      {canEditOrPost && canEdit && onEdit && (
+      {canEdit && onEdit && (
         <button
           type="button"
           className="erp-btn erp-btn-primary"
+          disabled={!isDraft}
+          title={
+            isDraft
+              ? "Sửa phiếu"
+              : "Phiếu đã lưu — hủy lưu để khôi phục tồn kho trước khi sửa"
+          }
           onClick={onEdit}
         >
           <span className="inline-flex items-center gap-2">

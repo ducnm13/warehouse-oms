@@ -17,7 +17,7 @@ const statusLabel: Record<string, string> = {
 	PENDING: "Chờ duyệt",
 	APPROVED: "Đã duyệt",
 	REJECTED: "Từ chối",
-	POSTED: "Đã ghi sổ",
+	POSTED: "Đã lưu",
 	CANCELLED: "Đã hủy",
 	FULFILLED: "Hoàn thành",
 };

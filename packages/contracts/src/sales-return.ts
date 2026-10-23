@@ -7,7 +7,7 @@ export const salesReturnDraftSchema = z.object({
   returnDate: z.iso.date(),
   reason: z.string().trim().min(3).max(500),
   settlementType: z.literal("REDUCE_DEBT").default("REDUCE_DEBT"),
-  lines: z.array(returnLineSchema).min(1).max(500),
+  lines: z.array(returnLineSchema).max(500),
 }).superRefine((value,context)=>{const seen=new Set<number>();value.lines.forEach((line,index)=>{if(seen.has(line.originalSalesOrderLineId))context.addIssue({code:"custom",path:["lines",index,"originalSalesOrderLineId"],message:"Một dòng bán không được trả nhiều lần trong cùng phiếu"});seen.add(line.originalSalesOrderLineId)})});
 export const salesReturnUpdateSchema = salesReturnDraftSchema.extend({ version: z.coerce.number().int().positive() });
 export const salesReturnActionSchema = z.object({ version: z.coerce.number().int().positive() });

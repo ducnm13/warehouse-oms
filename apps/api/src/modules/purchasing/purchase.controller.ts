@@ -27,11 +27,11 @@ export const purchaseController = {
   },
   async post(req: Request, res: Response) {
     const user = auth(req);
-    res.json({ success: true, message: "Đã ghi sổ chứng từ", data: await purchaseService.post(id(req), Number(req.body.version), user.userId) });
+    res.json({ success: true, message: "Đã lưu chứng từ", data: await purchaseService.post(id(req), Number(req.body.version), user.userId) });
   },
   async unpost(req: Request, res: Response) {
     const user = auth(req);
-    res.json({ success: true, message: "Đã bỏ ghi chứng từ, có thể chỉnh sửa lại", data: await purchaseService.unpost(id(req), Number(req.body.version), user.userId) });
+    res.json({ success: true, message: "Đã hủy lưu chứng từ, có thể chỉnh sửa lại", data: await purchaseService.unpost(id(req), Number(req.body.version), user.userId) });
   },
   async cancel(req: Request<Record<string, string>, unknown, PurchaseCancelInput>, res: Response) {
     const user = auth(req);

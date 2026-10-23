@@ -68,7 +68,7 @@ const emptyLine = (): Line => ({
 });
 const statusMeta = {
 	DRAFT: { label: "Nháp", css: "bg-slate-100 text-slate-700" },
-	POSTED: { label: "Đã ghi sổ", css: "bg-emerald-100 text-emerald-700" },
+	POSTED: { label: "Đã lưu", css: "bg-emerald-100 text-emerald-700" },
 	CANCELLED: { label: "Đã hủy", css: "bg-red-100 text-red-700" },
 } as const;
 
@@ -548,7 +548,7 @@ export default function Purchases() {
 					>
 						<option value="">Tất cả trạng thái</option>
 						<option value="DRAFT">Nháp</option>
-						<option value="POSTED">Đã ghi sổ</option>
+						<option value="POSTED">Đã lưu</option>
 						<option value="CANCELLED">Đã hủy</option>
 					</select>
 				</div>
@@ -570,6 +570,7 @@ export default function Purchases() {
 								<tr>
 									<th>Số chứng từ / Ngày</th>
 									<th>Nhà cung cấp</th>
+									<th>Diễn giải</th>
 									<th>Trạng thái</th>
 									<th className="text-right">Tiền hàng</th>
 									<th className="text-right">Thanh toán</th>
@@ -594,6 +595,9 @@ export default function Purchases() {
 										<td>
 											<b>{document.supplierName}</b>
 											<small>{document.supplierCode}</small>
+										</td>
+										<td className="max-w-[240px]" title={document.description}>
+											{document.description}
 										</td>
 										<td>
 											<span
@@ -665,7 +669,7 @@ export default function Purchases() {
 													},
 													{
 														key: "unpost",
-														label: "Bỏ ghi để chỉnh sửa",
+														label: "Hủy lưu để chỉnh sửa",
 														icon: <Undo2 size={15} />,
 														tone: "warning",
 														disabled: actionMutation.isPending,
@@ -677,7 +681,7 @@ export default function Purchases() {
 														onClick: async () => {
 															if (
 																await confirm(
-																	`Bỏ ghi chứng từ ${document.code} để chỉnh sửa?`,
+																	`Hủy lưu chứng từ ${document.code} để chỉnh sửa?`,
 																)
 															)
 																actionMutation.mutate({
@@ -1141,19 +1145,27 @@ export default function Purchases() {
 							>
 								<Printer size={16} /> In chứng từ
 							</button>
+							<button
+								type="button"
+								className="erp-btn erp-btn-primary"
+								disabled={
+									actionMutation.isPending ||
+									selected.documentStatus !== "DRAFT"
+								}
+								title={
+									selected.documentStatus === "DRAFT"
+										? "Sửa chứng từ"
+										: "Chứng từ đã lưu — hủy lưu để khôi phục tồn kho trước khi sửa"
+								}
+								onClick={() => {
+									openEdit(selected);
+									setSelected(null);
+								}}
+							>
+								<Edit size={16} /> Sửa
+							</button>
 							{selected.documentStatus === "DRAFT" && (
 								<>
-									<button
-										type="button"
-										className="erp-btn erp-btn-primary"
-										disabled={actionMutation.isPending}
-										onClick={() => {
-											openEdit(selected);
-											setSelected(null);
-										}}
-									>
-										<Edit size={16} /> Sửa
-									</button>
 									<button
 										type="button"
 										className="erp-btn erp-btn-post"
@@ -1179,7 +1191,7 @@ export default function Purchases() {
 										onClick={async () => {
 											if (
 												await confirm(
-													`Bỏ ghi chứng từ ${selected.code} để chỉnh sửa?`,
+													`Hủy lưu chứng từ ${selected.code} để chỉnh sửa?`,
 												)
 											)
 												actionMutation.mutate({
@@ -1189,7 +1201,7 @@ export default function Purchases() {
 										}}
 									>
 										<Undo2 size={16} />{" "}
-										{actionMutation.isPending ? "Đang bỏ ghi..." : "Bỏ ghi"}
+										{actionMutation.isPending ? "Đang hủy lưu..." : "Hủy lưu"}
 									</button>
 									{selected.links?.some(
 										link => link.linkType === "PAYABLE_CHARGE",

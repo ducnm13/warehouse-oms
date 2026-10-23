@@ -268,6 +268,19 @@ export const productionService = {
       return mapOneProductionWithDocuments(tx, updated);
     }, { timeout: 30000 });
   },
+  async unpost(id: number, version: number, u: number) {
+    return prisma.$transaction(async tx => {
+      const r = await lock(tx, id); ver(r, version);
+      if (!["IN_PROGRESS", "COMPLETED"].includes(r.status)) throw new HttpError(409, "INVALID_STATUS", "Chỉ được hủy lưu lệnh đã xác nhận hoặc đã chốt");
+      const t = now();
+      const updated = await tx.productionorders.update({ where: { id }, data: {
+        status: "DRAFT", startedAt: null, startedBy: null, completedAt: null, completedBy: null,
+        cancelledAt: null, cancelledBy: null, cancelReason: null, version: { increment: 1 }, updatedAt: t,
+      }, include: productionInclude });
+      await tx.audit_logs.create({ data: { action: "Hủy lưu lệnh sản xuất v1", details: updated.code, userId: u, userName: String(u), createdAt: t } });
+      return mapOneProductionWithDocuments(tx, updated);
+    }, { timeout: 30000 });
+  },
   async delete(id: number, input: ProductionDeleteInput, u: number) {
     return prisma.$transaction(async tx => {
       const r = await lock(tx, id); ver(r, input.version);

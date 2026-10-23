@@ -35,10 +35,13 @@ export const inventoryController = {
     res.json({ success: true, message: "Đã cập nhật phiếu kho", data: await inventoryService.update(id(req), req.body, auth(req).userId) });
   },
   async post(req: Request, res: Response) {
-    res.json({ success: true, message: "Đã ghi sổ phiếu kho", data: await inventoryService.post(id(req), Number(req.body.version), auth(req).userId) });
+    res.json({ success: true, message: "Đã lưu phiếu kho", data: await inventoryService.post(id(req), Number(req.body.version), auth(req).userId) });
   },
   async cancel(req: Request<Record<string, string>, unknown, InventoryCancelInput>, res: Response) {
     res.json({ success: true, message: "Đã hủy và đảo phiếu kho", data: await inventoryService.cancel(id(req), req.body, auth(req).userId) });
+  },
+  async unpost(req: Request, res: Response) {
+    res.json({ success: true, message: "Đã hủy lưu phiếu kho", data: await inventoryService.unpost(id(req), Number(req.body.version), auth(req).userId) });
   },
   async delete(req: Request<Record<string, string>, unknown, InventoryDeleteInput>, res: Response) {
     res.json({ success: true, message: "Đã xóa phiếu kho", data: await inventoryService.delete(id(req), req.body, auth(req).userId) });
@@ -71,6 +74,9 @@ export const stocktakeController = {
   },
   async cancel(req: Request<Record<string, string>, unknown, InventoryCancelInput>, res: Response) {
     res.json({ success: true, message: "Đã hủy và đảo kiểm kê", data: await stocktakeService.cancel(id(req), req.body, auth(req).userId) });
+  },
+  async unpost(req: Request, res: Response) {
+    res.json({ success: true, message: "Đã hủy lưu kiểm kê", data: await stocktakeService.unpost(id(req), Number(req.body.version), auth(req).userId) });
   },
   async delete(req: Request<Record<string, string>, unknown, InventoryDeleteInput>, res: Response) {
     res.json({ success: true, message: "Đã xóa phiếu kiểm kê", data: await stocktakeService.delete(id(req), req.body, auth(req).userId) });

@@ -24,7 +24,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 const monthStart = () => `${today().slice(0, 7)}-01`;
 const STATUS: Record<string, { label: string; cls: string }> = {
 	DRAFT: { label: "Nháp", cls: "erp-badge-draft" },
-	POSTED: { label: "Đã ghi sổ", cls: "erp-badge-posted" },
+	POSTED: { label: "Đã lưu", cls: "erp-badge-posted" },
 	CANCELLED: { label: "Đã hủy", cls: "erp-badge-cancelled" },
 };
 
@@ -74,7 +74,7 @@ export default function SalesReturnsReport() {
 					<select value={status} onChange={e => setStatus(e.target.value)}>
 						<option value="">Tất cả</option>
 						<option value="DRAFT">Nháp</option>
-						<option value="POSTED">Đã ghi sổ</option>
+						<option value="POSTED">Đã lưu</option>
 						<option value="CANCELLED">Đã hủy</option>
 					</select>
 				</label>
@@ -88,7 +88,7 @@ export default function SalesReturnsReport() {
 			</FilterBar>
 
 			<StatGrid>
-				<StatCard label="Tổng phiếu" value={qty(summary?.documents || 0)} hint={`${summary?.posted || 0} đã ghi sổ`} />
+				<StatCard label="Tổng phiếu" value={qty(summary?.documents || 0)} hint={`${summary?.posted || 0} đã lưu`} />
 				<StatCard label="Tổng tiền trả" value={money(summary?.totalAmount || 0)} tone="negative" />
 				<StatCard label="Tiền hàng" value={money(summary?.subtotal || 0)} />
 				<StatCard label="Giá vốn nhập lại" value={money(summary?.costAmount || 0)} tone="info" />

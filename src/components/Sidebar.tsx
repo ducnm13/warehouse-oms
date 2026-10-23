@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { apiV1 } from "../lib/apiV1";
+import { getModuleAccess } from "../lib/permissions";
 import {
 	LayoutDashboard,
 	ArrowRightLeft,
@@ -60,6 +61,7 @@ const NavItem = ({
 	return (
 		<button
 			onClick={handleClick}
+			data-tour={path}
 			className={`group w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13.5px] font-medium transition-all duration-150
         ${indent ? "ml-3 pl-2 w-[calc(100%-12px)]" : ""}
         ${
@@ -112,26 +114,14 @@ export default function Sidebar({
 		return () => document.removeEventListener("mousedown", handle);
 	}, [sidebarOpen, setSidebarOpen]);
 
-	// Ẩn mục menu khi người dùng không có quyền truy cập tương ứng.
-	// system.admin thấy tất cả.
-	const has = (perm?: string | string[]) => {
-		if (!role) return true;
-		const perms = permissions || [];
-		if (perms.includes("system.admin")) return true;
-		if (!perm) return false;
-		const list = Array.isArray(perm) ? perm : [perm];
-		return list.some(p => perms.includes(p));
-	};
-
-	// Vai trò kho (thủ kho) không hiển thị khu vực bán hàng
-	const isWarehouseRole = role === "W_MANAGER";
+	const access = getModuleAccess(role, permissions);
 
 	// Bán hàng
-	const showSales = has("sales.view") && !isWarehouseRole;
-	const showPromotions = has("promotion.view") && !isWarehouseRole;
-	const showSalesReturns = has("sales.return.view") && !isWarehouseRole;
-	const showCustomers = has("customer.view") && !isWarehouseRole;
-	const showDebt = has("debt.view") && !isWarehouseRole;
+	const showSales = access.sales;
+	const showPromotions = access.promotions;
+	const showSalesReturns = access.salesReturns;
+	const showCustomers = access.customers;
+	const showDebt = access.debt;
 	const showSalesSection =
 		showSales ||
 		showPromotions ||
@@ -140,23 +130,22 @@ export default function Sidebar({
 		showDebt;
 
 	// Bán hàng online
-	const showOnline = has("online.view") && !isWarehouseRole;
+	const showOnline = access.online;
 
 	// Mua hàng
-	const showPurchases = has("purchase.view");
-	const showSuppliers = has("purchase.view");
+	const showPurchases = access.purchases;
+	const showSuppliers = access.suppliers;
 	const showPurchaseSection = showPurchases || showSuppliers;
 
 	// Kho
-	const showWarehouses = has("inventory.view");
-	const showImport = has("inventory.view");
-	const showExport = has("inventory.view");
-	const showTransfers = has("transfer.view");
-	const showStocktake = has("inventory.stocktake");
-	const showCatalog = has("catalog.view");
-	// "Thiết lập bảng giá" và "Tồn kho đầu kỳ" không hiện với thủ kho (W_MANAGER)
-	const showPriceBooks = has("catalog.manage") && role !== "W_MANAGER";
-	const showOpening = has("inventory.opening") && role !== "W_MANAGER";
+	const showWarehouses = access.warehouses;
+	const showImport = access.import;
+	const showExport = access.export;
+	const showTransfers = access.transfers;
+	const showStocktake = access.stocktake;
+	const showCatalog = access.catalog;
+	const showPriceBooks = access.priceBooks;
+	const showOpening = access.opening;
 	const showWarehouseSection =
 		showWarehouses ||
 		showImport ||
@@ -168,25 +157,23 @@ export default function Sidebar({
 		showOpening;
 
 	// Sản xuất
-	const showProduction = has("production.view");
-	// "Quản lý sản xuất" dành cho ADMIN/Quản lý sản xuất (có quyền production.manage)
-	const showProductionMgmt =
-		has("production.manage") && role !== "W_MANAGER";
-	const showAssembly = has("assembly.view");
+	const showProduction = access.production;
+	const showProductionMgmt = access.productionMgmt;
+	const showAssembly = access.assembly;
 	const showProductionSection =
 		showProduction || showProductionMgmt || showAssembly;
 
 	// Báo cáo
-	const showReports = has("report.view");
+	const showReports = access.reports;
 
 	// Quản lý hệ thống
-	const showUsers = has("iam.manage");
-	const showRoles = has("iam.manage");
-	const showAuditLogs = has("system.admin");
-	const showCompany = has("company.manage");
+	const showUsers = access.users;
+	const showRoles = access.roles;
+	const showAuditLogs = access.auditLogs;
+	const showCompany = access.company;
 	const showManageSection =
 		showUsers || showRoles || showAuditLogs || showCompany;
-	const canUseDevTools = has("system.admin");
+	const canUseDevTools = access.devTools;
 	const devToolsAccess = useQuery({
 		queryKey: ["devtools-access"],
 		queryFn: () => apiV1<{ allowed: boolean }>("/api/v1/devtools/access"),
@@ -208,6 +195,7 @@ export default function Sidebar({
 
 			<aside
 				ref={sidebarRef}
+				data-tour="sidebar"
 				className={`
           fixed md:relative inset-y-0 left-0 z-50
           w-[270px] h-full flex flex-col flex-shrink-0 bg-white
@@ -242,7 +230,7 @@ export default function Sidebar({
 							setSidebarOpen(false);
 					}}
 				>
-					{has("dashboard.view") && (
+					{access.dashboard && (
 						<NavItem
 							icon={LayoutDashboard}
 							label="Tổng quan"

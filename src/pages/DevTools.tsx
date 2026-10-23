@@ -18,6 +18,7 @@ import {
 	ShieldAlert,
 	Table2,
 	Terminal,
+	Trash2,
 } from "lucide-react";
 import { apiV1 } from "../lib/apiV1";
 import { confirm, prompt } from "../components/ui/confirm";
@@ -189,6 +190,7 @@ const DevTools = () => {
 	const [rowEdits, setRowEdits] = useState<RowEdits>({});
 	const [editingCell, setEditingCell] = useState<{ row: number; column: string } | null>(null);
 	const [saving, setSaving] = useState(false);
+	const [deletingRow, setDeletingRow] = useState<number | null>(null);
 	const [runningId, setRunningId] = useState<string | null>(null);
 	const [scriptResult, setScriptResult] = useState<ScriptRunResult | null>(null);
 	const [scriptError, setScriptError] = useState<string | null>(null);
@@ -309,6 +311,42 @@ const DevTools = () => {
 			toast.error(`Không lưu được thay đổi\n${(error as Error).message}`);
 		} finally {
 			setSaving(false);
+		}
+	};
+
+	const deleteRow = async (index: number) => {
+		if (!tableView) return;
+		if (!tableView.primaryKey.length) {
+			toast.error("Bảng không có khóa chính nên không thể xóa trực tiếp");
+			return;
+		}
+		const source = tableView.rows[index];
+		const keys: Record<string, any> = {};
+		for (const primaryKey of tableView.primaryKey) {
+			keys[primaryKey] = source[primaryKey];
+		}
+		const rowLabel = tableView.primaryKey
+			.map(primaryKey => `${primaryKey}=${cellText(source[primaryKey])}`)
+			.join(", ");
+		const ok = await confirm({
+			title: "Xóa dòng dữ liệu",
+			message: `Xóa vĩnh viễn dòng (${rowLabel}) khỏi bảng ${tableView.name}? Thao tác này không thể hoàn tác.`,
+			tone: "danger",
+			confirmText: "Xóa",
+		});
+		if (!ok) return;
+		setDeletingRow(index);
+		try {
+			await apiV1("/api/v1/devtools/database/row/delete", {
+				method: "POST",
+				body: JSON.stringify({ table: tableView.name, keys }),
+			});
+			toast.success("Đã xóa dòng");
+			await loadTable(tableView.name);
+		} catch (error) {
+			toast.error(`Không xóa được dòng\n${(error as Error).message}`);
+		} finally {
+			setDeletingRow(null);
 		}
 	};
 
@@ -727,6 +765,7 @@ const DevTools = () => {
 															{column.primaryKey ? <span className="ml-1 text-[#422afb]">*</span> : null}
 														</th>
 													))}
+													<th className="w-10"></th>
 												</tr>
 											</thead>
 											<tbody>
@@ -775,6 +814,28 @@ const DevTools = () => {
 																</td>
 															);
 														})}
+														<td className="text-right">
+															<button
+																type="button"
+																className="rounded-lg p-1.5 text-[#ee5d50] transition-colors hover:bg-[#fde3e3] disabled:cursor-not-allowed disabled:opacity-40"
+																title={
+																	tableView.primaryKey.length
+																		? "Xóa dòng"
+																		: "Bảng không có khóa chính"
+																}
+																disabled={
+																	!tableView.primaryKey.length ||
+																	deletingRow === index
+																}
+																onClick={() => void deleteRow(index)}
+															>
+																{deletingRow === index ? (
+																	<Loader2 className="animate-spin" size={15} />
+																) : (
+																	<Trash2 size={15} />
+																)}
+															</button>
+														</td>
 													</tr>
 												))}
 											</tbody>

@@ -12,9 +12,9 @@ type ProductionRow = {
 
 /**
  * Trạng thái chứng từ của lệnh sản xuất (độc lập với trạng thái xử lý):
- * - DRAFT: chưa ghi sổ phiếu xuất NVL.
- * - WAITING_RECEIPT: đã ghi sổ phiếu xuất NVL, chưa lập phiếu nhập thành phẩm.
- * - FULL: đã ghi sổ phiếu xuất NVL và đã lập phiếu nhập thành phẩm.
+ * - DRAFT: chưa lưu phiếu xuất NVL.
+ * - WAITING_RECEIPT: đã lưu phiếu xuất NVL, chưa lập phiếu nhập thành phẩm.
+ * - FULL: đã lưu phiếu xuất NVL và đã lập phiếu nhập thành phẩm.
  */
 export async function resolveProductionDocumentStatuses(
 	db: any,

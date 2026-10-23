@@ -150,6 +150,48 @@ export const GENERIC_LAYOUTS: Record<string, GenericLayout> = {
 			{ label: "Giám đốc", code: "DIRECTOR" },
 		],
 	},
+	transfer: {
+		title: "PHIẾU XUẤT CHUYỂN KHO",
+		partnerLabel: "Kho xuất → Kho nhập",
+		totalKey: "amount",
+		totalLabel: "Tổng giá trị",
+		columns: [
+			{ key: "stt", header: "STT", span: 1, align: "center" },
+			{ key: "sku", header: "Mã", span: 2, align: "left" },
+			{ key: "name", header: "Tên hàng hóa", span: 3, align: "left" },
+			{ key: "unit", header: "ĐVT", span: 1, align: "center" },
+			{ key: "quantity", header: "Số lượng", span: 1, align: "right" },
+			{ key: "unitPrice", header: "Đơn giá vốn", span: 1, align: "right" },
+			{ key: "amount", header: "Thành tiền", span: 1, align: "right" },
+		],
+		signers: [
+			{ label: "Người lập", code: "PREPARER" },
+			{ label: "Thủ kho xuất", code: "WAREHOUSE_KEEPER" },
+			{ label: "Thủ kho nhập", code: "" },
+			{ label: "Giám đốc", code: "DIRECTOR" },
+		],
+	},
+	assembly: {
+		title: "LỆNH LẮP RÁP",
+		partnerLabel: "Kho linh kiện → Kho thành phẩm",
+		totalKey: "amount",
+		totalLabel: "Tổng giá trị",
+		columns: [
+			{ key: "stt", header: "STT", span: 1, align: "center" },
+			{ key: "type", header: "Loại", span: 1, align: "center" },
+			{ key: "sku", header: "Mã", span: 2, align: "left" },
+			{ key: "name", header: "Tên hàng hóa", span: 3, align: "left" },
+			{ key: "unit", header: "ĐVT", span: 1, align: "center" },
+			{ key: "quantity", header: "Số lượng", span: 1, align: "right" },
+			{ key: "amount", header: "Giá trị", span: 1, align: "right" },
+		],
+		signers: [
+			{ label: "Người lập", code: "PREPARER" },
+			{ label: "Thủ kho", code: "WAREHOUSE_KEEPER" },
+			{ label: "Kế toán", code: "CHIEF_ACCOUNTANT" },
+			{ label: "Giám đốc", code: "DIRECTOR" },
+		],
+	},
 };
 
 export interface GenericDocumentFill {
@@ -162,6 +204,119 @@ export interface GenericDocumentFill {
 	total?: number;
 }
 
+/**
+ * Vẽ khung mẫu in (tiêu đề, dòng đối tác, diễn giải, header bảng, dòng cộng,
+ * chữ ký) khi không nạp file Excel mẫu. Nhờ vậy bản in luôn đầy đủ và đồng bộ
+ * với dữ liệu hiện tại của hệ thống.
+ */
+const ensureGenericSkeleton = (
+	worksheet: ExcelJS.Worksheet,
+	layout: GenericLayout,
+) => {
+	const { columnCount, itemHeaderRow, dataStart, totalRow, wordsRow } =
+		GENERIC_LAYOUT_ROWS;
+	const { signerLabelRow, signerNameRow } = GENERIC_LAYOUT_ROWS;
+	for (let column = 1; column <= columnCount; column += 1) {
+		if (!worksheet.getColumn(column).width)
+			worksheet.getColumn(column).width = column === 1 ? 6 : 14;
+	}
+	const merge = (top: number, left: number, bottom: number, right: number) => {
+		try {
+			worksheet.mergeCells(top, left, bottom, right);
+		} catch {}
+	};
+	const starts: Array<{ start: number; span: number; definition: GenericColumn }> =
+		[];
+	let column = 1;
+	for (const definition of layout.columns) {
+		starts.push({ start: column, span: definition.span, definition });
+		column += definition.span;
+	}
+
+	merge(5, 1, 5, columnCount);
+	const titleCell = worksheet.getCell(5, 1);
+	if (!titleCell.value) titleCell.value = layout.title;
+	titleCell.font = { ...(titleCell.font || {}), bold: true, size: 16 };
+	titleCell.alignment = {
+		horizontal: "center",
+		vertical: "middle",
+		wrapText: true,
+	};
+	worksheet.getRow(5).height = 28;
+
+	merge(7, 1, 7, 2);
+	const partnerLabel = worksheet.getCell(7, 1);
+	partnerLabel.value = `${layout.partnerLabel}:`;
+	partnerLabel.font = { ...(partnerLabel.font || {}), bold: true };
+	merge(7, 3, 7, columnCount);
+	const partnerCell = worksheet.getCell(7, 3);
+	if (!partnerCell.value) partnerCell.value = "##Doi_tac##";
+
+	merge(8, 1, 8, 2);
+	const noteLabel = worksheet.getCell(8, 1);
+	noteLabel.value = "Diễn giải:";
+	noteLabel.font = { ...(noteLabel.font || {}), bold: true };
+	merge(8, 3, 8, columnCount);
+	const noteCell = worksheet.getCell(8, 3);
+	if (!noteCell.value) noteCell.value = "##Dien_giai##";
+
+	for (const { start, span, definition } of starts) {
+		if (span > 1) merge(itemHeaderRow, start, itemHeaderRow, start + span - 1);
+		const cell = worksheet.getCell(itemHeaderRow, start);
+		cell.value = definition.header;
+		cell.font = { ...(cell.font || {}), bold: true };
+		cell.alignment = {
+			horizontal: "center",
+			vertical: "middle",
+			wrapText: true,
+		};
+	}
+	worksheet.getRow(itemHeaderRow).height = 26;
+
+	for (const { start, span, definition } of starts) {
+		if (span > 1) merge(dataStart, start, dataStart, start + span - 1);
+		const cell = worksheet.getCell(dataStart, start);
+		if (cell.value === null || cell.value === undefined)
+			cell.value = definition.key === "stt" ? 1 : `##${definition.key}##`;
+		cell.alignment = {
+			horizontal: definition.align || "left",
+			vertical: "middle",
+			wrapText: true,
+		};
+	}
+
+	const totalKey = layout.totalKey;
+	const totalStart =
+		starts.find(item => item.definition.key === totalKey)?.start ||
+		starts[starts.length - 1]?.start ||
+		2;
+	if (totalStart > 2) merge(totalRow, 2, totalRow, totalStart - 1);
+	const totalLabelCell = worksheet.getCell(totalRow, 2);
+	totalLabelCell.value = "Cộng";
+	totalLabelCell.font = { ...(totalLabelCell.font || {}), bold: true };
+
+	merge(wordsRow, 1, wordsRow, 4);
+	const wordsCell = worksheet.getCell(wordsRow, 1);
+	if (!wordsCell.value)
+		wordsCell.value = `${layout.totalLabel || "Tổng số tiền"}:`;
+	wordsCell.font = { ...(wordsCell.font || {}), italic: true };
+
+	layout.signers.forEach((signer, index) => {
+		const start = GENERIC_SIGNER_GROUP_STARTS[index] || 1;
+		const end =
+			(GENERIC_SIGNER_GROUP_STARTS[index + 1] || columnCount + 1) - 1;
+		merge(signerLabelRow, start, signerLabelRow, end);
+		const labelCell = worksheet.getCell(signerLabelRow, start);
+		labelCell.value = signer.label;
+		labelCell.font = { ...(labelCell.font || {}), bold: true };
+		labelCell.alignment = { horizontal: "center" };
+		merge(signerNameRow, start, signerNameRow, end);
+		const nameCell = worksheet.getCell(signerNameRow, start);
+		if (!nameCell.value) nameCell.value = "(Ký, họ tên)";
+		nameCell.alignment = { horizontal: "center" };
+	});
+};
+
 /** Điền một trong các mẫu in sinh tự động (GENERIC_LAYOUTS) theo layout tương ứng. */
 export const fillGenericDocument = (
 	worksheet: ExcelJS.Worksheet,
@@ -169,6 +324,7 @@ export const fillGenericDocument = (
 	layout: GenericLayout,
 	data: GenericDocumentFill,
 ) => {
+	ensureGenericSkeleton(worksheet, layout);
 	const {
 		dataStart,
 		totalRow: baseTotalRow,
@@ -196,7 +352,7 @@ export const fillGenericDocument = (
 		"##yyyy##": String(date.getFullYear()),
 	});
 	// Title row (A5) - set document title
-	if (data.title) worksheet.getCell("A5").value = data.title;
+	worksheet.getCell("A5").value = data.title || layout.title;
 	// Document code & date centered below title (row 6)
 	const codeDateCell = worksheet.getCell("A6");
 	codeDateCell.value = `${data.code}  •  ${dateText}`;
@@ -216,11 +372,10 @@ export const fillGenericDocument = (
 	}
 	for (const [index, row] of data.rows.entries()) {
 		for (const [key, value] of Object.entries(row)) {
-			if (value === null || value === undefined) continue;
 			const startColumn = starts[key];
 			if (!startColumn) continue;
 			worksheet.getCell(`${toColName(startColumn)}${dataStart + index}`).value =
-				value;
+				value === null || value === undefined ? "" : value;
 		}
 	}
 	const totalRow = baseTotalRow + extra;

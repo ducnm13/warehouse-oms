@@ -38,11 +38,11 @@ export const salesController = {
   },
   async post(req: Request, res: Response) {
     const user = auth(req);
-    res.json({ success: true, message: "Đã ghi sổ, xuất kho và ghi nhận phải thu", data: await salesService.post(id(req), Number(req.body.version), user.userId) });
+    res.json({ success: true, message: "Đã lưu, xuất kho và ghi nhận phải thu", data: await salesService.post(id(req), Number(req.body.version), user.userId) });
   },
   async unpost(req: Request, res: Response) {
     const user = auth(req);
-    res.json({ success: true, message: "Đã bỏ ghi sổ và khôi phục tồn kho", data: await salesService.unpost(id(req), Number(req.body.version), user.userId) });
+    res.json({ success: true, message: "Đã hủy lưu và khôi phục tồn kho", data: await salesService.unpost(id(req), Number(req.body.version), user.userId) });
   },
   async payment(req: Request<Record<string, string>, unknown, SalesPaymentInput>, res: Response) {
     const user = auth(req);

@@ -220,7 +220,7 @@ export const purchaseService = {
           version: { increment: 1 }, updatedAt: now,
         }, include: purchaseInclude,
       });
-      await tx.audit_logs.create({ data: { action: "Ghi sổ mua hàng v1", details: document.code, userId, userName: String(userId), createdAt: now } });
+      await tx.audit_logs.create({ data: { action: "Lưu mua hàng v1", details: document.code, userId, userName: String(userId), createdAt: now } });
       return mapPurchaseDocument(updated);
     }, { timeout: 30_000 });
   },
@@ -229,21 +229,21 @@ export const purchaseService = {
       const locked = await tx.$queryRawUnsafe<any[]>("SELECT id,documentStatus,version FROM purchase_documents WHERE id=? FOR UPDATE", id);
       const current = locked[0];
       if (!current) throw new HttpError(404, "PURCHASE_NOT_FOUND", "Không tìm thấy chứng từ");
-      if (current.documentStatus !== "POSTED") throw new HttpError(409, "PURCHASE_NOT_POSTED", "Chỉ được bỏ ghi chứng từ đã ghi sổ");
+      if (current.documentStatus !== "POSTED") throw new HttpError(409, "PURCHASE_NOT_POSTED", "Chỉ được hủy lưu chứng từ đã lưu");
       if (Number(current.version) !== version) throw new HttpError(409, "VERSION_CONFLICT", "Chứng từ đã được người khác cập nhật");
 
       const document = await tx.purchase_documents.findUnique({ where: { id }, include: purchaseInclude });
       if (!document) throw new HttpError(404, "PURCHASE_NOT_FOUND", "Không tìm thấy chứng từ");
       const links = await tx.purchase_document_links_v1.findMany({ where: { purchaseDocumentId: id } });
       if (!links.some(link => link.linkType === "PAYABLE_CHARGE")) {
-        throw new HttpError(409, "LEGACY_PURCHASE_NOT_REVERSIBLE", "Chứng từ legacy chưa có ledger v1; không thể bỏ ghi tự động");
+        throw new HttpError(409, "LEGACY_PURCHASE_NOT_REVERSIBLE", "Chứng từ legacy chưa có ledger v1; không thể hủy lưu tự động");
       }
 
       const debtPayments = await tx.$queryRawUnsafe<any[]>(`SELECT COUNT(*) count
         FROM payment_voucher_allocations a JOIN payment_vouchers v ON v.id=a.paymentVoucherId
         WHERE a.purchaseDocumentId=? AND v.sourceModule='DEBT_V1' AND v.status='POSTED'`, id);
       if (Number(debtPayments[0]?.count || 0) > 0) {
-        throw new HttpError(409, "DEBT_PAYMENT_EXISTS", "Hãy hủy phiếu chi công nợ V1 trước khi bỏ ghi chứng từ mua hàng");
+        throw new HttpError(409, "DEBT_PAYMENT_EXISTS", "Hãy hủy phiếu chi công nợ V1 trước khi hủy lưu chứng từ mua hàng");
       }
 
       const now = nowIso();
@@ -260,7 +260,7 @@ export const purchaseService = {
         for (const entry of stockOut.values()) {
           const balance = await tx.productwarehouses.findUnique({ where: { packagingId_warehouseId: { packagingId: entry.packagingId, warehouseId: entry.warehouseId } } });
           if (Number(balance?.stock_quantity || 0) < entry.quantity) {
-            throw new HttpError(409, "REVERSAL_STOCK_SHORTAGE", `Không đủ tồn để bỏ ghi hàng hóa ${entry.packagingId} tại kho ${entry.warehouseId}`);
+            throw new HttpError(409, "REVERSAL_STOCK_SHORTAGE", `Không đủ tồn để hủy lưu hàng hóa ${entry.packagingId} tại kho ${entry.warehouseId}`);
           }
         }
         for (const entry of stockOut.values()) {
@@ -296,7 +296,7 @@ export const purchaseService = {
           version: { increment: 1 }, updatedAt: now,
         }, include: purchaseInclude,
       });
-      await tx.audit_logs.create({ data: { action: "Bỏ ghi mua hàng v1", details: document.code, userId, userName: String(userId), createdAt: now } });
+      await tx.audit_logs.create({ data: { action: "Hủy lưu mua hàng v1", details: document.code, userId, userName: String(userId), createdAt: now } });
       return mapPurchaseDocument(updated);
     }, { timeout: 30_000 });
   },
@@ -305,7 +305,7 @@ export const purchaseService = {
       const locked = await tx.$queryRawUnsafe<any[]>("SELECT id,documentStatus,version FROM purchase_documents WHERE id=? FOR UPDATE", id);
       const current = locked[0];
       if (!current) throw new HttpError(404, "PURCHASE_NOT_FOUND", "Không tìm thấy chứng từ");
-      if (current.documentStatus !== "POSTED") throw new HttpError(409, "PURCHASE_NOT_POSTED", "Chỉ được hủy chứng từ đã ghi sổ");
+      if (current.documentStatus !== "POSTED") throw new HttpError(409, "PURCHASE_NOT_POSTED", "Chỉ được hủy chứng từ đã lưu");
       if (Number(current.version) !== input.version) throw new HttpError(409, "VERSION_CONFLICT", "Chứng từ đã được người khác cập nhật");
       const document = await tx.purchase_documents.findUnique({ where: { id }, include: purchaseInclude });
       if (!document) throw new HttpError(404, "PURCHASE_NOT_FOUND", "Không tìm thấy chứng từ");

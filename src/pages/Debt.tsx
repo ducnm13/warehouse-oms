@@ -35,7 +35,7 @@ type Allocation = { documentId: number; amount: number };
 const today = () => new Date().toISOString().slice(0, 10);
 const statusMeta = {
 	DRAFT: { label: "Nháp", css: "bg-slate-100 text-slate-700" },
-	POSTED: { label: "Đã ghi sổ", css: "bg-emerald-100 text-emerald-700" },
+	POSTED: { label: "Đã lưu", css: "bg-emerald-100 text-emerald-700" },
 	CANCELLED: { label: "Đã hủy", css: "bg-red-100 text-red-700" },
 } as const;
 const bucketLabel: Record<string, string> = {
@@ -289,7 +289,7 @@ export default function Debt() {
 		if (action === "post") {
 		if (
 			!(await confirm(
-				`Ghi sổ ${document.code}? Công nợ các chứng từ phân bổ sẽ thay đổi.`,
+				`Lưu ${document.code}? Công nợ các chứng từ phân bổ sẽ thay đổi.`,
 			))
 		)
 			return;
@@ -298,7 +298,7 @@ export default function Debt() {
 		}
 		setCancelTarget(document);
 		setCancelReason(
-			`Hủy khoản thu cho ${document.allocations.map(row => row.documentCode).join(", ") || document.code} để bỏ ghi sổ đơn bán`,
+			`Hủy khoản thu cho ${document.allocations.map(row => row.documentCode).join(", ") || document.code} để hủy lưu đơn bán`,
 		);
 	};
 	const setAllocation = (documentId: number, checked: boolean, max: number) =>
@@ -325,7 +325,7 @@ export default function Debt() {
 					<h1>Công nợ</h1>
 					<p>
 						Quản lý các công nợ phải thu, phải trả, lập phiếu thu/chi để phân bổ
-						công nợ cho nhiều chứng từ. Chỉ phiếu đã ghi sổ mới tác động công
+						công nợ cho nhiều chứng từ. Chỉ phiếu đã lưu mới tác động công
 						nợ.
 					</p>
 				</div>
@@ -562,7 +562,7 @@ export default function Debt() {
 														},
 														{
 															key: "post",
-															label: "Ghi sổ",
+															label: "Lưu",
 															icon: <CheckCircle2 size={15} />,
 															tone: "success",
 															hidden:
@@ -571,7 +571,7 @@ export default function Debt() {
 														},
 														{
 															key: "cancel",
-															label: "Bỏ ghi sổ",
+															label: "Hủy lưu",
 															icon: <Undo2 size={15} />,
 															tone: "danger",
 															hidden:
@@ -806,18 +806,23 @@ export default function Debt() {
 								>
 									<Printer size={16} /> In
 								</button>
-								{(selected.kind === "RECEIPT" ? canReceive : canPay) &&
-									selected.status === "DRAFT" && (
-										<button
-											className="erp-btn"
-											onClick={() => {
-												setSelected(null);
-												edit(selected);
-											}}
-										>
-											<Edit size={16} /> Sửa
-										</button>
-									)}
+								{(selected.kind === "RECEIPT" ? canReceive : canPay) && (
+									<button
+										className="erp-btn"
+										disabled={selected.status !== "DRAFT"}
+										title={
+											selected.status === "DRAFT"
+												? "Sửa phiếu"
+												: "Phiếu đã lưu — hủy lưu để khôi phục công nợ trước khi sửa"
+										}
+										onClick={() => {
+											setSelected(null);
+											edit(selected);
+										}}
+									>
+										<Edit size={16} /> Sửa
+									</button>
+								)}
 								{(selected.kind === "RECEIPT" ? canReceive : canPay) &&
 									selected.status === "DRAFT" && (
 										<button
@@ -834,7 +839,7 @@ export default function Debt() {
 											disabled={actionMutation.isPending}
 											onClick={() => act(selected, "cancel")}
 										>
-											<Undo2 size={16} /> Bỏ ghi
+											<Undo2 size={16} /> Hủy lưu
 										</button>
 									)}
 							</div>
@@ -984,7 +989,7 @@ export default function Debt() {
 							<div>
 								<h2>Hủy khoản thu {cancelTarget.code}</h2>
 								<p>
-									Hủy để đủ điều kiện bỏ ghi sổ đơn bán, công nợ được hoàn
+									Hủy để đủ điều kiện hủy lưu đơn bán, công nợ được hoàn
 									nguyên
 								</p>
 							</div>
@@ -1004,7 +1009,7 @@ export default function Debt() {
 									rows={3}
 									value={cancelReason}
 									onChange={event => setCancelReason(event.target.value)}
-									placeholder="Hủy khoản thu để bỏ ghi sổ đơn bán..."
+									placeholder="Hủy khoản thu để hủy lưu đơn bán..."
 								/>
 							</label>
 						</div>

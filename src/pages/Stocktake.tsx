@@ -281,7 +281,7 @@ export default function Stocktake() {
 			reason,
 		}: {
 			document: StocktakeV1;
-			action: "complete" | "cancel";
+			action: "complete" | "cancel" | "unpost";
 			reason?: string;
 		}) =>
 			apiV1<StocktakeV1>(
@@ -525,23 +525,21 @@ export default function Stocktake() {
 															},
 														},
 														{
-															key: "cancel",
-															label: "Hủy và đảo",
+															key: "unpost",
+															label: "Hủy lưu",
 															icon: <Undo2 size={15} />,
 															tone: "danger",
 															disabled: actionMutation.isPending,
 															hidden: document.status !== "COMPLETED",
 															onClick: async () => {
-																const reason = await prompt({
-																	title: "Hủy kiểm kê",
-																	message: "Nhập lý do hủy:",
-																	minLength: 3,
-																});
-																if (reason)
+																if (
+																	await confirm(
+																		`Hủy lưu kiểm kê ${document.code}? Tồn kho sẽ được hoàn lại và phiếu trở về nháp.`,
+																	)
+																)
 																	actionMutation.mutate({
 																		document,
-																		action: "cancel",
-																		reason: reason.trim(),
+																		action: "unpost",
 																	});
 															},
 														},
@@ -832,18 +830,22 @@ export default function Stocktake() {
 							)}
 						</div>
 						<div className="erp-modal-footer">
-							{selected.status === "DRAFT" && (
-								<button
-									type="button"
-									className="erp-btn erp-btn-primary"
-									onClick={() => {
-										edit(selected);
-										setSelected(null);
-									}}
-								>
-									<Edit size={16} /> Sửa
-								</button>
-							)}
+							<button
+								type="button"
+								className="erp-btn erp-btn-primary"
+								disabled={selected.status !== "DRAFT"}
+								title={
+									selected.status === "DRAFT"
+										? "Sửa phiếu"
+										: "Phiếu đã lưu — hủy lưu để khôi phục tồn kho trước khi sửa"
+								}
+								onClick={() => {
+									edit(selected);
+									setSelected(null);
+								}}
+							>
+								<Edit size={16} /> Sửa
+							</button>
 							<button
 								type="button"
 								className="erp-btn"
@@ -859,7 +861,7 @@ export default function Stocktake() {
 									onClick={async () => {
 										if (
 											await confirm(
-												`Ghi sổ ${selected.code} và tạo điều chỉnh kho?`,
+												`Lưu ${selected.code} và tạo điều chỉnh kho?`,
 											)
 										)
 											actionMutation.mutate({
@@ -876,21 +878,19 @@ export default function Stocktake() {
 									type="button"
 									className="erp-btn erp-btn-unpost"
 									disabled={actionMutation.isPending}
-									onClick={async () => {
-										const reason = await prompt({
-											title: "Bỏ ghi kiểm kê",
-											message: "Nhập lý do bỏ ghi:",
-											minLength: 3,
+								onClick={async () => {
+									if (
+										await confirm(
+											`Hủy lưu kiểm kê ${selected.code}? Tồn kho sẽ được hoàn lại và phiếu trở về nháp.`,
+										)
+									)
+										actionMutation.mutate({
+											document: selected,
+											action: "unpost",
 										});
-										if (reason)
-											actionMutation.mutate({
-												document: selected,
-												action: "cancel",
-												reason: reason.trim(),
-											});
-									}}
-								>
-									<Undo2 size={16} /> Bỏ ghi
+								}}
+							>
+								<Undo2 size={16} /> Hủy lưu
 								</button>
 							)}
 							<button

@@ -24,11 +24,16 @@ export const openingInventoryController = {
 
   post: async (req: any, res: any) => {
     const data = await openingInventoryService.post(Number(req.params.id), req.body.version, req.auth!.userId);
-    res.json({ success: true, message: "Đã ghi sổ phiếu tồn đầu kỳ", data });
+    res.json({ success: true, message: "Đã lưu phiếu tồn đầu kỳ", data });
   },
 
   cancel: async (req: any, res: any) => {
     const data = await openingInventoryService.cancel(Number(req.params.id), req.body, req.auth!.userId);
     res.json({ success: true, message: "Đã hủy phiếu tồn đầu kỳ", data });
+  },
+
+  unpost: async (req: any, res: any) => {
+    const data = await openingInventoryService.unpost(Number(req.params.id), req.body.version, req.auth!.userId);
+    res.json({ success: true, message: "Đã hủy lưu phiếu tồn đầu kỳ", data });
   },
 };

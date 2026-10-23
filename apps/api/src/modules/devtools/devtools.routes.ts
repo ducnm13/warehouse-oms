@@ -32,6 +32,7 @@ devtoolsRouter.get("/overview", asyncHandler(devtoolsController.overview));
 devtoolsRouter.get("/database/tables", asyncHandler(devtoolsController.tables));
 devtoolsRouter.get("/database/tables/:name", asyncHandler(devtoolsController.tableData));
 devtoolsRouter.post("/database/row", asyncHandler(devtoolsController.updateRow));
+devtoolsRouter.post("/database/row/delete", asyncHandler(devtoolsController.deleteRow));
 devtoolsRouter.post("/database/query", asyncHandler(devtoolsController.query));
 devtoolsRouter.get("/scripts", asyncHandler(devtoolsController.scripts));
 devtoolsRouter.post("/scripts/:id/run", asyncHandler(devtoolsController.runScript));

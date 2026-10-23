@@ -181,6 +181,7 @@ export const chatService = {
     }
     return {
       added,
+      conversationId: msg.conversationId,
       reactions: [...counts.entries()].map(([e, v]) => ({ emoji: e, count: v.count, mine: v.mine })),
     };
   },

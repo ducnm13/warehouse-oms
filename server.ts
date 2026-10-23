@@ -10,7 +10,7 @@ import jwt from "jsonwebtoken";
 import ExcelJS from "exceljs";
 import { formatDate, formatNumber } from "./src/lib/utils";
 import fs from "fs";
-import { mountV1Api } from "./apps/api/src/index";
+import { attachRealtime, mountV1Api } from "./apps/api/src/index";
 
 process.on("unhandledRejection", (reason, promise) => {
 	console.error("Unhandled Rejection at:", promise, "reason:", reason);
@@ -5151,9 +5151,10 @@ async function startServer() {
 		});
 	}
 
-	app.listen(PORT, "0.0.0.0", () => {
+	const server = app.listen(PORT, "0.0.0.0", () => {
 		console.log(`Server running on http://localhost:${PORT}`);
 	});
+	attachRealtime(server);
 }
 
 startServer().catch(console.error);

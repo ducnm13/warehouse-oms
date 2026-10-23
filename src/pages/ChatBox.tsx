@@ -6,6 +6,7 @@ import { MessageCirclePlus, Undo2, Users, X } from "lucide-react";
 import toast from "../components/ui/toast";
 import { confirm } from "../components/ui/confirm";
 import { apiV1 } from "../lib/apiV1";
+import { getSocket } from "../lib/socket";
 import "../components/chatbox.css";
 
 interface Participant {
@@ -123,6 +124,10 @@ export default function ChatBox({
 	const stickBottom = useRef(true);
 
 	const active = conversations.find(c => c.id === activeId) || null;
+	const activeIdRef = useRef<number | null>(activeId);
+	activeIdRef.current = activeId;
+	const conversationsRef = useRef<Conversation[]>(conversations);
+	conversationsRef.current = conversations;
 
 	const loadConversations = useCallback(async () => {
 		try {
@@ -160,7 +165,11 @@ export default function ChatBox({
 				}
 			} else if (mode === "poll") {
 				if (rows.length) {
-					setMessages(prev => [...prev, ...rows]);
+					setMessages(prev => {
+						const existing = new Set(prev.map(row => row.id));
+						const next = rows.filter(row => !existing.has(row.id));
+						return next.length ? [...prev, ...next] : prev;
+					});
 					setFreshIds(new Set(rows.map(r => r.id)));
 				}
 			} else {
@@ -245,6 +254,91 @@ export default function ChatBox({
 		const t = window.setInterval(poll, 2500);
 		return () => window.clearInterval(t);
 	}, [activeId]);
+
+	useEffect(() => {
+		const socket = getSocket();
+		if (!socket) return;
+		for (const conversation of conversations)
+			socket.emit("chat:join", conversation.id);
+	}, [conversations]);
+
+	// socket.io: nhận tin nhắn, đang gõ, reaction, thu hồi theo thời gian thực
+	useEffect(() => {
+		const socket = getSocket();
+		if (!socket) return;
+		const joinAll = () => {
+			for (const conversation of conversationsRef.current)
+				socket.emit("chat:join", conversation.id);
+		};
+		if (socket.connected) joinAll();
+		socket.on("connect", joinAll);
+
+		const onMessage = (payload: { conversationId: number }) => {
+			const conversationId = Number(payload?.conversationId);
+			void loadConversations();
+			if (!conversationId || conversationId !== activeIdRef.current) return;
+			void loadMessagesRef
+				.current(conversationId, "poll")
+				.then(rows => {
+					if (rows.length)
+						void markReadRef.current(conversationId, rows[rows.length - 1].id);
+				})
+				.catch(() => {});
+		};
+		const onTyping = (payload: { conversationId: number; userId: number }) => {
+			const conversationId = Number(payload?.conversationId);
+			const userId = Number(payload?.userId);
+			if (!userId || userId === meId || conversationId !== activeIdRef.current) return;
+			const name =
+				conversationsRef.current
+					.find(conversation => conversation.id === conversationId)
+					?.participants.find(participant => participant.id === userId)?.name || "";
+			setTyping(previous =>
+				previous.some(user => user.id === userId)
+					? previous
+					: [...previous, { id: userId, name }],
+			);
+			window.setTimeout(
+				() => setTyping(previous => previous.filter(user => user.id !== userId)),
+				8000,
+			);
+		};
+		const onReaction = (payload: {
+			conversationId: number;
+			messageId: number;
+			reactions: Reaction[];
+		}) => {
+			if (Number(payload?.conversationId) !== activeIdRef.current) return;
+			const messageId = Number(payload?.messageId);
+			setMessages(previous =>
+				previous.map(message =>
+					message.id === messageId
+						? { ...message, reactions: payload.reactions || [] }
+						: message,
+				),
+			);
+		};
+		const onRecall = (payload: { conversationId: number; messageId: number }) => {
+			if (Number(payload?.conversationId) !== activeIdRef.current) return;
+			const messageId = Number(payload?.messageId);
+			setMessages(previous => previous.filter(message => message.id !== messageId));
+		};
+		const onConversation = () => void loadConversations();
+
+		socket.on("chat:message", onMessage);
+		socket.on("chat:typing", onTyping);
+		socket.on("chat:reaction", onReaction);
+		socket.on("chat:recall", onRecall);
+		socket.on("chat:conversation", onConversation);
+		return () => {
+			socket.off("connect", joinAll);
+			socket.off("chat:message", onMessage);
+			socket.off("chat:typing", onTyping);
+			socket.off("chat:reaction", onReaction);
+			socket.off("chat:recall", onRecall);
+			socket.off("chat:conversation", onConversation);
+		};
+	}, [loadConversations, meId]);
 
 	// tự cuộn xuống khi có tin mới (nếu đang ở cuối)
 	useEffect(() => {

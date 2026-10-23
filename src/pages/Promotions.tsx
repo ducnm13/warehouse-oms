@@ -55,6 +55,11 @@ const badge = {
 	ACTIVE: "bg-emerald-100 text-emerald-700",
 	INACTIVE: "bg-red-100 text-red-700",
 };
+const statusLabel: Record<string, string> = {
+	DRAFT: "Nháp",
+	ACTIVE: "Đang áp dụng",
+	INACTIVE: "Ngừng áp dụng",
+};
 export default function Promotions() {
 	const qc = useQueryClient(),
 		[page, setPage] = useState(1),
@@ -332,7 +337,7 @@ export default function Promotions() {
 										<td>{x.priority}</td>
 										<td>
 											<span className={`erp-badge ${badge[x.status]}`}>
-												{x.status}
+												{statusLabel[x.status] || x.status}
 											</span>
 										</td>
 										<td>

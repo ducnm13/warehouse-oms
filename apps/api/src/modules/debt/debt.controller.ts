@@ -16,8 +16,8 @@ export const debtController = {
   voucherCreate: async (req: Request<Record<string, string>, unknown, DebtPaymentDraftInput>, res: Response) => res.status(201).json({ success: true, message: "Đã lưu nháp phiếu chi", data: await debtService.create("VOUCHER", req.body, auth(req).userId) }),
   receiptUpdate: async (req: Request<Record<string, string>, unknown, DebtPaymentUpdateInput>, res: Response) => res.json({ success: true, message: "Đã cập nhật phiếu thu", data: await debtService.update("RECEIPT", id(req), req.body, auth(req).userId) }),
   voucherUpdate: async (req: Request<Record<string, string>, unknown, DebtPaymentUpdateInput>, res: Response) => res.json({ success: true, message: "Đã cập nhật phiếu chi", data: await debtService.update("VOUCHER", id(req), req.body, auth(req).userId) }),
-  receiptPost: async (req: Request, res: Response) => res.json({ success: true, message: "Đã ghi sổ phiếu thu", data: await debtService.post("RECEIPT", id(req), Number(req.body.version), auth(req).userId) }),
-  voucherPost: async (req: Request, res: Response) => res.json({ success: true, message: "Đã ghi sổ phiếu chi", data: await debtService.post("VOUCHER", id(req), Number(req.body.version), auth(req).userId) }),
+  receiptPost: async (req: Request, res: Response) => res.json({ success: true, message: "Đã lưu phiếu thu", data: await debtService.post("RECEIPT", id(req), Number(req.body.version), auth(req).userId) }),
+  voucherPost: async (req: Request, res: Response) => res.json({ success: true, message: "Đã lưu phiếu chi", data: await debtService.post("VOUCHER", id(req), Number(req.body.version), auth(req).userId) }),
   receiptCancel: async (req: Request<Record<string, string>, unknown, DebtCancelInput>, res: Response) => res.json({ success: true, message: "Đã hủy và đảo phiếu thu", data: await debtService.cancel("RECEIPT", id(req), req.body, auth(req).userId) }),
   voucherCancel: async (req: Request<Record<string, string>, unknown, DebtCancelInput>, res: Response) => res.json({ success: true, message: "Đã hủy và đảo phiếu chi", data: await debtService.cancel("VOUCHER", id(req), req.body, auth(req).userId) }),
 };

@@ -22,8 +22,17 @@ import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
 import PrintPreview from "../components/PrintPreview";
 import { formatDate, formatNumber, formatProductName } from "../lib/utils";
-import { fillWarehouseTransfer, type CompanyPrintProfile } from "../lib/printTemplate";
-import type { Product, Warehouse, WarehouseTransferV1 } from "../types";
+import {
+	fillGenericDocument,
+	GENERIC_LAYOUTS,
+	type CompanyPrintProfile,
+} from "../lib/printTemplate";
+import type {
+	InventoryBalanceV1,
+	Product,
+	Warehouse,
+	WarehouseTransferV1,
+} from "../types";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
 import TableActions from "../components/TableActions";
@@ -107,24 +116,48 @@ export default function WarehouseTransfers() {
 				`/api/v1/warehouse-transfers?page=${page}&limit=20&search=${encodeURIComponent(search)}${status ? `&status=${status}` : ""}${fromFilter ? `&fromWarehouseId=${fromFilter}` : ""}${toFilter ? `&toWarehouseId=${toFilter}` : ""}`,
 			),
 	});
-	const options = useMemo(
-		() =>
-			(references.data?.products || []).flatMap(product =>
-				(product.packagings || []).map(packaging => ({
-					...packaging,
-					productName: product.name,
-				})),
+	const sourceBalances = useQuery({
+		queryKey: ["inventory-balances-v1", form.fromWarehouseId],
+		enabled: open && form.fromWarehouseId > 0,
+		queryFn: () =>
+			apiV1<InventoryBalanceV1[]>(
+				`/api/v1/inventory/balances?warehouseId=${form.fromWarehouseId}`,
 			),
-		[references.data],
-	);
+	});
+	const options = useMemo(() => {
+		const balanceRows = sourceBalances.data?.data;
+		if (form.fromWarehouseId > 0 && balanceRows) {
+			return balanceRows.map(row => ({
+				id: row.packagingId,
+				productName: row.productName,
+				name: row.packagingName,
+				sku: row.sku,
+				unit: row.unit,
+				stock: row.quantity,
+			}));
+		}
+		return (references.data?.products || []).flatMap(product =>
+			(product.packagings || []).map(packaging => ({
+				...packaging,
+				productName: product.name,
+			})),
+		);
+	}, [references.data, form.fromWarehouseId, sourceBalances.data]);
 	const productSearchOptions = useMemo(
 		() =>
 			options.map(option => ({
 				value: option.id,
 				label: option.productName,
-				subLabel: option.name !== option.productName
-					? `${option.name}${option.sku ? ` | SKU: ${option.sku}` : ""}`
-					: option.sku ? `SKU: ${option.sku}` : undefined,
+				subLabel:
+					[
+						option.name !== option.productName ? option.name : null,
+						option.sku ? `SKU: ${option.sku}` : null,
+						"stock" in option && option.stock !== undefined
+							? `Tồn: ${formatNumber(option.stock)}`
+							: null,
+					]
+						.filter(Boolean)
+						.join(" | ") || undefined,
 			})),
 		[options],
 	);
@@ -182,7 +215,7 @@ export default function WarehouseTransfers() {
 			reason,
 		}: {
 			document: WarehouseTransferV1;
-			action: "ship" | "receive" | "cancel";
+			action: "ship" | "receive" | "cancel" | "unpost";
 			reason?: string;
 		}) =>
 			apiV1<WarehouseTransferV1>(
@@ -267,7 +300,7 @@ export default function WarehouseTransfers() {
 	};
 	const act = async (
 		document: WarehouseTransferV1,
-		action: "ship" | "receive" | "cancel",
+		action: "ship" | "receive" | "cancel" | "unpost",
 	) => {
 		if (
 			action === "ship" &&
@@ -279,6 +312,13 @@ export default function WarehouseTransfers() {
 		if (
 			action === "receive" &&
 			!(await confirm(`Xác nhận đã nhận đủ hàng tại ${document.toWarehouseName}?`))
+		)
+			return;
+		if (
+			action === "unpost" &&
+			!(await confirm(
+				`Hủy lưu phiếu ${document.code}? Tồn kho hai kho sẽ được hoàn lại và phiếu trở về nháp.`,
+			))
 		)
 			return;
 		const reason =
@@ -522,10 +562,19 @@ export default function WarehouseTransfers() {
 															icon: <Undo2 size={15} />,
 															tone: "danger",
 															disabled: actionMutation.isPending,
-															hidden: !(["DRAFT", "IN_TRANSIT"] as string[]).includes(
+															hidden: document.status !== "DRAFT",
+															onClick: () => act(document, "cancel"),
+														},
+														{
+															key: "unpost",
+															label: "Hủy lưu",
+															icon: <Undo2 size={15} />,
+															tone: "danger",
+															disabled: actionMutation.isPending,
+															hidden: !(["IN_TRANSIT", "RECEIVED"] as string[]).includes(
 																document.status,
 															),
-															onClick: () => act(document, "cancel"),
+															onClick: () => act(document, "unpost"),
 														},
 														{
 															key: "delete",
@@ -844,17 +893,21 @@ export default function WarehouseTransfers() {
 								>
 									<Printer size={16} /> In phiếu
 								</button>
-								{selected.status === "DRAFT" && (
-									<button
-										className="erp-btn erp-btn-primary"
-										onClick={() => {
-											edit(selected);
-											setSelected(null);
-										}}
-									>
-										<Edit size={16} /> Sửa
-									</button>
-								)}
+								<button
+									className="erp-btn erp-btn-primary"
+									disabled={selected.status !== "DRAFT"}
+									title={
+										selected.status === "DRAFT"
+											? "Sửa phiếu"
+											: "Phiếu đã lưu — hủy lưu để khôi phục tồn kho trước khi sửa"
+									}
+									onClick={() => {
+										edit(selected);
+										setSelected(null);
+									}}
+								>
+									<Edit size={16} /> Sửa
+								</button>
 								{selected.status === "DRAFT" && (
 									<button
 										className="erp-btn erp-btn-primary"
@@ -871,14 +924,23 @@ export default function WarehouseTransfers() {
 										<PackageCheck size={16} /> Xác nhận nhận
 									</button>
 								)}
-							{(["DRAFT", "IN_TRANSIT"] as string[]).includes(
-								selected.status,
-							) && (
+							{selected.status === "DRAFT" && (
 								<button
 									className="erp-btn text-red-600"
 									onClick={() => act(selected, "cancel")}
 								>
 									<Undo2 size={16} /> Hủy phiếu
+								</button>
+							)}
+							{(["IN_TRANSIT", "RECEIVED"] as string[]).includes(
+								selected.status,
+							) && (
+								<button
+									className="erp-btn text-red-600"
+									disabled={actionMutation.isPending}
+									onClick={() => act(selected, "unpost")}
+								>
+									<Undo2 size={16} /> Hủy lưu
 								</button>
 							)}
 							{(["DRAFT", "CANCELLED"] as string[]).includes(
@@ -908,25 +970,44 @@ export default function WarehouseTransfers() {
 			open={!!printTarget}
 			title={printTarget ? `Xem trước phiếu chuyển kho ${printTarget.code}` : "Xem trước in"}
 			fill={printTarget ? ((worksheet, company) => {
-				fillWarehouseTransfer(worksheet, company as CompanyPrintProfile | null, {
-					code: printTarget.code,
-					transferDate: printTarget.transferDate,
-					fromWarehouseName: printTarget.fromWarehouseName || "",
-					toWarehouseName: printTarget.toWarehouseName || "",
-					note: printTarget.note || "",
-					address:
-						printTarget.creatorName ||
-						`${printTarget.fromWarehouseName || ""} → ${printTarget.toWarehouseName || ""}`,
-					details: printTarget.details.map(line => ({
-						sku: line.sku || "",
-						productName: line.productName || "",
-						packagingName: line.packagingName || "",
-						unit: line.unit || "",
-						quantity: Number(line.quantity || 0),
-						unitCost: Number(line.unitCost || 0),
-						totalValue: Number(line.totalValue || 0),
-					})),
-				});
+				const details = printTarget.details || [];
+				const total = details.reduce(
+					(sum, line) =>
+						sum +
+						Number(
+							line.totalValue ?? Number(line.quantity || 0) * Number(line.unitCost || 0),
+						),
+					0,
+				);
+				fillGenericDocument(
+					worksheet,
+					company as CompanyPrintProfile | null,
+					GENERIC_LAYOUTS.transfer,
+					{
+						code: printTarget.code,
+						documentDate: printTarget.transferDate,
+						title: "PHIẾU XUẤT CHUYỂN KHO",
+						partner: `${printTarget.fromWarehouseName || ""} → ${printTarget.toWarehouseName || ""}`,
+						dienGiai:
+							printTarget.note ||
+							`Chuyển hàng từ ${printTarget.fromWarehouseName || ""} sang ${printTarget.toWarehouseName || ""}`,
+						total,
+						rows: details.map((line, index) => ({
+							stt: index + 1,
+							sku: line.sku || "",
+							name: [line.productName, line.packagingName]
+								.filter(Boolean)
+								.join(" - "),
+							unit: line.unit || "",
+							quantity: Number(line.quantity || 0),
+							unitPrice: Number(line.unitCost || 0),
+							amount: Number(
+								line.totalValue ??
+									Number(line.quantity || 0) * Number(line.unitCost || 0),
+							),
+						})),
+					},
+				);
 			}) : null}
 			onClose={() => setPrintTarget(null)}
 			/>

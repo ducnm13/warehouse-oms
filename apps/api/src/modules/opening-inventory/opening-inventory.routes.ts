@@ -21,3 +21,4 @@ openingInventoryRouter.post("/", requirePermission("inventory.opening"), validat
 openingInventoryRouter.put("/:id", requirePermission("inventory.opening"), validateParams(numericIdParamsSchema), validateBody(openingInventoryUpdateSchema), asyncHandler(openingInventoryController.update));
 openingInventoryRouter.post("/:id/post", requirePermission("inventory.opening"), validateParams(numericIdParamsSchema), validateBody(openingInventoryActionSchema), asyncHandler(openingInventoryController.post));
 openingInventoryRouter.post("/:id/cancel", requirePermission("inventory.opening"), validateParams(numericIdParamsSchema), validateBody(openingInventoryCancelSchema), asyncHandler(openingInventoryController.cancel));
+openingInventoryRouter.post("/:id/unpost", requirePermission("inventory.opening"), validateParams(numericIdParamsSchema), validateBody(openingInventoryActionSchema), asyncHandler(openingInventoryController.unpost));

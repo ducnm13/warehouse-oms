@@ -12,6 +12,7 @@ import {
 	Printer,
 	Search,
 	Trash2,
+	Undo2,
 	X,
 } from "lucide-react";
 import toast from "../components/ui/toast";
@@ -72,7 +73,7 @@ const emptyForm = (warehouseId = 0): FormState => ({
 });
 const statusMeta = {
 	DRAFT: { label: "Nháp", css: "bg-slate-100 text-slate-700" },
-	POSTED: { label: "Đã ghi sổ", css: "bg-emerald-100 text-emerald-700" },
+	POSTED: { label: "Đã lưu", css: "bg-emerald-100 text-emerald-700" },
 	CANCELLED: { label: "Đã hủy", css: "bg-red-100 text-red-700" },
 } as const;
 
@@ -462,7 +463,7 @@ export default function Transactions({
 			reason,
 		}: {
 			document: InventoryDocumentV1;
-			action: "post" | "cancel";
+			action: "post" | "cancel" | "unpost";
 			reason?: string;
 		}) =>
 			apiV1<InventoryDocumentV1>(
@@ -618,8 +619,8 @@ export default function Transactions({
 								: "Nhập, xuất kho"}
 					</h1>
 					<p>
-						Phiếu bán hàng ghi sổ tự sinh phiếu xuất kho tại đây · Chứng từ nháp
-						→ ghi sổ → hủy/đảo.
+						Phiếu bán hàng lưu tự sinh phiếu xuất kho tại đây · Chứng từ nháp
+						→ lưu → hủy/đảo.
 					</p>
 				</div>
 				{view === "documents" && (
@@ -759,8 +760,7 @@ export default function Transactions({
 									<tr>
 										<th>Mã chứng từ</th>
 										<th>Ngày</th>
-										<th>Loại</th>
-										<th>Nguồn</th>
+										<th>Diễn giải</th>
 										<th>Kho</th>
 										<th>Trạng thái</th>
 										<th className="text-right">Giá trị</th>
@@ -770,13 +770,13 @@ export default function Transactions({
 								<tbody>
 									{documents.isLoading ? (
 										<tr>
-											<td colSpan={8} className="text-center">
+											<td colSpan={7} className="text-center">
 												Đang tải...
 											</td>
 										</tr>
 									) : rows.length === 0 ? (
 										<tr>
-											<td colSpan={8} className="text-center text-slate-400">
+											<td colSpan={7} className="text-center text-slate-400">
 												Chưa có chứng từ kho, kể cả phiếu do bán hàng tự sinh
 											</td>
 										</tr>
@@ -790,23 +790,11 @@ export default function Transactions({
 													</small>
 												</td>
 												<td>{formatDate(document.transactionDate)}</td>
-												<td>
-													<span
-														className={`erp-badge ${document.type === "IMPORT" ? "bg-blue-100 text-blue-700" : "bg-orange-100 text-orange-700"}`}
-													>
-														{document.type === "IMPORT"
-															? "Nhập kho"
-															: "Xuất kho"}
-													</span>
-												</td>
-												<td>
-													<span className="erp-badge bg-slate-100 text-slate-600">
-														{document.sourceModule === "SALE_V1"
-															? "Bán hàng"
-															: document.sourceModule === "PURCHASE_V1"
-																? "Mua hàng"
-																: "Nhập tay"}
-													</span>
+												<td
+													className="max-w-[280px]"
+													title={document.note || document.reason || ""}
+												>
+													{document.note || document.reason || "-"}
 												</td>
 												<td>{document.warehouseName}</td>
 												<td>
@@ -880,8 +868,13 @@ export default function Transactions({
 																		? "Xóa phiếu đã hủy"
 																		: document.documentStatus === "DRAFT"
 																			? "Xóa phiếu nháp"
-																			: "Hủy phiếu & hoàn lại tồn kho",
-																icon: <Trash2 size={15} />,
+																			: "Hủy lưu phiếu",
+																icon:
+																	document.documentStatus === "POSTED" ? (
+																		<Undo2 size={15} />
+																	) : (
+																		<Trash2 size={15} />
+																	),
 																tone: "danger",
 																disabled:
 																	deleteMutation.isPending ||
@@ -915,17 +908,14 @@ export default function Transactions({
 																			deleteMutation.mutate(document);
 																		return;
 																	}
-																	const reason = await prompt({
-																		title: "Hủy phiếu kho",
-																		message:
-																			"Nhập lý do hủy (tồn kho sẽ được hoàn lại):",
-																		minLength: 3,
-																	});
-																	if (reason)
+																	if (
+																		await confirm(
+																			`Hủy lưu phiếu ${document.code}? Tồn kho sẽ được hoàn lại và phiếu trở về nháp.`,
+																		)
+																	)
 																		actionMutation.mutate({
 																			document,
-																			action: "cancel",
-																			reason: reason.trim(),
+																			action: "unpost",
 																		});
 																},
 															},
@@ -1103,8 +1093,8 @@ export default function Transactions({
 												: "Lập chứng từ kho"}
 								</h2>
 								<p>
-									Chứng từ chỉ ảnh hưởng tồn sau khi ghi sổ. Phiếu đã ghi sổ có
-									nút bỏ ghi để chỉnh sửa.
+									Chứng từ chỉ ảnh hưởng tồn sau khi lưu. Phiếu đã lưu có
+									nút hủy lưu để chỉnh sửa.
 								</p>
 							</div>
 							<button onClick={() => setOpen(false)}>
@@ -1231,7 +1221,7 @@ export default function Transactions({
 															disabled={form.type === "EXPORT"}
 															title={
 																form.type === "EXPORT"
-																	? "Giá xuất được tính khi ghi sổ"
+																	? "Giá xuất được tính khi lưu"
 																	: ""
 															}
 															className="w-32"
@@ -1403,16 +1393,14 @@ export default function Transactions({
 									})
 								}
 											onUnpost={async () => {
-												const reason = await prompt({
-													title: "Bỏ ghi sổ",
-													message: "Nhập lý do bỏ ghi:",
-													minLength: 3,
-												});
-												if (reason)
+												if (
+													await confirm(
+														`Hủy lưu phiếu ${selected.code}? Tồn kho sẽ được hoàn lại và phiếu trở về nháp.`,
+													)
+												)
 													actionMutation.mutate({
 														document: selected,
-														action: "cancel",
-														reason: reason.trim(),
+														action: "unpost",
 													});
 											}}
 								onEdit={() => {

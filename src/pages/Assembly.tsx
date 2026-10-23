@@ -13,7 +13,7 @@ import {
 	X,
 } from "lucide-react";
 import toast from "../components/ui/toast";
-import { prompt } from "../components/ui/confirm";
+import { confirm, prompt } from "../components/ui/confirm";
 import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
 import RightDrawer from "../components/RightDrawer";
@@ -22,7 +22,11 @@ import TableActions from "../components/TableActions";
 import PrintPreview from "../components/PrintPreview";
 import NumberInput from "../components/NumberInput";
 import { formatDate, formatNumber, formatProductName } from "../lib/utils";
-import { fillProductionOrder, type CompanyPrintProfile } from "../lib/printTemplate";
+import {
+	fillGenericDocument,
+	GENERIC_LAYOUTS,
+	type CompanyPrintProfile,
+} from "../lib/printTemplate";
 import { DateInput } from "../components/DateRangeCalendar";
 import type {
 	AssemblyOrderV1,
@@ -55,6 +59,11 @@ const badge: Record<string, string> = {
 	DRAFT: "bg-slate-100 text-slate-700",
 	POSTED: "bg-emerald-100 text-emerald-700",
 	CANCELLED: "bg-red-100 text-red-700",
+};
+const statusLabel: Record<string, string> = {
+	DRAFT: "Nháp",
+	POSTED: "Đã lưu",
+	CANCELLED: "Đã hủy",
 };
 
 export default function Assembly({ user }: { user: User }) {
@@ -278,6 +287,32 @@ export default function Assembly({ user }: { user: User }) {
 			void invalidate();
 		},
 		onError: (e: Error) => toast.error(e.message),
+	});
+
+	const unpostOrder = useMutation({
+		mutationFn: async (row: AssemblyOrderV1 | DisassemblyOrderV1) => {
+			if (
+				!(await confirm(
+					`Hủy lưu lệnh ${row.code}? Tồn kho sẽ được hoàn lại và lệnh trở về nháp.`,
+				))
+			)
+				throw Error("Đã bỏ hủy lưu");
+			const base =
+				tab === "ASSEMBLY"
+					? "/api/v1/assembly/orders"
+					: "/api/v1/assembly/disassembly-orders";
+			return apiV1(`${base}/${row.id}/unpost`, {
+				method: "POST",
+				body: JSON.stringify({ version: row.version, reason: "Hủy lưu để chỉnh sửa" }),
+			});
+		},
+		onSuccess: (r: any) => {
+			toast.success(r.message);
+			void invalidate();
+		},
+		onError: (e: Error) => {
+			if (e.message !== "Đã bỏ hủy lưu") toast.error(e.message);
+		},
 	});
 
 	const postOrder = useMutation({
@@ -561,7 +596,7 @@ quantity: Number(Number(line.quantity || 0).toFixed(3)),
 								</td>
 								<td>
 									<span className={`erp-badge ${badge[row.status]}`}>
-										{row.status}
+										{statusLabel[row.status] || row.status}
 									</span>
 								</td>
 								<td>
@@ -591,9 +626,16 @@ quantity: Number(Number(line.quantity || 0).toFixed(3)),
 												label: "Hủy lệnh",
 												icon: <Undo2 size={15} />,
 												tone: "danger",
-												hidden:
-													!manage || row.status === "CANCELLED",
+												hidden: !manage || row.status !== "DRAFT",
 												onClick: () => cancelOrder.mutate(row),
+											},
+											{
+												key: "unpost",
+												label: "Hủy lưu",
+												icon: <Undo2 size={15} />,
+												tone: "danger",
+												hidden: !manage || row.status !== "POSTED",
+												onClick: () => unpostOrder.mutate(row),
 											},
 										]}
 									/>
@@ -873,9 +915,9 @@ quantity: Number(Number(line.quantity || 0).toFixed(3)),
 							status={selected?.status || "DRAFT"}
 							printing={false}
 							posting={postOrder.isPending}
-							unposting={cancelOrder.isPending}
+							unposting={unpostOrder.isPending}
 							onPost={() => selected && postOrder.mutate(selected)}
-							onUnpost={() => selected && cancelOrder.mutate(selected)}
+							onUnpost={() => selected && unpostOrder.mutate(selected)}
 							onPrint={() => selected && setPrintTarget(selected)}
 							onEdit={() => selected && openEditor(selected)}
 						/>
@@ -1073,23 +1115,62 @@ quantity: Number(Number(line.quantity || 0).toFixed(3)),
 			open={!!printTarget}
 			title={printTarget ? `Xem trước in lệnh ${printTarget.code}` : "Xem trước in"}
 			fill={printTarget ? ((worksheet, company) => {
-				fillProductionOrder(worksheet, company as CompanyPrintProfile | null, {
-					code: printTarget.code,
-					orderDate: printTarget.orderDate,
-					note: printTarget.note || "",
-					outputs: orderOutputs(printTarget).map((output: any) => ({
+				const isDisassembly =
+					String(printTarget.sourceModule || "").includes("DISASSEMBLY") ||
+					(!!printTarget.sources?.length && !printTarget.outputs?.length);
+				const outputRows = orderOutputs(printTarget)
+					.filter((output: any) => output?.sku || output?.packagingName)
+					.map((output: any, index: number) => ({
+						stt: index + 1,
+						type: isDisassembly ? "Nguồn" : "Thành phẩm",
 						sku: output.sku || "",
-						name: [output.packagingName, output.unit].filter(Boolean).join(" "),
+						name: [output.productName, output.packagingName]
+							.filter(Boolean)
+							.join(" - "),
 						unit: output.unit || "",
 						quantity: Number(output.plannedQuantity || 0),
-					})),
-					materials: (printTarget.lines || []).map((line: any) => ({
-						sku: line.componentSku || line.sku || "",
-						name: line.componentName || line.packagingName || "",
-						unit: line.componentUnit || line.unit || "",
-						quantity: Number(line.plannedQuantity || 0),
-					})),
-				});
+						amount: Number(output.totalValue || 0),
+					}));
+				const componentRows = (printTarget.lines || []).map(
+					(line: any, index: number) => {
+						const quantity = Number(line.plannedQuantity || 0);
+						const unitCost = Number(line.unitCost || 0);
+						return {
+							stt: outputRows.length + index + 1,
+							type: isDisassembly ? "Thành phẩm" : "Linh kiện",
+							sku: line.componentSku || line.component?.sku || "",
+							name:
+								line.componentName ||
+								line.component?.name ||
+								line.componentProductName ||
+								line.component?.products?.name ||
+								"",
+							unit: line.componentUnit || line.component?.unit || "",
+							quantity,
+							amount: Number(line.totalValue ?? quantity * unitCost),
+						};
+					},
+				);
+				const total = componentRows.reduce(
+					(sum, row) => sum + Number(row.amount || 0),
+					0,
+				);
+				fillGenericDocument(
+					worksheet,
+					company as CompanyPrintProfile | null,
+					GENERIC_LAYOUTS.assembly,
+					{
+						code: printTarget.code,
+						documentDate: printTarget.orderDate,
+						title: isDisassembly ? "LỆNH THÁO DỠ" : "LỆNH LẮP RÁP",
+						partner: isDisassembly
+							? `${printTarget.sourceWarehouse?.name || printTarget.sourceWarehouseName || ""} → ${printTarget.recoveryWarehouse?.name || printTarget.recoveryWarehouseName || ""}`
+							: `${printTarget.componentWarehouse?.name || printTarget.componentWarehouseName || ""} → ${printTarget.outputWarehouse?.name || printTarget.outputWarehouseName || ""}`,
+						dienGiai: printTarget.note || "",
+						total,
+						rows: [...outputRows, ...componentRows],
+					},
+				);
 			}) : null}
 			onClose={() => setPrintTarget(null)}
 			/>

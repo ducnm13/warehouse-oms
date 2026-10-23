@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import GuidedTour from './GuidedTour';
 import { User } from '../types';
 
 interface LayoutProps {
@@ -30,12 +31,13 @@ const Layout = ({ children, user, onLogout }: LayoutProps) => {
           onLogout={onLogout}
         />
 
-        <main className="flex-1">
+        <main className="flex-1" data-tour="main">
           <div className="mx-auto max-w-screen-2xl px-4 pb-8 pt-5 md:px-6 lg:px-8">
             {children}
           </div>
         </main>
       </div>
+      <GuidedTour user={user} />
     </div>
   );
 };

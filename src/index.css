@@ -505,7 +505,7 @@ header.sticky {
 	border-color: var(--color-danger-hover);
 }
 
-/* Ghi sổ — hành động ghi nhận, màu xanh nổi bật */
+/* Lưu — hành động ghi nhận, màu xanh nổi bật */
 .erp-btn-post {
 	background: #059669;
 	border-color: #059669;
@@ -516,7 +516,7 @@ header.sticky {
 	border-color: #047857;
 }
 
-/* Bỏ ghi — hành động đảo chứng từ, màu cam cảnh báo */
+/* Hủy lưu — hành động đảo chứng từ, màu cam cảnh báo */
 .erp-btn-unpost {
 	background: #d97706;
 	border-color: #d97706;

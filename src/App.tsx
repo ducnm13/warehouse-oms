@@ -13,6 +13,7 @@ import Assembly from './pages/Assembly';
 import Users from './pages/Users';
 import Roles from './pages/Roles';
 import ChatBox from './pages/ChatBox';
+import UserGuide from './pages/UserGuide';
 import ChatWidget from './components/ChatWidget';
 import { ConfirmProvider } from './components/ui/confirm';
 import Customers from './pages/Customers';
@@ -53,6 +54,7 @@ import WarehousesManager from './pages/WarehousesManager';
 import PriceBooks from './pages/PriceBooks';
 import { MaintenancePage, NotFoundPage, ServerErrorPage } from './pages/ErrorPages';
 import { User } from './types';
+import { useRealtimeSync } from './hooks/useRealtimeSync';
 
 interface AuthContextType {
   user: User | null;
@@ -134,6 +136,7 @@ const LoginPage = () => {
 const AppRoutes = () => {
   const { user, token, logout } = useContext(AuthContext);
   const navigate = useNavigate();
+  useRealtimeSync(Boolean(token && user));
 
 	return (
 		<>
@@ -189,6 +192,7 @@ const AppRoutes = () => {
           <Route path="/users" element={<Users />} />
           <Route path="/roles" element={<Roles />} />
           <Route path="/chat" element={<ChatBox />} />
+          <Route path="/user-guide" element={<UserGuide user={user} />} />
           <Route path="/company-settings" element={<CompanySettings />} />
           <Route path="/audit-logs" element={<AuditLogs />} />
           <Route path="/dev-tools" element={<DevTools />} />

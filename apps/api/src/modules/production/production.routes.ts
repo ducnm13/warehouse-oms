@@ -9,6 +9,7 @@ productionRouter.put("/:id",requirePermission("production.manage"),validateParam
 productionRouter.post("/:id/confirm",requirePermission("production.start"),validateParams(numericIdParamsSchema),validateBody(productionConfirmSchema),asyncHandler(productionController.confirm));
 productionRouter.post("/:id/complete",requirePermission("production.complete"),validateParams(numericIdParamsSchema),validateBody(productionCompleteSchema),asyncHandler(productionController.complete));
 productionRouter.post("/:id/cancel",requirePermission("production.cancel"),validateParams(numericIdParamsSchema),validateBody(productionCancelSchema),asyncHandler(productionController.cancel));
+productionRouter.post("/:id/unpost",requirePermission("production.complete"),validateParams(numericIdParamsSchema),validateBody(productionActionSchema),asyncHandler(productionController.unpost));
 productionRouter.post("/:id/delete",requirePermission("production.manage"),validateParams(numericIdParamsSchema),validateBody(productionDeleteSchema),asyncHandler(productionController.delete));
 productionRouter.post("/:id/link-inventory",requirePermission("production.manage"),validateParams(numericIdParamsSchema),asyncHandler(productionController.linkInventory));
 productionRouter.post("/:id/sync-materials",requirePermission("production.manage"),validateParams(numericIdParamsSchema),asyncHandler(productionController.syncMaterials));

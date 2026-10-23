@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Bell, BellOff, MessageCircle, X } from "lucide-react";
 import { apiV1 } from "../lib/apiV1";
 import ChatBox from "../pages/ChatBox";
+import { getSocket } from "../lib/socket";
 import {
 	notificationPermission,
 	notificationsSupported,
@@ -120,6 +121,19 @@ export default function ChatWidget({ visible }: { visible: boolean }) {
 		}, 5000);
 		return () => window.clearInterval(t);
 	}, [visible, open, refreshUnread]);
+
+	useEffect(() => {
+		if (!visible) return;
+		const socket = getSocket();
+		if (!socket) return;
+		const refresh = () => void refreshUnread();
+		socket.on("chat:message", refresh);
+		socket.on("chat:conversation", refresh);
+		return () => {
+			socket.off("chat:message", refresh);
+			socket.off("chat:conversation", refresh);
+		};
+	}, [visible, refreshUnread]);
 
 	useEffect(() => {
 		if (!visible) return;

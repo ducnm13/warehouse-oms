@@ -420,7 +420,7 @@ export default function Production({
 			completionData,
 		}: {
 			d: ProductionOrderV1;
-			a: "confirm" | "complete" | "cancel";
+			a: "confirm" | "complete" | "cancel" | "unpost";
 			reason?: string;
 			completionData?: {
 				outputs: Array<{
@@ -433,7 +433,13 @@ export default function Production({
 			};
 		}) => {
 			const endpoint =
-				a === "confirm" ? "confirm" : a === "complete" ? "complete" : "cancel";
+				a === "confirm"
+					? "confirm"
+					: a === "complete"
+						? "complete"
+						: a === "unpost"
+							? "unpost"
+							: "cancel";
 			const body: any = { version: d.version };
 			if (a === "cancel") body.reason = reason;
 			if (a === "confirm") body.outputs = completionData?.outputs;
@@ -475,7 +481,9 @@ export default function Production({
 	) => {
 		// Phiếu nhập thành phẩm lấy đúng số lượng thực tế đã chốt bên Quản lý sản xuất.
 		// Lệnh đã chốt có thể phát sinh dòng bổ sung (plannedQuantity = 0) nên không dùng baseOutputs.
-		const hasActual = order.outputs.some(o => Number(o.actualQuantity || 0) > 0);
+		const hasActual = order.outputs.some(
+			o => Number(o.actualQuantity || 0) > 0,
+		);
 		const details =
 			type === "EXPORT"
 				? order.materials
@@ -488,9 +496,7 @@ export default function Production({
 		}
 		const costMap = refs.data?.costMap || new Map<number, number>();
 		// Phiếu xuất NVL: mặc định chọn kho nguyên liệu (nếu có), ngược lại lấy kho của lệnh
-		const materialWarehouseId = findMaterialWarehouseId(
-			refs.data?.warehouses,
-		);
+		const materialWarehouseId = findMaterialWarehouseId(refs.data?.warehouses);
 		const draft = {
 			productionOrderId: order.id,
 			productionOrderCode: order.code,
@@ -732,8 +738,10 @@ export default function Production({
 								<th>Ngày</th>
 								<th>Diễn giải</th>
 								<th>Thành phẩm</th>
-								<th>Trạng thái</th>
-								<th></th>
+								<th className="text-center">Đã lập đủ PN</th>
+								<th className="text-center">Đã lập đủ PX</th>
+								{/* <th>Trạng thái</th> */}
+								<th>Thao tác</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -746,12 +754,13 @@ export default function Production({
 										>
 											{d.code}
 										</button>
-										<small>v{d.version}</small>
+										{/* <small>v{d.version}</small> */}
 									</td>
 									<td>{formatDate(d.orderDate)}</td>
 									<td className="max-w-[260px] whitespace-normal text-slate-600">
 										{d.note || "—"}
 									</td>
+
 									<td>
 										{baseOutputs(d).map((x, i) => (
 											<div key={i} className="text-sm">
@@ -763,11 +772,47 @@ export default function Production({
 											</div>
 										))}
 									</td>
-									<td>
-										<span className={`erp-badge ${documentStatusMeta[documentStatusOf(d)][1]}`}>
+									<td className="text-center">
+										<input
+											type="checkbox"
+											disabled
+											className="h-4 w-4 accent-emerald-600"
+											checked={(d.links || []).some(
+												link => link.linkType === "INVENTORY_RECEIPT",
+											)}
+											title={
+												(d.links || [])
+													.filter(link => link.linkType === "INVENTORY_RECEIPT")
+													.map(link => link.linkedCode)
+													.filter(Boolean)
+													.join(", ") || "Chưa lập phiếu nhập"
+											}
+										/>
+									</td>
+									<td className="text-center">
+										<input
+											type="checkbox"
+											disabled
+											className="h-4 w-4 accent-emerald-600"
+											checked={(d.links || []).some(
+												link => link.linkType === "INVENTORY_ISSUE",
+											)}
+											title={
+												(d.links || [])
+													.filter(link => link.linkType === "INVENTORY_ISSUE")
+													.map(link => link.linkedCode)
+													.filter(Boolean)
+													.join(", ") || "Chưa lập phiếu xuất"
+											}
+										/>
+									</td>
+									{/* <td>
+										<span
+											className={`erp-badge ${documentStatusMeta[documentStatusOf(d)][1]}`}
+										>
 											{documentStatusMeta[documentStatusOf(d)][0]}
 										</span>
-									</td>
+									</td> */}
 									<td>
 										<TableActions
 											actions={[
@@ -812,6 +857,23 @@ export default function Production({
 													tone: "danger",
 													hidden: !manage || d.status !== "DRAFT",
 													onClick: () => cancel(d),
+												},
+												{
+													key: "unpost",
+													label: "Hủy lưu",
+													icon: <Undo2 size={15} />,
+													tone: "danger",
+													hidden:
+														!manage ||
+														!["IN_PROGRESS", "COMPLETED"].includes(d.status),
+													onClick: async () => {
+														if (
+															await confirm(
+																`Hủy lưu lệnh ${d.code}? Lệnh sẽ trở về nháp để chỉnh sửa.`,
+															)
+														)
+															action.mutate({ d, a: "unpost" });
+													},
 												},
 												{
 													key: "delete",
@@ -1084,7 +1146,9 @@ export default function Production({
 						</div>
 						<div className="erp-modal-body space-y-4">
 							<div className="flex flex-wrap items-center gap-2">
-								<span className={`erp-badge ${documentStatusMeta[documentStatusOf(selected)][1]}`}>
+								<span
+									className={`erp-badge ${documentStatusMeta[documentStatusOf(selected)][1]}`}
+								>
 									{documentStatusMeta[documentStatusOf(selected)][0]}
 								</span>
 								{selected.links.length > 0 && (
@@ -1237,10 +1301,16 @@ export default function Production({
 									<FileSpreadsheet size={15} /> Lập phiếu nhập
 								</button>
 							)}
-							{manage && ["DRAFT", "IN_PROGRESS"].includes(selected.status) && (
+							{manage && (
 								<button
 									type="button"
 									className="erp-btn erp-btn-primary"
+									disabled={selected.status !== "DRAFT"}
+									title={
+										selected.status === "DRAFT"
+											? "Sửa lệnh"
+											: "Lệnh đã lưu — hủy lưu để khôi phục tồn kho trước khi sửa"
+									}
 									onClick={() => {
 										setSelected(null);
 										edit(selected);
@@ -1249,6 +1319,24 @@ export default function Production({
 									<Edit size={15} /> Sửa lệnh
 								</button>
 							)}
+							{manage &&
+								["IN_PROGRESS", "COMPLETED"].includes(selected.status) && (
+									<button
+										type="button"
+										className="erp-btn erp-btn-unpost"
+										disabled={action.isPending}
+										onClick={async () => {
+											if (
+												await confirm(
+													`Hủy lưu lệnh ${selected.code}? Lệnh sẽ trở về nháp để chỉnh sửa.`,
+												)
+											)
+												action.mutate({ d: selected, a: "unpost" });
+										}}
+									>
+										<Undo2 size={15} /> Hủy lưu
+									</button>
+								)}
 							<button
 								type="button"
 								className="erp-btn"

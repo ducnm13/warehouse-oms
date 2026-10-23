@@ -114,7 +114,7 @@ const statusMeta: Record<
 		row: "bg-slate-50",
 	},
 	POSTED: {
-		label: "Đã ghi sổ",
+		label: "Đã lưu",
 		css: "bg-emerald-100 text-emerald-700",
 		row: "",
 	},
@@ -728,7 +728,7 @@ export default function SalesOrders() {
 	const openEdit = (document: SalesOrder) => {
 		if (document.status === "POSTED" || document.status === "CANCELLED") {
 			toast.error(
-				"Đơn đã ghi sổ phải bấm Bỏ ghi sổ để khôi phục tồn kho rồi mới sửa",
+				"Đơn đã lưu phải bấm Hủy lưu để khôi phục tồn kho rồi mới sửa",
 			);
 			return;
 		}
@@ -933,7 +933,7 @@ export default function SalesOrders() {
 		if (action === "delete") {
 			if (document.status === "POSTED" || document.status === "CANCELLED") {
 				toast.error(
-					"Đơn đã ghi sổ hoặc đã hủy phải dùng Hủy và đảo, không được xóa trực tiếp",
+					"Đơn đã lưu hoặc đã hủy phải dùng Hủy và đảo, không được xóa trực tiếp",
 				);
 				return;
 			}
@@ -948,7 +948,7 @@ export default function SalesOrders() {
 		if (
 			action === "post" &&
 			!(await confirm(
-				`Ghi sổ, xuất kho và ghi nhận phải thu cho ${document.code}?`,
+				`Lưu, xuất kho và ghi nhận phải thu cho ${document.code}?`,
 			))
 		)
 			return;
@@ -1104,7 +1104,7 @@ export default function SalesOrders() {
 					<h1>Bán hàng</h1>
 					<p>
 						Các chứng từ bán hàng, xuất kho và ghi nhận công nợ. Lập đơn nháp
-						rồi ghi sổ trực tiếp.
+						rồi lưu trực tiếp.
 					</p>
 				</div>
 				<Button
@@ -1126,7 +1126,7 @@ export default function SalesOrders() {
 				<div className="erp-stat">
 					<PackageCheck />
 					<div>
-						<span>Đã ghi sổ trang này</span>
+						<span>Đã lưu trang này</span>
 						<strong>
 							{orders.filter(order => order.status === "POSTED").length}
 						</strong>
@@ -1346,7 +1346,7 @@ export default function SalesOrders() {
 													},
 													{
 														key: "unpost",
-														label: "Bỏ ghi sổ",
+														label: "Hủy lưu",
 														icon: <Undo2 size={15} />,
 														tone: "warning",
 														disabled: actionMutation.isPending,
@@ -1354,7 +1354,7 @@ export default function SalesOrders() {
 														onClick: async () => {
 															if (
 																await confirm(
-																	`Bỏ ghi sổ ${order.code} để khôi phục tồn kho và sửa lại?`,
+																	`Hủy lưu ${order.code} để khôi phục tồn kho và sửa lại?`,
 																)
 															) {
 																actionMutation.mutate({
@@ -1543,7 +1543,7 @@ export default function SalesOrders() {
 										Ý định thu tiền
 										<select {...form.register("paymentIntent")}>
 											<option value="UNPAID">Ghi công nợ</option>
-											<option value="PAID">Thu ngay khi ghi sổ</option>
+											<option value="PAID">Thu ngay khi lưu</option>
 										</select>
 									</label>
 									<label>
@@ -2031,7 +2031,7 @@ export default function SalesOrders() {
 									</div>
 								) : (
 									<p className="mt-1 text-sm text-slate-400">
-										Chưa ghi sổ nên chưa phát sinh phiếu xuất kho.
+										Chưa lưu nên chưa phát sinh phiếu xuất kho.
 									</p>
 								)}
 							</div>
@@ -2166,7 +2166,7 @@ export default function SalesOrders() {
 								Number(selected.paidAmount || 0) > 0 && (
 									<div className="rounded bg-amber-50 p-3 text-sm text-amber-700">
 										Đơn đã thu {formatNumber(selected.paidAmount || 0)} ₫ nên
-										cần hủy các khoản thu tiền trong Công nợ trước khi bỏ ghi
+										cần hủy các khoản thu tiền trong Công nợ trước khi hủy lưu
 										sổ.
 									</div>
 								)}
@@ -2187,7 +2187,7 @@ export default function SalesOrders() {
 									onClick={async () => {
 										if (
 											await confirm(
-												`Bỏ ghi sổ ${selected.code} để khôi phục tồn kho và sửa lại?`,
+												`Hủy lưu ${selected.code} để khôi phục tồn kho và sửa lại?`,
 											)
 										) {
 											actionMutation.mutate(
@@ -2196,7 +2196,7 @@ export default function SalesOrders() {
 													onSuccess: response => {
 														setSelected(response.data);
 														toast.success(
-															"Đã bỏ ghi sổ, bạn có thể bấm Sửa đơn",
+															"Đã hủy lưu, bạn có thể bấm Sửa đơn",
 														);
 													},
 												},
@@ -2204,7 +2204,7 @@ export default function SalesOrders() {
 										}
 									}}
 								>
-									Bỏ ghi sổ
+									Hủy lưu
 								</button>
 							)}
 							{selected.status === "DRAFT" && (
@@ -2217,18 +2217,22 @@ export default function SalesOrders() {
 									<CheckCircle2 size={15} /> Lưu
 								</button>
 							)}
-							{selected.status === "DRAFT" && (
-								<button
-									type="button"
-									className="erp-btn erp-btn-primary"
-									onClick={() => {
-										setSelected(null);
-										openEdit(selected);
-									}}
-								>
-									<Edit size={15} /> Sửa đơn
-								</button>
-							)}
+							<button
+								type="button"
+								className="erp-btn erp-btn-primary"
+								disabled={selected.status !== "DRAFT"}
+								title={
+									selected.status === "DRAFT"
+										? "Sửa đơn"
+										: "Đơn đã lưu — hủy lưu để khôi phục tồn kho trước khi sửa"
+								}
+								onClick={() => {
+									setSelected(null);
+									openEdit(selected);
+								}}
+							>
+								<Edit size={15} /> Sửa đơn
+							</button>
 							<button
 								type="button"
 								className="erp-btn"

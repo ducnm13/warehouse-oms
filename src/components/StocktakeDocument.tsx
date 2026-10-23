@@ -30,7 +30,7 @@ export const StocktakeDocument = forwardRef<HTMLDivElement, StocktakeDocumentPro
 		return (
 			<div
 				ref={ref}
-				className="min-h-[297mm] bg-white p-16 font-serif leading-relaxed text-black"
+				className="sales-print-view min-h-[297mm] bg-white p-16 font-serif leading-relaxed text-black"
 				style={{ fontFamily: '"Montserrat", sans-serif' }}
 			>
 				<div className="mb-6 flex items-start justify-between">

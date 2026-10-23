@@ -9,7 +9,7 @@ const LEDGER_SOURCE_TYPE_LABELS: Record<string, string> = {
 	PURCHASE_CANCEL: "Hủy nhập mua hàng",
 	SALE: "Xuất bán hàng",
 	SALE_CANCEL: "Hủy xuất bán hàng",
-	SALE_UNPOST: "Bỏ ghi sổ xuất bán",
+	SALE_UNPOST: "Hủy lưu xuất bán",
 	SALES_RETURN: "Nhập trả hàng bán",
 	SALES_RETURN_CANCEL: "Hủy nhập trả hàng bán",
 	TRANSFER_SHIPMENT: "Xuất chuyển kho",

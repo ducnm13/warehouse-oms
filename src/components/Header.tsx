@@ -8,7 +8,10 @@ import {
 	User as UserIcon,
 	LogOut,
 	ChevronDown,
+	HelpCircle,
+	Compass,
 } from "lucide-react";
+import { startGuidedTour } from "./GuidedTour";
 import { User as UserType } from "../types";
 import { formatDate } from "../lib/utils";
 
@@ -82,7 +85,10 @@ const Header = ({
 	}, []);
 
 	return (
-		<header className="sticky top-0 z-40 flex h-[60px] w-full border-b border-[#e9edf7] bg-white/90 backdrop-blur">
+		<header
+			data-tour="header"
+			className="sticky top-0 z-40 flex h-[60px] w-full border-b border-[#e9edf7] bg-white/90 backdrop-blur"
+		>
 			<div className="flex flex-grow items-center justify-between px-4 md:px-6">
 				<div className="flex items-center gap-2 sm:gap-4 lg:hidden">
 					<button
@@ -108,9 +114,37 @@ const Header = ({
 
 				<div className="flex items-center gap-4">
 					<ul className="flex items-center gap-2">
+						<li>
+							<button
+								type="button"
+								onClick={startGuidedTour}
+								title="Bắt đầu tour hướng dẫn"
+								className="flex h-10 w-10 items-center justify-center rounded-xl border border-transparent bg-[#f4f7fe] text-[#707eae] transition-all hover:bg-[#e9e3ff] hover:text-primary active:scale-95"
+							>
+								<Compass size={20} />
+							</button>
+						</li>
+						<li>
+							<button
+								type="button"
+								data-tour="help"
+								onClick={() =>
+									window.open(
+										"/user-guide",
+										"_blank",
+										"noopener,noreferrer",
+									)
+								}
+								title="Trang hướng dẫn sử dụng"
+								className="flex h-10 w-10 items-center justify-center rounded-xl border border-transparent bg-[#f4f7fe] text-[#707eae] transition-all hover:bg-[#e9e3ff] hover:text-primary active:scale-95"
+							>
+								<HelpCircle size={20} />
+							</button>
+						</li>
 						{isAdmin && (
 							<li className="relative">
 								<button
+									data-tour="notifications"
 									onClick={() => setShowNotifications(!showNotifications)}
 									className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-transparent bg-[#f4f7fe] text-[#707eae] hover:bg-[#e9e3ff] hover:text-primary transition-all active:scale-95"
 								>
@@ -204,7 +238,7 @@ const Header = ({
 					</ul>
 
 					{/* KHU VỰC AVATAR CÓ DROPDOWN */}
-					<div className="relative" ref={dropdownRef}>
+					<div className="relative" ref={dropdownRef} data-tour="account">
 						<div
 							onClick={() => setIsDropdownOpen(!isDropdownOpen)}
 							className="flex items-center gap-3 cursor-pointer hover:bg-slate-50 p-1.5 rounded-2xl transition-all duration-200 select-none group"

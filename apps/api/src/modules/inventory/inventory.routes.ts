@@ -16,6 +16,7 @@ inventoryRouter.post("/documents", requirePermission("inventory.manage"), valida
 inventoryRouter.put("/documents/:id", requirePermission("inventory.manage"), validateParams(numericIdParamsSchema), validateBody(inventoryUpdateSchema), asyncHandler(inventoryController.update));
 inventoryRouter.post("/documents/:id/post", requirePermission("inventory.post"), validateParams(numericIdParamsSchema), validateBody(inventoryActionSchema), asyncHandler(inventoryController.post));
 inventoryRouter.post("/documents/:id/cancel", requirePermission("inventory.cancel"), validateParams(numericIdParamsSchema), validateBody(inventoryCancelSchema), asyncHandler(inventoryController.cancel));
+inventoryRouter.post("/documents/:id/unpost", requirePermission("inventory.post"), validateParams(numericIdParamsSchema), validateBody(inventoryActionSchema), asyncHandler(inventoryController.unpost));
 inventoryRouter.post("/documents/:id/delete", requirePermission("inventory.manage"), validateParams(numericIdParamsSchema), validateBody(inventoryDeleteSchema), asyncHandler(inventoryController.delete));
 
 inventoryRouter.get("/stocktakes", requirePermission("inventory.view"), validateQuery(stocktakeListQuerySchema), asyncHandler(stocktakeController.list));
@@ -24,3 +25,4 @@ inventoryRouter.post("/stocktakes", requirePermission("inventory.stocktake"), va
 inventoryRouter.put("/stocktakes/:id", requirePermission("inventory.stocktake"), validateParams(numericIdParamsSchema), validateBody(stocktakeUpdateSchema), asyncHandler(stocktakeController.update));
 inventoryRouter.post("/stocktakes/:id/complete", requirePermission("inventory.stocktake"), validateParams(numericIdParamsSchema), validateBody(inventoryActionSchema), asyncHandler(stocktakeController.complete));
 inventoryRouter.post("/stocktakes/:id/cancel", requirePermission("inventory.cancel"), validateParams(numericIdParamsSchema), validateBody(inventoryCancelSchema), asyncHandler(stocktakeController.cancel));
+inventoryRouter.post("/stocktakes/:id/unpost", requirePermission("inventory.stocktake"), validateParams(numericIdParamsSchema), validateBody(inventoryActionSchema), asyncHandler(stocktakeController.unpost));

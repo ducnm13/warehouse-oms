@@ -14,6 +14,7 @@ import {
 	XCircle,
 } from "lucide-react";
 import toast from "../components/ui/toast";
+import { confirm } from "../components/ui/confirm";
 import ExcelImportWizard, { type ExcelImportField } from "../components/ExcelImportWizard";
 import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
@@ -72,7 +73,7 @@ interface ListResponse {
 
 const STATUS_LABEL: Record<string, string> = {
 	DRAFT: "Nháp",
-	POSTED: "Đã ghi sổ",
+	POSTED: "Đã lưu",
 	CANCELLED: "Đã hủy",
 };
 const STATUS_COLOR: Record<string, string> = {
@@ -336,6 +337,20 @@ export default function OpeningInventory() {
 		onError: (e: Error) => toast.error(e.message),
 	});
 
+	const unpost = useMutation({
+		mutationFn: (doc: OpeningDocument) =>
+			apiV1<OpeningDocument>(`/api/v1/opening-inventory/${doc.id}/unpost`, {
+				method: "POST",
+				body: JSON.stringify({ version: doc.version }),
+			}),
+		onSuccess: r => {
+			toast.success(r.message);
+			setViewDoc(null);
+			void qc.invalidateQueries({ queryKey: ["opening-inventory"], exact: false });
+		},
+		onError: (e: Error) => toast.error(e.message),
+	});
+
 	const openCreate = () => {
 		setEditing(null);
 		setForm({
@@ -397,6 +412,22 @@ export default function OpeningInventory() {
 			version: detail.version,
 		});
 		setOpen(true);
+	};
+
+	const openPrint = async (doc: OpeningDocument) => {
+		let detail = doc;
+		if (!doc.lines?.length) {
+			try {
+				const res = await apiV1<OpeningDocument>(
+					`/api/v1/opening-inventory/${doc.id}`,
+				);
+				if (res.data) detail = res.data;
+			} catch (e: any) {
+				toast.error(e?.message || "Không tải được chi tiết phiếu");
+				return;
+			}
+		}
+		setPrintTarget(detail);
 	};
 
 	const updateLine = (i: number, patch: Partial<OpeningLine>) =>
@@ -575,7 +606,7 @@ export default function OpeningInventory() {
 					>
 						<option value="">Mọi trạng thái</option>
 						<option value="DRAFT">Nháp</option>
-						<option value="POSTED">Đã ghi sổ</option>
+						<option value="POSTED">Đã lưu</option>
 						<option value="CANCELLED">Đã hủy</option>
 					</select>
 					<select
@@ -664,7 +695,7 @@ export default function OpeningInventory() {
 														key: "print",
 														label: "In biên bản",
 														icon: <Printer size={15} />,
-														onClick: () => setPrintTarget(doc),
+														onClick: () => void openPrint(doc),
 													},
 												]}
 											/>
@@ -788,21 +819,27 @@ export default function OpeningInventory() {
 								</button>
 								<button
 									className="erp-btn"
-									onClick={() => setPrintTarget(viewDocDetail)}
+									onClick={() => viewDocDetail && void openPrint(viewDocDetail)}
 								>
 									<Printer size={15} /> In biên bản
 								</button>
+								<button
+									className="erp-btn"
+									disabled={viewDocDetail.status !== "DRAFT"}
+									title={
+										viewDocDetail.status === "DRAFT"
+											? "Sửa phiếu"
+											: "Phiếu đã lưu — hủy lưu để khôi phục tồn kho trước khi sửa"
+									}
+									onClick={() => {
+										openEdit(viewDocDetail);
+										setViewDoc(null);
+									}}
+								>
+									<Edit size={15} /> Sửa
+								</button>
 								{viewDocDetail.status === "DRAFT" && (
 									<>
-										<button
-											className="erp-btn"
-											onClick={() => {
-												openEdit(viewDocDetail);
-												setViewDoc(null);
-											}}
-										>
-											<Edit size={15} /> Sửa
-										</button>
 										<button
 											className="erp-btn erp-btn-post"
 											disabled={post.isPending}
@@ -816,12 +853,17 @@ export default function OpeningInventory() {
 							{viewDocDetail.status === "POSTED" && (
 								<button
 									className="erp-btn erp-btn-unpost"
-									onClick={() => {
-										setCancelTarget(viewDocDetail);
-										setViewDoc(null);
+									disabled={unpost.isPending}
+									onClick={async () => {
+										if (
+											await confirm(
+												`Hủy lưu phiếu ${viewDocDetail.code}? Tồn kho sẽ được hoàn lại và phiếu trở về nháp.`,
+											)
+										)
+											unpost.mutate(viewDocDetail);
 									}}
 								>
-									<XCircle size={15} /> Bỏ ghi
+									<XCircle size={15} /> Hủy lưu
 								</button>
 							)}
 						</div>
@@ -838,7 +880,7 @@ export default function OpeningInventory() {
 							<div>
 								<h2>Hủy phiếu {cancelTarget.code}</h2>
 								<p className="text-red-500">
-									Thao tác này sẽ hoàn trả tồn kho đã ghi sổ
+									Thao tác này sẽ hoàn trả tồn kho đã lưu
 								</p>
 							</div>
 							<button onClick={() => setCancelTarget(null)}>
@@ -899,7 +941,7 @@ export default function OpeningInventory() {
 							<div className="erp-modal-body space-y-5">
 								{editing?.status === "POSTED" && (
 									<div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-										Phiếu đã ghi sổ: chỉ có thể sửa <b>ngày chứng từ</b> và <b>ghi chú</b>. Kho và hàng hóa đã khóa. Đổi ngày sẽ cập nhật lại sổ kho để tính tồn theo ngày.
+										Phiếu đã lưu: chỉ có thể sửa <b>ngày chứng từ</b> và <b>ghi chú</b>. Kho và hàng hóa đã khóa. Đổi ngày sẽ cập nhật lại sổ kho để tính tồn theo ngày.
 									</div>
 								)}
 								{/* Header fields */}
@@ -1133,6 +1175,7 @@ export default function OpeningInventory() {
 			open={!!printTarget}
 			title={printTarget ? `Xem trước biên bản ${printTarget.code}` : "Xem trước in"}
 			fill={printTarget ? ((worksheet: any, company: any) => {
+				const lines = printTarget.lines || [];
 				fillGenericDocument(
 					worksheet,
 					company as CompanyPrintProfile | null,
@@ -1142,12 +1185,12 @@ export default function OpeningInventory() {
 						documentDate: printTarget.documentDate,
 						partner: printTarget.warehouse?.name || "",
 						dienGiai: printTarget.note || "",
-						total: printTarget.lines.reduce(
+						total: lines.reduce(
 							(sum, l) =>
 								sum + Number(l.totalValue ?? l.quantity * l.unitCost),
 							0,
 						),
-						rows: printTarget.lines.map(
+						rows: lines.map(
 							(l, index) => ({
 								stt: index + 1,
 								sku: l.sku || l.packaging?.sku || "",

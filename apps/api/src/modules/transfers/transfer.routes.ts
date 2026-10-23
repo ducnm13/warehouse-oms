@@ -14,4 +14,5 @@ transferRouter.put("/:id", requirePermission("transfer.create"), validateParams(
 transferRouter.post("/:id/ship", requirePermission("transfer.ship"), validateParams(numericIdParamsSchema), validateBody(transferActionSchema), asyncHandler(transferController.ship));
 transferRouter.post("/:id/receive", requirePermission("transfer.receive"), validateParams(numericIdParamsSchema), validateBody(transferActionSchema), asyncHandler(transferController.receive));
 transferRouter.post("/:id/cancel", requirePermission("transfer.cancel"), validateParams(numericIdParamsSchema), validateBody(transferCancelSchema), asyncHandler(transferController.cancel));
+transferRouter.post("/:id/unpost", requirePermission("transfer.ship"), validateParams(numericIdParamsSchema), validateBody(transferActionSchema), asyncHandler(transferController.unpost));
 transferRouter.post("/:id/delete", requirePermission("transfer.create"), validateParams(numericIdParamsSchema), validateBody(transferActionSchema), asyncHandler(transferController.remove));

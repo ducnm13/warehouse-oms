@@ -78,6 +78,69 @@ async function averageCost(tx: any, packagingId: number, warehouseId: number) {
   return Number(latestPurchase?.unitPrice || 0);
 }
 
+async function applyCustomerCredit(tx: any, document: any, userId: number, occurredAt: Date) {
+  const total = Number(document.totalAmount || 0);
+  if (total <= 0.005) return 0;
+  await tx.$queryRawUnsafe("SELECT id FROM receivable_transactions WHERE customerId=? FOR UPDATE", document.customerId);
+  const sources = await tx.$queryRawUnsafe(
+    `SELECT s.id orderId, s.code orderCode, COALESCE(SUM(r.amount),0) balance
+     FROM sales_orders s
+     JOIN receivable_transactions r ON r.sourceId=s.id AND r.customerId=s.customerId
+     WHERE s.customerId=? AND s.status IN ('POSTED','FULFILLED')
+     GROUP BY s.id, s.code
+     HAVING COALESCE(SUM(r.amount),0) < -0.005
+     ORDER BY s.id`,
+    document.customerId,
+  );
+  let remaining = total, applied = 0;
+  for (const source of sources) {
+    if (remaining <= 0.005) break;
+    const take = Math.min(remaining, -Number(source.balance));
+    if (take <= 0.005) continue;
+    await tx.receivable_transactions.create({ data: {
+      customerId: document.customerId, sourceType: "CREDIT_TRANSFER", sourceId: Number(source.orderId),
+      sourceCode: document.code, entryType: "CREDIT_OUT", amount: money(take), occurredAt, createdBy: userId,
+    } });
+    await tx.receivable_transactions.create({ data: {
+      customerId: document.customerId, sourceType: "SALE_CREDIT", sourceId: document.id,
+      sourceCode: String(source.orderCode), entryType: "CREDIT_IN", amount: money(-take), occurredAt, createdBy: userId,
+    } });
+    await tx.sales_document_links_v1.create({ data: {
+      salesOrderId: document.id, linkType: "CREDIT_APPLIED",
+      linkedId: BigInt(source.orderId), linkedCode: String(source.orderCode),
+    } });
+    applied += take;
+    remaining -= take;
+  }
+  return applied;
+}
+
+async function restoreSaleCredit(tx: any, document: any, userId: number, occurredAt: Date) {
+  const links = await tx.sales_document_links_v1.findMany({
+    where: { salesOrderId: document.id, linkType: "CREDIT_APPLIED" },
+  });
+  for (const link of links) {
+    const entry = await tx.receivable_transactions.findFirst({
+      where: {
+        customerId: document.customerId, sourceType: "SALE_CREDIT", sourceId: document.id,
+        sourceCode: String(link.linkedCode || ""), entryType: "CREDIT_IN",
+      },
+    });
+    if (!entry) continue;
+    const amount = Math.abs(Number(entry.amount));
+    await tx.receivable_transactions.create({ data: {
+      customerId: document.customerId, sourceType: "SALE_CREDIT_CANCEL", sourceId: document.id,
+      sourceCode: String(link.linkedCode || ""), entryType: "CREDIT_IN_REVERSAL",
+      amount: money(amount), reversalOfId: entry.id, occurredAt, createdBy: userId,
+    } });
+    await tx.receivable_transactions.create({ data: {
+      customerId: document.customerId, sourceType: "CREDIT_RESTORE", sourceId: Number(link.linkedId),
+      sourceCode: document.code, entryType: "CREDIT_OUT_REVERSAL",
+      amount: money(-amount), reversalOfId: entry.id, occurredAt, createdBy: userId,
+    } });
+  }
+}
+
 export const salesService = {
   async list(query: { page: number; limit: number; search?: string; status?: string }) {
     const where: any = { deletedAt: null };
@@ -120,7 +183,7 @@ export const salesService = {
       const current = await lockOrder(tx, id);
       assertVersion(current, version);
       if (current.status !== "DRAFT") {
-        throw new HttpError(409, "SALES_NOT_DELETABLE", "Đơn đã ghi sổ phải hủy và đảo, không được xóa trực tiếp");
+        throw new HttpError(409, "SALES_NOT_DELETABLE", "Đơn đã lưu phải hủy và đảo, không được xóa trực tiếp");
       }
       await tx.sales_document_links_v1.deleteMany({ where: { salesOrderId: id } });
       await tx.promotion_usage_logs.deleteMany({ where: { salesOrderId: id } });
@@ -155,7 +218,7 @@ export const salesService = {
     const totals = calculate(input);
     return prisma.$transaction(async tx => {
       const current = await lockOrder(tx, id);
-      if (current.status !== "DRAFT") throw new HttpError(409, "SALES_NOT_EDITABLE", "Đơn đã ghi sổ phải bỏ ghi sổ trước khi sửa");
+      if (current.status !== "DRAFT") throw new HttpError(409, "SALES_NOT_EDITABLE", "Đơn đã lưu phải hủy lưu trước khi sửa");
       assertVersion(current, input.version);
       await tx.sales_order_details.deleteMany({ where: { orderId: id } });
       const updated = await tx.sales_orders.update({
@@ -176,7 +239,7 @@ export const salesService = {
   async post(id: number, version: number, userId: number) {
     return prisma.$transaction(async tx => {
       const current = await lockOrder(tx, id);
-      if (current.status !== "DRAFT") throw new HttpError(409, "SALES_NOT_DRAFT", "Chỉ được ghi sổ đơn nháp");
+      if (current.status !== "DRAFT") throw new HttpError(409, "SALES_NOT_DRAFT", "Chỉ được lưu đơn nháp");
       assertVersion(current, version);
       const document = await tx.sales_orders.findUnique({ where: { id }, include: salesInclude });
       if (!document) throw new HttpError(404, "SALES_NOT_FOUND", "Không tìm thấy chứng từ bán hàng");
@@ -233,18 +296,21 @@ export const salesService = {
       await tx.sales_document_links_v1.create({ data: { salesOrderId: id, linkType: "INVENTORY_ISSUE", linkedId: BigInt(inventoryTransaction.id), linkedCode: transactionCode } });
       await tx.sales_document_links_v1.create({ data: { salesOrderId: id, linkType: "RECEIVABLE_CHARGE", linkedId: charge.id, linkedCode: document.code } });
 
-      let paidAmount = 0;
-      let paymentStatus = "UNPAID";
+      const creditApplied = await applyCustomerCredit(tx, document, userId, postedAt);
+      let paidAmount = creditApplied;
+      let paymentStatus = creditApplied >= Number(document.totalAmount || 0) - 0.001 ? "PAID" : creditApplied > 0.005 ? "PARTIAL" : "UNPAID";
       if (document.paymentIntent === "PAID") {
-        paidAmount = Number(document.totalAmount || 0);
+        const cashAmount = Math.max(0, Number(document.totalAmount || 0) - creditApplied);
+        if (cashAmount > 0.005)
+          await this.createPaymentInTransaction(tx, document, cashAmount, document.orderDate, document.paymentMethod || "CASH", `Thu ngay ${document.code}`, userId);
+        paidAmount = creditApplied + cashAmount;
         paymentStatus = "PAID";
-        await this.createPaymentInTransaction(tx, document, paidAmount, document.orderDate, document.paymentMethod || "CASH", `Thu ngay ${document.code}`, userId);
       }
       const updated = await tx.sales_orders.update({ where: { id }, data: {
         status: "FULFILLED", fulfilledAt: now, postedAt, postedBy: userId, inventoryTransactionId: inventoryTransaction.id,
         dueDate: document.dueDate || document.orderDate, paidAmount, paymentStatus, version: { increment: 1 }, updatedAt: now,
       }, include: salesInclude });
-      await tx.audit_logs.create({ data: { action: "Ghi sổ bán hàng v1", details: document.code, userId, userName: String(userId), createdAt: now } });
+      await tx.audit_logs.create({ data: { action: "Lưu bán hàng v1", details: document.code, userId, userName: String(userId), createdAt: now } });
       return mapSalesDocument(updated);
     }, { timeout: 30_000 });
   },
@@ -272,7 +338,7 @@ export const salesService = {
   async receivePayment(id: number, input: SalesPaymentInput, userId: number) {
     return prisma.$transaction(async tx => {
       const current = await lockOrder(tx, id);
-      if (!["POSTED", "FULFILLED"].includes(current.status)) throw new HttpError(409, "SALES_NOT_POSTED", "Chỉ được thu tiền chứng từ đã ghi sổ");
+      if (!["POSTED", "FULFILLED"].includes(current.status)) throw new HttpError(409, "SALES_NOT_POSTED", "Chỉ được thu tiền chứng từ đã lưu");
       assertVersion(current, input.version);
       const document = await tx.sales_orders.findUnique({ where: { id }, include: salesInclude });
       if (!document) throw new HttpError(404, "SALES_NOT_FOUND", "Không tìm thấy chứng từ bán hàng");
@@ -291,11 +357,11 @@ export const salesService = {
   async cancel(id: number, input: SalesCancelInput, userId: number) {
     return prisma.$transaction(async tx => {
       const current = await lockOrder(tx, id);
-      if (!["POSTED", "FULFILLED"].includes(current.status)) throw new HttpError(409, "SALES_NOT_POSTED", "Chỉ được hủy chứng từ đã ghi sổ");
+      if (!["POSTED", "FULFILLED"].includes(current.status)) throw new HttpError(409, "SALES_NOT_POSTED", "Chỉ được hủy chứng từ đã lưu");
       assertVersion(current, input.version);
       const document = await tx.sales_orders.findUnique({ where: { id }, include: salesInclude });
       if (!document) throw new HttpError(404, "SALES_NOT_FOUND", "Không tìm thấy chứng từ bán hàng");
-      if (await tx.sales_returns.count({ where: { originalSalesOrderId: id, status: "POSTED" } })) throw new HttpError(409, "POSTED_RETURN_EXISTS", "Hãy hủy phiếu trả hàng đã ghi sổ trước khi hủy đơn bán");
+      if (await tx.sales_returns.count({ where: { originalSalesOrderId: id, status: "POSTED" } })) throw new HttpError(409, "POSTED_RETURN_EXISTS", "Hãy hủy phiếu trả hàng đã lưu trước khi hủy đơn bán");
       const debtPayments = await tx.$queryRawUnsafe<any[]>(`SELECT COUNT(*) count
         FROM payment_receipt_allocations a JOIN payment_receipts r ON r.id=a.paymentReceiptId
         WHERE a.salesOrderId=? AND r.sourceModule='DEBT_V1' AND r.status='POSTED'`, id);
@@ -328,18 +394,24 @@ export const salesService = {
       } });
       await tx.sales_document_links_v1.create({ data: { salesOrderId: id, linkType: "RECEIVABLE_REVERSAL", linkedId: reversal.id, linkedCode: document.code } });
 
-      if (Number(document.paidAmount || 0) > 0) {
+      const creditAppliedRows = await tx.$queryRawUnsafe<any[]>(
+        "SELECT COALESCE(SUM(-amount),0) applied FROM receivable_transactions WHERE sourceId=? AND customerId=? AND sourceType='SALE_CREDIT' AND entryType='CREDIT_IN'",
+        id, document.customerId,
+      );
+      const creditApplied = Number(creditAppliedRows[0]?.applied || 0);
+      const cashPaid = Math.max(0, Number(document.paidAmount || 0) - creditApplied);
+      if (cashPaid > 0.005) {
         await tx.payment_receipts.updateMany({
           where: { id: { in: links.filter(link => link.linkType === "PAYMENT_RECEIPT").map(link => link.linkedId) } }, data: { status: "CANCELLED" },
         });
         const reversalReceiptCode = `H-PT-${document.code}`;
         const reversalReceipt = await tx.payment_receipts.create({ data: {
           code: reversalReceiptCode, customerId: document.customerId, receiptDate: dateAtNoon(now.slice(0, 10)),
-          method: document.paymentMethod || "BANK", amount: money(Number(document.paidAmount)), direction: "REVERSAL",
+          method: document.paymentMethod || "BANK", amount: money(cashPaid), direction: "REVERSAL",
           note: `Hoàn nguyên thanh toán ${document.code}`, status: "POSTED", createdBy: userId,
         } });
         await tx.payment_receipt_allocations.create({ data: {
-          paymentReceiptId: reversalReceipt.id, salesOrderId: id, amount: money(-Number(document.paidAmount)),
+          paymentReceiptId: reversalReceipt.id, salesOrderId: id, amount: money(-cashPaid),
         } });
         await tx.sales_document_links_v1.create({ data: {
           salesOrderId: id, linkType: "PAYMENT_REVERSAL", linkedId: reversalReceipt.id, linkedCode: reversalReceiptCode,
@@ -351,10 +423,11 @@ export const salesService = {
           reversalOfId: entry.id, createdBy: userId,
         } });
         await tx.customer_payments.create({ data: {
-          customerId: document.customerId, salesOrderId: id, paymentDate: now.slice(0, 10), amount: -Number(document.paidAmount),
+          customerId: document.customerId, salesOrderId: id, paymentDate: now.slice(0, 10), amount: -cashPaid,
           method: document.paymentMethod || "BANK", note: `Hoàn nguyên thanh toán ${document.code}`, createdBy: userId, createdAt: now,
         } });
       }
+      await restoreSaleCredit(tx, document, userId, cancelledAt);
       const updated = await tx.sales_orders.update({ where: { id }, data: {
         status: "CANCELLED", cancelledAt, cancelledBy: userId, cancelReason: input.reason,
         paidAmount: 0, paymentStatus: "UNPAID", version: { increment: 1 }, updatedAt: now,
@@ -367,12 +440,17 @@ export const salesService = {
   async unpost(id: number, version: number, userId: number) {
     return prisma.$transaction(async tx => {
       const current = await lockOrder(tx, id);
-      if (!["POSTED", "FULFILLED"].includes(current.status)) throw new HttpError(409, "SALES_NOT_POSTED", "Chỉ được bỏ ghi sổ chứng từ đã ghi sổ");
+      if (!["POSTED", "FULFILLED"].includes(current.status)) throw new HttpError(409, "SALES_NOT_POSTED", "Chỉ được hủy lưu chứng từ đã lưu");
       assertVersion(current, version);
       const document = await tx.sales_orders.findUnique({ where: { id }, include: salesInclude });
       if (!document) throw new HttpError(404, "SALES_NOT_FOUND", "Không tìm thấy chứng từ bán hàng");
-      if (await tx.sales_returns.count({ where: { originalSalesOrderId: id, status: "POSTED" } })) throw new HttpError(409, "POSTED_RETURN_EXISTS", "Hãy hủy phiếu trả hàng đã ghi sổ trước khi bỏ ghi sổ");
-      if (Number(document.paidAmount || 0) > 0.001) throw new HttpError(409, "PAYMENT_EXISTS", "Hãy hủy các khoản thu tiền trước khi bỏ ghi sổ");
+      if (await tx.sales_returns.count({ where: { originalSalesOrderId: id, status: "POSTED" } })) throw new HttpError(409, "POSTED_RETURN_EXISTS", "Hãy hủy phiếu trả hàng đã lưu trước khi hủy lưu");
+      const creditAppliedRows = await tx.$queryRawUnsafe<any[]>(
+        "SELECT COALESCE(SUM(-amount),0) applied FROM receivable_transactions WHERE sourceId=? AND customerId=? AND sourceType='SALE_CREDIT' AND entryType='CREDIT_IN'",
+        id, document.customerId,
+      );
+      const creditApplied = Number(creditAppliedRows[0]?.applied || 0);
+      if (Number(document.paidAmount || 0) > creditApplied + 0.001) throw new HttpError(409, "PAYMENT_EXISTS", "Hãy hủy các khoản thu tiền trước khi hủy lưu");
       const now = nowIso();
       const cancelledAt = new Date();
       const links = document.sales_document_links_v1;
@@ -398,15 +476,16 @@ export const salesService = {
           await tx.inventorytransactions.delete({ where: { id: issueTransaction.id } });
         }
       }
+      await restoreSaleCredit(tx, document, userId, cancelledAt);
       await tx.receivable_transactions.deleteMany({ where: { sourceType: "SALE", sourceId: id, entryType: "CHARGE" } });
-      await tx.sales_document_links_v1.deleteMany({ where: { salesOrderId: id, linkType: { in: ["INVENTORY_ISSUE", "RECEIVABLE_CHARGE"] } } });
+      await tx.sales_document_links_v1.deleteMany({ where: { salesOrderId: id, linkType: { in: ["INVENTORY_ISSUE", "RECEIVABLE_CHARGE", "CREDIT_APPLIED"] } } });
       await tx.promotion_usage_logs.deleteMany({ where: { salesOrderId: id } });
       const updated = await tx.sales_orders.update({ where: { id }, data: {
         status: "DRAFT", postedAt: null, postedBy: null, fulfilledAt: null,
         inventoryTransactionId: null, paidAmount: 0, paymentStatus: "UNPAID",
         version: { increment: 1 }, updatedAt: now,
       }, include: salesInclude });
-      await tx.audit_logs.create({ data: { action: "Bỏ ghi sổ bán hàng v1", details: `${document.code}: khôi phục tồn kho`, userId, userName: String(userId), createdAt: now } });
+      await tx.audit_logs.create({ data: { action: "Hủy lưu bán hàng v1", details: `${document.code}: khôi phục tồn kho`, userId, userName: String(userId), createdAt: now } });
       return mapSalesDocument(updated);
     }, { timeout: 30_000 });
   },

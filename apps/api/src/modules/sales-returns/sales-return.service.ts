@@ -14,7 +14,7 @@ async function build(input: SalesReturnDraftInput) {
     salesReturnRepository.sale(input.originalSalesOrderId),
     salesReturnRepository.warehouse(input.warehouseId),
   ]);
-  if (!sale || sale.status !== "FULFILLED") throw new HttpError(422, "ORIGINAL_SALE_NOT_POSTED", "Chỉ trả hàng từ đơn bán đã ghi sổ");
+  if (!sale || sale.status !== "FULFILLED") throw new HttpError(422, "ORIGINAL_SALE_NOT_POSTED", "Chỉ trả hàng từ đơn bán đã lưu");
   if (!warehouse) throw new HttpError(422, "WAREHOUSE_NOT_FOUND", "Kho nhận không tồn tại");
   const ids = new Set(input.lines.map(line => line.originalSalesOrderLineId));
   const originals = sale.sales_order_details.filter(line => ids.has(line.id));
@@ -87,6 +87,16 @@ async function updatePaymentProjection(tx: any, salesOrderId: number, customerId
   return remaining;
 }
 
+async function assertReturnCreditUnused(tx: any, document: any) {
+  const rows = await tx.$queryRawUnsafe(
+    `SELECT COALESCE(SUM(amount),0) consumed FROM receivable_transactions
+     WHERE sourceId=? AND customerId=? AND sourceType='CREDIT_TRANSFER' AND entryType='CREDIT_OUT'`,
+    document.originalSalesOrderId, document.customerId,
+  ) as any[];
+  if (Number(rows[0]?.consumed || 0) > 0.005)
+    throw new HttpError(409, "RETURN_CREDIT_ALREADY_USED", "Khoản credit của phiếu trả đã được trừ vào đơn bán khác; không thể hủy lưu");
+}
+
 export const salesReturnService = {
   async list(query: any) {
     const where: any = {
@@ -152,13 +162,12 @@ export const salesReturnService = {
   async post(id: number, version: number, userId: number) {
     return prisma.$transaction(async tx => {
       const current = await lock(tx, id);
-      if (current.status !== "DRAFT") throw new HttpError(409, "RETURN_NOT_DRAFT", "Chỉ phiếu nháp được ghi sổ");
+      if (current.status !== "DRAFT") throw new HttpError(409, "RETURN_NOT_DRAFT", "Chỉ phiếu nháp được lưu");
       if (Number(current.version) !== version) throw new HttpError(409, "VERSION_CONFLICT", "Phiếu đã được cập nhật");
       const document = await tx.sales_returns.findUnique({ where: { id }, include: salesReturnInclude });
       if (!document) throw new HttpError(404, "SALES_RETURN_NOT_FOUND", "Không tìm thấy phiếu trả hàng");
+      if (!document.lines.length) throw new HttpError(422, "RETURN_LINES_REQUIRED", "Phiếu chưa có mặt hàng trả, vui lòng bổ sung trước khi lưu");
       await tx.$queryRawUnsafe("SELECT id FROM sales_orders WHERE id=? FOR UPDATE", document.originalSalesOrderId);
-      const remainingBefore = await outstanding(tx, document.originalSalesOrderId, document.customerId);
-      if (Number(document.totalAmount) > remainingBefore + 0.005) throw new HttpError(409, "RETURN_CREDIT_EXCEEDS_DEBT", "Giá trị trả vượt công nợ; V1 chưa hỗ trợ hoàn tiền");
       for (const line of document.lines) {
         const quantities = await tx.$queryRawUnsafe(`SELECT COALESCE(SUM(rl.quantity),0) returned
           FROM sales_return_lines rl JOIN sales_returns r ON r.id=rl.salesReturnId
@@ -200,7 +209,7 @@ export const salesReturnService = {
         { salesReturnId: id, linkType: "RECEIVABLE_CREDIT", linkedId: credit.id, linkedCode: document.code },
       ] });
       const row = await tx.sales_returns.update({ where: { id }, data: { status: "POSTED", postedAt: occurredAt, postedBy: userId, version: { increment: 1 }, updatedAt: occurredAt }, include: salesReturnInclude });
-      await tx.audit_logs.create({ data: { action: "Ghi sổ trả hàng bán v1", details: document.code, userId, userName: String(userId), createdAt: now } });
+      await tx.audit_logs.create({ data: { action: "Lưu trả hàng bán v1", details: document.code, userId, userName: String(userId), createdAt: now } });
       return mapSalesReturn(row);
     }, { timeout: 30_000 });
   },
@@ -208,11 +217,12 @@ export const salesReturnService = {
   async cancel(id: number, input: SalesReturnCancelInput, userId: number) {
     return prisma.$transaction(async tx => {
       const current = await lock(tx, id);
-      if (current.status !== "POSTED") throw new HttpError(409, "RETURN_NOT_POSTED", "Chỉ phiếu đã ghi sổ được hủy");
+      if (current.status !== "POSTED") throw new HttpError(409, "RETURN_NOT_POSTED", "Chỉ phiếu đã lưu được hủy");
       if (Number(current.version) !== input.version) throw new HttpError(409, "VERSION_CONFLICT", "Phiếu đã được cập nhật");
       const document = await tx.sales_returns.findUnique({ where: { id }, include: salesReturnInclude });
       if (!document) throw new HttpError(404, "SALES_RETURN_NOT_FOUND", "Không tìm thấy phiếu trả hàng");
       await tx.$queryRawUnsafe("SELECT id FROM sales_orders WHERE id=? FOR UPDATE", document.originalSalesOrderId);
+      await assertReturnCreditUnused(tx, document);
       const now = nowIso(), occurredAt = new Date();
       for (const line of document.lines) {
         const balances = await tx.$queryRawUnsafe(
@@ -252,5 +262,70 @@ export const salesReturnService = {
       await tx.audit_logs.create({ data: { action: "Hủy trả hàng bán v1", details: `${document.code}: ${input.reason}`, userId, userName: String(userId), createdAt: now } });
       return mapSalesReturn(row);
     }, { timeout: 30_000 });
+  },
+
+  async unpost(id: number, version: number, userId: number) {
+    return prisma.$transaction(async tx => {
+      const current = await lock(tx, id);
+      if (current.status !== "POSTED") throw new HttpError(409, "RETURN_NOT_POSTED", "Chỉ phiếu đã lưu được hủy lưu");
+      if (Number(current.version) !== version) throw new HttpError(409, "VERSION_CONFLICT", "Phiếu đã được cập nhật");
+      const document = await tx.sales_returns.findUnique({ where: { id }, include: salesReturnInclude });
+      if (!document) throw new HttpError(404, "SALES_RETURN_NOT_FOUND", "Không tìm thấy phiếu trả hàng");
+      await tx.$queryRawUnsafe("SELECT id FROM sales_orders WHERE id=? FOR UPDATE", document.originalSalesOrderId);
+      await assertReturnCreditUnused(tx, document);
+      const now = nowIso(), occurredAt = new Date();
+      for (const line of document.lines) {
+        const balances = await tx.$queryRawUnsafe(
+          "SELECT stock_quantity FROM productwarehouses WHERE packagingId=? AND warehouseId=? FOR UPDATE",
+          line.packagingId, document.warehouseId,
+        ) as any[];
+        if (Number(balances[0]?.stock_quantity || 0) < Number(line.quantity)) throw new HttpError(409, "RETURN_REVERSAL_STOCK_SHORTAGE", "Không đủ tồn để đảo phiếu trả");
+        const original = await tx.inventory_ledger.findFirst({ where: { sourceType: "SALES_RETURN", sourceId: id, sourceLineId: line.id } });
+        if (!original) throw new HttpError(409, "RETURN_INVENTORY_LEDGER_NOT_FOUND", "Không tìm thấy ledger nhập trả gốc");
+        await tx.productwarehouses.update({
+          where: { packagingId_warehouseId: { packagingId: line.packagingId, warehouseId: document.warehouseId } },
+          data: { stock_quantity: { decrement: Number(line.quantity) }, updatedAt: now },
+        });
+        await tx.inventory_ledger.create({ data: {
+          sourceType: "SALES_RETURN_CANCEL", sourceId: id, sourceLineId: line.id, documentCode: document.code, direction: "OUT",
+          packagingId: line.packagingId, warehouseId: document.warehouseId, quantity: line.quantity,
+          unitCost: line.unitCost, totalValue: line.costAmount, reversalOfId: original.id, occurredAt, createdBy: userId,
+        } });
+      }
+      const credit = await tx.receivable_transactions.findFirst({ where: {
+        sourceType: "SALES_RETURN", sourceId: document.originalSalesOrderId, sourceCode: document.code, entryType: "CREDIT",
+      } });
+      if (!credit) throw new HttpError(409, "RETURN_CREDIT_NOT_FOUND", "Không tìm thấy credit gốc");
+      await tx.receivable_transactions.create({ data: {
+        customerId: document.customerId, sourceType: "SALES_RETURN_CANCEL", sourceId: document.originalSalesOrderId,
+        sourceCode: document.code, entryType: "CREDIT_REVERSAL", amount: money(Number(document.totalAmount)),
+        reversalOfId: credit.id, occurredAt, createdBy: userId,
+      } });
+      await updatePaymentProjection(tx, document.originalSalesOrderId, document.customerId, now);
+      await tx.sales_return_document_links.deleteMany({ where: { salesReturnId: id } });
+      const autoDoc = await tx.inventorytransactions.findUnique({ where: { code: `PN-${document.code}` } });
+      if (autoDoc) {
+        await tx.inventorytransactiondetails.deleteMany({ where: { transactionId: autoDoc.id } });
+        await tx.inventorytransactions.delete({ where: { id: autoDoc.id } });
+      }
+      const row = await tx.sales_returns.update({ where: { id }, data: {
+        status: "DRAFT", postedAt: null, postedBy: null, cancelledAt: null, cancelledBy: null, cancelReason: null,
+        version: { increment: 1 }, updatedAt: occurredAt,
+      }, include: salesReturnInclude });
+      await tx.audit_logs.create({ data: { action: "Hủy lưu trả hàng bán v1", details: document.code, userId, userName: String(userId), createdAt: now } });
+      return mapSalesReturn(row);
+    }, { timeout: 30_000 });
+  },
+
+  async remove(id: number, version: number, userId: number) {
+    return prisma.$transaction(async tx => {
+      const current = await lock(tx, id);
+      if (!(["DRAFT", "CANCELLED"] as string[]).includes(current.status))
+        throw new HttpError(409, "RETURN_NOT_DELETABLE", "Chỉ được xóa phiếu trả hàng ở trạng thái nháp hoặc đã hủy");
+      if (Number(current.version) !== version) throw new HttpError(409, "VERSION_CONFLICT", "Phiếu đã được cập nhật");
+      await tx.sales_returns.delete({ where: { id } });
+      await tx.audit_logs.create({ data: { action: "Xóa trả hàng bán v1", details: current.code || String(id), userId, userName: String(userId), createdAt: nowIso() } });
+      return { success: true, message: "Đã xóa phiếu trả hàng" };
+    });
   },
 };

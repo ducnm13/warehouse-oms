@@ -124,7 +124,7 @@ export const debtService = {
           status: "POSTED",
           version: 1,
           sourceModule: "SALE_V1",
-          note: `Thu ngay khi ghi sổ ${payment.code}`,
+          note: `Thu ngay khi lưu ${payment.code}`,
           allocations: [{ id: `sale-${payment.salesOrderId}`, documentId: payment.salesOrderId, documentCode: payment.code, amount: payment.amount, totalAmount: payment.totalAmount, paidAmount: payment.amount }],
         }));
       }
@@ -182,7 +182,7 @@ export const debtService = {
   async post(kind: Kind, id: bigint, version: number, userId: number) {
     await prisma.$transaction(async tx => {
       const current = await lockPayment(tx, kind, id); assertVersion(current, version);
-      if (current.status !== "DRAFT") throw new HttpError(409, "INVALID_STATUS", "Chỉ được ghi sổ phiếu thu/chi đang nháp");
+      if (current.status !== "DRAFT") throw new HttpError(409, "INVALID_STATUS", "Chỉ được lưu phiếu thu/chi đang nháp");
       const payment: any = kind === "RECEIPT" ? await tx.payment_receipts.findUnique({ where: { id } }) : await tx.payment_vouchers.findUnique({ where: { id } });
       const allocations: any[] = kind === "RECEIPT"
         ? await tx.payment_receipt_allocations.findMany({ where: { paymentReceiptId: id } })
@@ -193,7 +193,7 @@ export const debtService = {
         if (kind === "RECEIPT") {
           const rows = await tx.$queryRawUnsafe<any[]>("SELECT id,code,customerId,status,totalAmount,paidAmount FROM sales_orders WHERE id=? FOR UPDATE", allocation.salesOrderId);
           const document = rows[0];
-          if (!document || !["POSTED", "FULFILLED"].includes(document.status)) throw new HttpError(409, "DOCUMENT_NOT_POSTED", "Đơn bán chưa ghi sổ");
+          if (!document || !["POSTED", "FULFILLED"].includes(document.status)) throw new HttpError(409, "DOCUMENT_NOT_POSTED", "Đơn bán chưa lưu");
           if (Number(document.customerId) !== payment.customerId) throw new HttpError(409, "PARTNER_MISMATCH", "Đơn bán không thuộc khách hàng của phiếu thu");
           const outstandingRows = await tx.$queryRawUnsafe<any[]>("SELECT COALESCE(SUM(amount),0) outstanding FROM receivable_transactions WHERE sourceId=? AND customerId=?", document.id, document.customerId);
           const amount = Number(allocation.amount), remaining = Number(outstandingRows[0]?.outstanding || 0);
@@ -207,7 +207,7 @@ export const debtService = {
         } else {
           const rows = await tx.$queryRawUnsafe<any[]>("SELECT id,code,supplierId,documentStatus,totalAmount,paidAmount FROM purchase_documents WHERE id=? FOR UPDATE", allocation.purchaseDocumentId);
           const document = rows[0];
-          if (!document || document.documentStatus !== "POSTED") throw new HttpError(409, "DOCUMENT_NOT_POSTED", "Chứng từ mua chưa ghi sổ");
+          if (!document || document.documentStatus !== "POSTED") throw new HttpError(409, "DOCUMENT_NOT_POSTED", "Chứng từ mua chưa lưu");
           if (Number(document.supplierId) !== payment.supplierId) throw new HttpError(409, "PARTNER_MISMATCH", "Chứng từ mua không thuộc nhà cung cấp của phiếu chi");
           const amount = Number(allocation.amount), remaining = Number(document.totalAmount) - Number(document.paidAmount || 0);
           if (amount > remaining + 0.005) throw new HttpError(409, "ALLOCATION_EXCEEDS_DEBT", `Phân bổ vượt dư nợ ${document.code}`);
@@ -219,7 +219,7 @@ export const debtService = {
       }
       if (kind === "RECEIPT") await tx.payment_receipts.update({ where: { id }, data: { status: "POSTED", postedAt: occurredAt, postedBy: userId, version: { increment: 1 } } });
       else await tx.payment_vouchers.update({ where: { id }, data: { status: "POSTED", postedAt: occurredAt, postedBy: userId, version: { increment: 1 } } });
-      await tx.audit_logs.create({ data: { action: kind === "RECEIPT" ? "Ghi sổ phiếu thu v1" : "Ghi sổ phiếu chi v1", details: payment.code, userId, userName: String(userId), createdAt: now } });
+      await tx.audit_logs.create({ data: { action: kind === "RECEIPT" ? "Lưu phiếu thu v1" : "Lưu phiếu chi v1", details: payment.code, userId, userName: String(userId), createdAt: now } });
     }, { timeout: 30_000 });
     return this.get(kind, id);
   },
@@ -227,7 +227,7 @@ export const debtService = {
   async cancel(kind: Kind, id: bigint, input: DebtCancelInput, userId: number) {
     await prisma.$transaction(async tx => {
       const current = await lockPayment(tx, kind, id); assertVersion(current, input.version);
-      if (current.status !== "POSTED") throw new HttpError(409, "INVALID_STATUS", "Chỉ được hủy phiếu đã ghi sổ");
+      if (current.status !== "POSTED") throw new HttpError(409, "INVALID_STATUS", "Chỉ được hủy phiếu đã lưu");
       const payment: any = kind === "RECEIPT" ? await tx.payment_receipts.findUnique({ where: { id } }) : await tx.payment_vouchers.findUnique({ where: { id } });
       const allocations: any[] = kind === "RECEIPT"
         ? await tx.payment_receipt_allocations.findMany({ where: { paymentReceiptId: id } })

@@ -419,6 +419,49 @@ export const devtoolsService = {
     return { affectedRows: Number(affected) };
   },
 
+  async deleteRow(input: { table: string; keys: Record<string, any> }, userId: number, username: string) {
+    const tableName = String(input?.table || "").trim();
+    const keys = input?.keys || {};
+    if (!tableName) throw new HttpError(400, "TABLE_REQUIRED", "Thiếu tên bảng");
+    if (!Object.keys(keys).length) throw new HttpError(400, "KEYS_REQUIRED", "Thiếu khóa chính để xóa dòng");
+    const table = await this.tableData(tableName, 1, 0);
+    const columnMap: Map<string, { dataType: string }> = new Map(
+      table.columns.map(column => [String(column.name), { dataType: String(column.dataType || "") }]),
+    );
+    for (const key of Object.keys(keys)) {
+      if (!columnMap.has(key)) throw new HttpError(400, "COLUMN_NOT_FOUND", `Không có cột ${key}`);
+    }
+    const quote = (value: string) => `\`${value.replace(/`/g, "``")}\``;
+    const normalize = (value: any, dataType: string) => {
+      if (value === null || value === undefined) return null;
+      if (typeof value === "string" && value.trim().toUpperCase() === "NULL") return null;
+      if (/^(tinyint|smallint|mediumint|int|bigint|decimal|numeric|float|double|bit|year)/i.test(dataType)) {
+        if (typeof value === "string" && value.trim() === "") return null;
+        const number = Number(value);
+        return Number.isFinite(number) ? number : value;
+      }
+      return value;
+    };
+    const whereSql = Object.keys(keys)
+      .map(column => `${quote(column)} = ?`)
+      .join(" AND ");
+    const values = Object.entries(keys).map(([column, value]) => normalize(value, columnMap.get(column)?.dataType || ""));
+    const affected = await prisma.$executeRawUnsafe(
+      `DELETE FROM ${quote(tableName)} WHERE ${whereSql} LIMIT 1`,
+      ...values,
+    );
+    void prisma.audit_logs.create({
+      data: {
+        action: "Xóa dữ liệu bảng dev",
+        details: `${tableName} · ${Object.keys(keys).join(", ")} · ${affected} dòng`,
+        userId,
+        userName: username,
+        createdAt: new Date().toISOString(),
+      },
+    }).catch(() => {});
+    return { affectedRows: Number(affected) };
+  },
+
   async query(sql: string) {
     const trimmed = String(sql || "").trim();
     if (!trimmed) throw new HttpError(400, "SQL_REQUIRED", "Vui lòng nhập câu lệnh SQL");

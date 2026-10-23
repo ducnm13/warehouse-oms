@@ -108,7 +108,7 @@ export const inventoryService = {
     await validateMaster(input.warehouseId, input.details.map(line => line.packagingId));
     return prisma.$transaction(async tx => {
       const current = await lockDocument(tx, id); assertVersion(current, input.version);
-      if (!["DRAFT", "CANCELLED"].includes(current.documentStatus) || current.sourceModule !== "MANUAL_V1") throw new HttpError(409, "INVALID_STATUS", "Chỉ được sửa chứng từ kho V1 đang nháp hoặc đã bỏ ghi sổ");
+      if (!["DRAFT", "CANCELLED"].includes(current.documentStatus) || current.sourceModule !== "MANUAL_V1") throw new HttpError(409, "INVALID_STATUS", "Chỉ được sửa chứng từ kho V1 đang nháp hoặc đã hủy lưu");
       const now = nowIso();
       await tx.inventorytransactiondetails.deleteMany({ where: { transactionId: id } });
       const row = await tx.inventorytransactions.update({ where: { id }, data: {
@@ -144,10 +144,10 @@ export const inventoryService = {
           quantity: decimal(quantity), unitCost: decimal(unitCost), totalValue: money(quantity * unitCost), occurredAt, createdBy: userId,
         } });
       }
-      // Ghi sổ lại (từ đã bỏ ghi): xóa dấu vết hủy, giữ nguyên bút toán đảo cũ để bù trừ
+      // Lưu lại (từ đã hủy lưu): xóa dấu vết hủy, giữ nguyên bút toán đảo cũ để bù trừ
       const row = await tx.inventorytransactions.update({ where: { id }, data: { documentStatus: "POSTED", postedAt: occurredAt, postedBy: userId, cancelledAt: null, cancelledBy: null, cancelReason: null, reversalTransactionId: null, version: { increment: 1 }, updatedAt: now }, include: inventoryInclude });
 
-      await tx.audit_logs.create({ data: { action: "Ghi sổ phiếu kho v1", details: row.code || String(id), userId, userName: String(userId), createdAt: now } });
+      await tx.audit_logs.create({ data: { action: "Lưu phiếu kho v1", details: row.code || String(id), userId, userName: String(userId), createdAt: now } });
       return mapInventoryDocument(row);
     }, { timeout: 30_000 });
   },
@@ -155,7 +155,7 @@ export const inventoryService = {
     return prisma.$transaction(async tx => {
       const current = await lockDocument(tx, id); assertVersion(current, input.version);
       if (current.sourceModule !== "MANUAL_V1") throw new HttpError(409, "AUTO_DOCUMENT_NOT_CANCELLABLE", "Phiếu kho do chứng từ khác tự sinh, vui lòng hủy từ chứng từ gốc");
-      if (current.documentStatus !== "POSTED") throw new HttpError(409, "INVALID_STATUS", "Chỉ được hủy phiếu kho đã ghi sổ");
+      if (current.documentStatus !== "POSTED") throw new HttpError(409, "INVALID_STATUS", "Chỉ được hủy phiếu kho đã lưu");
       const document = await tx.inventorytransactions.findUnique({ where: { id }, include: inventoryInclude });
       if (!document?.warehouseId) throw new HttpError(409, "MISSING_WAREHOUSE", "Chứng từ chưa có kho");
       // Query ledger by sourceId AND sourceType (INVENTORY_DOCUMENT) to match posting
@@ -186,6 +186,39 @@ export const inventoryService = {
       }
       const row = await tx.inventorytransactions.update({ where: { id }, data: { documentStatus: "CANCELLED", cancelledAt: occurredAt.toISOString(), cancelledBy: userId, cancelReason: input.reason, version: { increment: 1 }, updatedAt: now }, include: inventoryInclude });
       await tx.audit_logs.create({ data: { action: "Hủy phiếu kho v1", details: `${row.code}: ${input.reason}`, userId, userName: String(userId), createdAt: now } });
+      return mapInventoryDocument(row);
+    }, { timeout: 30_000 });
+  },
+  async unpost(id: number, version: number, userId: number) {
+    return prisma.$transaction(async tx => {
+      const current = await lockDocument(tx, id); assertVersion(current, version);
+      if (current.sourceModule !== "MANUAL_V1") throw new HttpError(409, "AUTO_DOCUMENT_NOT_CANCELLABLE", "Phiếu kho do chứng từ khác tự sinh, vui lòng hủy lưu từ chứng từ gốc");
+      if (current.documentStatus !== "POSTED") throw new HttpError(409, "INVALID_STATUS", "Chỉ được hủy lưu phiếu kho đã lưu");
+      const document = await tx.inventorytransactions.findUnique({ where: { id }, include: inventoryInclude });
+      if (!document?.warehouseId) throw new HttpError(409, "MISSING_WAREHOUSE", "Chứng từ chưa có kho");
+      const originalLedger = await tx.inventory_ledger.findMany({ where: { sourceId: id, sourceType: "INVENTORY_DOCUMENT" } });
+      if (originalLedger.length === 0) throw new HttpError(409, "LEDGER_NOT_FOUND", "Không tìm thấy ledger gốc để đảo chứng từ");
+      const now = nowIso(), occurredAt = new Date();
+      for (const line of document.inventorytransactiondetails) {
+        if (!line.packagingId) continue;
+        const quantity = Number(line.quantity), balance = await lockBalance(tx, line.packagingId, document.warehouseId);
+        if (document.type === "IMPORT" && balance < quantity) throw new HttpError(409, "REVERSAL_STOCK_SHORTAGE", `Không đủ tồn để đảo ${line.productpackagings?.sku || line.packagingId}`);
+        const original = originalLedger.find(entry => entry.sourceLineId === line.id);
+        await tx.productwarehouses.update({ where: { packagingId_warehouseId: { packagingId: line.packagingId, warehouseId: document.warehouseId } }, data: {
+          stock_quantity: document.type === "IMPORT" ? { decrement: quantity } : { increment: quantity }, updatedAt: now,
+        } });
+        await tx.inventory_ledger.create({ data: {
+          sourceType: "INVENTORY_DOCUMENT_CANCEL", sourceId: id, sourceLineId: line.id, documentCode: document.code || String(id),
+          direction: document.type === "IMPORT" ? "OUT" : "IN", packagingId: line.packagingId, warehouseId: document.warehouseId,
+          quantity: decimal(quantity), unitCost: line.unitCost, totalValue: line.totalValue, reversalOfId: original?.id,
+          occurredAt, createdBy: userId,
+        } });
+      }
+      const row = await tx.inventorytransactions.update({ where: { id }, data: {
+        documentStatus: "DRAFT", postedAt: null, postedBy: null, cancelledAt: null, cancelledBy: null, cancelReason: null,
+        version: { increment: 1 }, updatedAt: now,
+      }, include: inventoryInclude });
+      await tx.audit_logs.create({ data: { action: "Hủy lưu phiếu kho v1", details: row.code || String(id), userId, userName: String(userId), createdAt: now } });
       return mapInventoryDocument(row);
     }, { timeout: 30_000 });
   },
@@ -359,6 +392,33 @@ export const stocktakeService = {
       }
       const row = await tx.stocktakes.update({ where: { id }, data: { status: "CANCELLED", cancelledAt: occurredAt, cancelledBy: userId, cancelReason: input.reason, version: { increment: 1 } }, include: stocktakeInclude });
       await tx.audit_logs.create({ data: { action: "Hủy kiểm kê v1", details: `${row.code}: ${input.reason}`, userId, userName: String(userId), createdAt: now } });
+      return mapStocktake(row);
+    }, { timeout: 30_000 });
+  },
+  async unpost(id: number, version: number, userId: number) {
+    return prisma.$transaction(async tx => {
+      const current = await lockStocktake(tx, id); assertVersion(current, version);
+      if (current.status !== "COMPLETED") throw new HttpError(409, "INVALID_STATUS", "Chỉ được hủy lưu kiểm kê đã chốt");
+      const document = await tx.stocktakes.findUnique({ where: { id }, include: stocktakeInclude });
+      if (!document?.warehouseId) throw new HttpError(409, "MISSING_WAREHOUSE", "Phiếu kiểm kê chưa có kho");
+      const entries = await tx.inventory_ledger.findMany({ where: { sourceType: "STOCKTAKE", sourceId: id } });
+      const now = nowIso(), occurredAt = new Date();
+      for (const originalDirection of ["IN", "OUT"] as const) {
+        const group = entries.filter(entry => entry.direction === originalDirection);
+        if (!group.length) continue;
+        for (const entry of group) {
+          const balance = await lockBalance(tx, entry.packagingId, entry.warehouseId), quantity = Number(entry.quantity);
+          if (originalDirection === "IN" && balance < quantity) throw new HttpError(409, "REVERSAL_STOCK_SHORTAGE", "Không đủ tồn để đảo kiểm kê");
+          await tx.productwarehouses.update({ where: { packagingId_warehouseId: { packagingId: entry.packagingId, warehouseId: entry.warehouseId } }, data: { stock_quantity: originalDirection === "IN" ? { decrement: quantity } : { increment: quantity }, updatedAt: now } });
+          await tx.inventory_ledger.create({ data: { sourceType: "STOCKTAKE_CANCEL", sourceId: id, sourceLineId: entry.sourceLineId, documentCode: document.code || String(id), direction: originalDirection === "IN" ? "OUT" : "IN", packagingId: entry.packagingId, warehouseId: entry.warehouseId, quantity: entry.quantity, unitCost: entry.unitCost, totalValue: entry.totalValue, reversalOfId: entry.id, occurredAt, createdBy: userId } });
+        }
+      }
+      await tx.stocktake_document_links_v1.deleteMany({ where: { stocktakeId: id } });
+      const row = await tx.stocktakes.update({ where: { id }, data: {
+        status: "DRAFT", completedAt: null, completedBy: null, cancelledAt: null, cancelledBy: null, cancelReason: null,
+        version: { increment: 1 },
+      }, include: stocktakeInclude });
+      await tx.audit_logs.create({ data: { action: "Hủy lưu kiểm kê v1", details: row.code || String(id), userId, userName: String(userId), createdAt: now } });
       return mapStocktake(row);
     }, { timeout: 30_000 });
   },

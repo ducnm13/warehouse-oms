@@ -32,6 +32,15 @@ export const devtoolsController = {
     res.json({ success: true, message: "Đã lưu thay đổi", data });
   },
 
+  deleteRow: async (req: any, res: any) => {
+    const data = await devtoolsService.deleteRow(
+      req.body,
+      req.auth.userId,
+      req.auth.username,
+    );
+    res.json({ success: true, message: "Đã xóa dòng", data });
+  },
+
   scripts: async (_req: any, res: any) => {
     res.json({
       success: true,

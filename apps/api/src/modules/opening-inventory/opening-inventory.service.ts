@@ -114,7 +114,7 @@ export const openingInventoryService = {
 
       // POSTED: chỉ cho sửa ngày chứng từ + ghi chú, kho và hàng hóa đã khóa
       if (Number(current.warehouseId) !== Number(input.warehouseId))
-        throw new HttpError(409, "OPENING_INVENTORY_WAREHOUSE_LOCKED", "Không thể đổi kho của phiếu đã ghi sổ");
+        throw new HttpError(409, "OPENING_INVENTORY_WAREHOUSE_LOCKED", "Không thể đổi kho của phiếu đã lưu");
       await tx.opening_inventory_documents.update({
         where: { id },
         data: {
@@ -129,7 +129,7 @@ export const openingInventoryService = {
         where: { sourceType: "OPENING", sourceId: id },
         data: { occurredAt: newDate },
       });
-      // Đồng bộ ngày với phiếu nhập kho tự động đã sinh khi ghi sổ
+      // Đồng bộ ngày với phiếu nhập kho tự động đã sinh khi lưu
       const dateStr = input.documentDate.slice(0, 10);
       const linkedDoc = await tx.inventorytransactions.findFirst({
         where: { sourceModule: "OPENING_INVENTORY", note: { contains: String(current.code) } },
@@ -156,7 +156,7 @@ export const openingInventoryService = {
   async post(id: number, version: number, userId: number) {
     return prisma.$transaction(async tx => {
       const current = await lockDocument(tx, id);
-      if (current.status !== "DRAFT") throw new HttpError(409, "OPENING_INVENTORY_NOT_POSTABLE", "Chỉ được ghi sổ phiếu ở trạng thái Nháp");
+      if (current.status !== "DRAFT") throw new HttpError(409, "OPENING_INVENTORY_NOT_POSTABLE", "Chỉ được lưu phiếu ở trạng thái Nháp");
       if (Number(current.version) !== version) throw new HttpError(409, "VERSION_CONFLICT", "Phiếu đã được người khác cập nhật");
       const doc = await openingInventoryRepository.findById(id);
       if (!doc) throw new HttpError(404, "OPENING_INVENTORY_NOT_FOUND", "Không tìm thấy phiếu tồn đầu kỳ");
@@ -227,7 +227,7 @@ export const openingInventoryService = {
       });
 
       await tx.audit_logs.create({
-        data: { action: "Ghi sổ tồn đầu kỳ", details: `${doc.code} -> ${invCode}`, userId, userName: String(userId), createdAt: nowStr },
+        data: { action: "Lưu tồn đầu kỳ", details: `${doc.code} -> ${invCode}`, userId, userName: String(userId), createdAt: nowStr },
       });
 
       await tx.opening_inventory_documents.update({
@@ -241,7 +241,7 @@ export const openingInventoryService = {
   async cancel(id: number, input: OpeningInventoryCancelInput, userId: number) {
     return prisma.$transaction(async tx => {
       const current = await lockDocument(tx, id);
-      if (current.status !== "POSTED") throw new HttpError(409, "OPENING_INVENTORY_NOT_CANCELLABLE", "Chỉ được hủy phiếu đã ghi sổ");
+      if (current.status !== "POSTED") throw new HttpError(409, "OPENING_INVENTORY_NOT_CANCELLABLE", "Chỉ được hủy phiếu đã lưu");
       if (Number(current.version) !== input.version) throw new HttpError(409, "VERSION_CONFLICT", "Phiếu đã được người khác cập nhật");
       const doc = await openingInventoryRepository.findById(id);
       if (!doc) throw new HttpError(404, "OPENING_INVENTORY_NOT_FOUND", "Không tìm thấy phiếu tồn đầu kỳ");
@@ -290,6 +290,76 @@ export const openingInventoryService = {
           cancelledAt: now,
           cancelledBy: userId,
           cancelReason: input.reason,
+          version: { increment: 1 },
+          updatedAt: nowStr,
+        },
+      });
+    }, { timeout: 30_000 });
+    return serializeDocument(await openingInventoryRepository.findById(id));
+  },
+
+  async unpost(id: number, version: number, userId: number) {
+    return prisma.$transaction(async tx => {
+      const current = await lockDocument(tx, id);
+      if (current.status !== "POSTED") throw new HttpError(409, "OPENING_INVENTORY_NOT_UNPOSTABLE", "Chỉ được hủy lưu phiếu đã lưu");
+      if (Number(current.version) !== version) throw new HttpError(409, "VERSION_CONFLICT", "Phiếu đã được người khác cập nhật");
+      const doc = await openingInventoryRepository.findById(id);
+      if (!doc) throw new HttpError(404, "OPENING_INVENTORY_NOT_FOUND", "Không tìm thấy phiếu tồn đầu kỳ");
+      const now = new Date();
+      const nowStr = nowIso();
+
+      for (const line of doc.lines) {
+        const qty = Number(line.quantity);
+        await tx.productwarehouses.update({
+          where: { packagingId_warehouseId: { packagingId: line.packagingId, warehouseId: doc.warehouseId } },
+          data: { stock_quantity: { decrement: qty }, updatedAt: nowStr },
+        });
+
+        const origEntries = await tx.inventory_ledger.findMany({
+          where: { sourceType: "OPENING", sourceId: id, sourceLineId: Number(line.id) },
+        });
+        for (const orig of origEntries) {
+          await tx.inventory_ledger.create({
+            data: {
+              sourceType: "OPENING_CANCEL",
+              sourceId: id,
+              sourceLineId: Number(line.id),
+              documentCode: doc.code,
+              direction: "OUT",
+              packagingId: line.packagingId,
+              warehouseId: doc.warehouseId,
+              quantity: decimal(qty),
+              unitCost: orig.unitCost,
+              totalValue: money(-qty * Number(orig.unitCost)),
+              reversalOfId: orig.id,
+              occurredAt: now,
+              createdBy: userId,
+            },
+          });
+        }
+      }
+
+      const autoDocs = await tx.inventorytransactions.findMany({
+        where: { reason: "OPENING_INVENTORY", note: { contains: doc.code } },
+      });
+      for (const autoDoc of autoDocs) {
+        await tx.inventorytransactiondetails.deleteMany({ where: { transactionId: autoDoc.id } });
+        await tx.inventorytransactions.delete({ where: { id: autoDoc.id } });
+      }
+
+      await tx.audit_logs.create({
+        data: { action: "Hủy lưu phiếu tồn đầu kỳ", details: doc.code, userId, userName: String(userId), createdAt: nowStr },
+      });
+
+      await tx.opening_inventory_documents.update({
+        where: { id },
+        data: {
+          status: "DRAFT",
+          postedAt: null,
+          postedBy: null,
+          cancelledAt: null,
+          cancelledBy: null,
+          cancelReason: null,
           version: { increment: 1 },
           updatedAt: nowStr,
         },
