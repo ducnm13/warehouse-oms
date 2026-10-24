@@ -96,6 +96,22 @@ const tokenHeader = () => ({
 	Authorization: `Bearer ${localStorage.getItem("token")}`,
 });
 const today = () => new Date().toISOString().slice(0, 10);
+const orderDiscountNotePattern =
+	/^Chiết khấu đơn\s+([\d.,]+)\s*%\s*$/i;
+const splitOrderDiscountNote = (note?: string | null) => {
+	let rate = 0;
+	const lines: string[] = [];
+	for (const line of String(note || "").split(/\r?\n/)) {
+		const match = line.trim().match(orderDiscountNotePattern);
+		const parsed = match ? Number(match[1].replace(",", ".")) : NaN;
+		if (Number.isFinite(parsed)) {
+			rate = Math.min(Math.max(parsed, 0), 100);
+			continue;
+		}
+		lines.push(line);
+	}
+	return { rate, note: lines.join("\n").trim() };
+};
 const emptyLine = (): Line => ({
 	packagingId: 0,
 	quantity: 1,
@@ -557,7 +573,7 @@ export default function SalesOrders() {
 				taxRate: Number(rest.taxRate || 0),
 				code: rest.code || undefined,
 				note: [
-					rest.note || "",
+					splitOrderDiscountNote(rest.note).note,
 					clampedOrderDiscount > 0
 						? `Chiết khấu đơn ${clampedOrderDiscount}%`
 						: "",
@@ -814,6 +830,7 @@ export default function SalesOrders() {
 		const rate = document.subtotal
 			? (document.taxAmount / document.subtotal) * 100
 			: 0;
+		const orderDiscount = splitOrderDiscountNote(document.note);
 		const customerPriceBookId = getCustomerPriceBookId(document.customerId);
 		form.reset({
 			code: document.code,
@@ -824,9 +841,10 @@ export default function SalesOrders() {
 			warehouseId: document.warehouseId,
 			priceBookId: customerPriceBookId,
 			taxRate: rate,
+			orderDiscountRate: orderDiscount.rate,
 			paymentIntent: document.paymentIntent || "UNPAID",
 			paymentMethod: document.paymentMethod || "CASH",
-			note: document.note || "",
+			note: orderDiscount.note,
 		});
 		setOpen(true);
 	};
@@ -848,6 +866,7 @@ export default function SalesOrders() {
 		const rate = document.subtotal
 			? (document.taxAmount / document.subtotal) * 100
 			: 0;
+		const orderDiscount = splitOrderDiscountNote(document.note);
 		form.reset({
 			code: nextSalesCode.data || "BH00001",
 			orderDate: today(),
@@ -857,9 +876,10 @@ export default function SalesOrders() {
 			warehouseId: document.warehouseId,
 			priceBookId: getCustomerPriceBookId(document.customerId),
 			taxRate: rate,
+			orderDiscountRate: orderDiscount.rate,
 			paymentIntent: document.paymentIntent || "UNPAID",
 			paymentMethod: document.paymentMethod || "CASH",
-			note: document.note || "",
+			note: orderDiscount.note,
 		});
 		setOpen(true);
 	};
@@ -1152,6 +1172,11 @@ export default function SalesOrders() {
 					width: 28,
 				},
 				{
+					header: "Diễn giải",
+					value: (order: SalesOrder) => order.note || "",
+					width: 36,
+				},
+				{
 					header: "Tổng tiền",
 					value: (order: SalesOrder) => Number(order.totalAmount || 0),
 				},
@@ -1310,6 +1335,7 @@ export default function SalesOrders() {
 									<th>Ngày</th>
 									<th>Đơn hàng</th>
 									<th>Khách hàng</th>
+									<th>Diễn giải</th>
 									<th className="text-right">Tổng tiền</th>
 									<th>Trạng thái</th>
 									<th>Chức năng</th>
@@ -1360,6 +1386,12 @@ export default function SalesOrders() {
 										<td>
 											<b>{order.customerName}</b>
 											{/* <small>{order.customerPhone}</small> */}
+										</td>
+										<td
+											className="max-w-[260px] truncate"
+											title={order.note || ""}
+										>
+											{order.note || "-"}
 										</td>
 										{/* <td>{order.warehouseName}</td> */}
 										<td className="text-right font-semibold">
@@ -1535,11 +1567,14 @@ export default function SalesOrders() {
 										Ngày đơn
 										<DateInput
 											value={form.watch("orderDate") || ""}
-											onChange={value =>
+											onChange={value => {
 												form.setValue("orderDate", value, {
 													shouldValidate: true,
-												})
-											}
+												});
+												form.setValue("deliveryDate", value, {
+													shouldValidate: true,
+												});
+											}}
 										/>
 										<small className="text-red-500">
 											{form.formState.errors.orderDate?.message}

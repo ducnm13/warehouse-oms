@@ -233,6 +233,12 @@ export default function DateRangeCalendar({
 			setStart(k);
 			setEnd(k);
 			setFocusKey(k);
+			onChange(fmtKey(k), fmtKey(k));
+			setApplied(true);
+			later(() => {
+				setOpen(false);
+				triggerRef.current?.focus();
+			}, 120);
 			return;
 		}
 		if (start === null || end !== null) {
@@ -458,9 +464,11 @@ export default function DateRangeCalendar({
 								"Chọn khoảng ngày"
 							)}
 						</span>
-						<button type="button" className="u030-ok" aria-disabled={!canApply} onClick={apply}>
-							{applied ? "Đã chọn" : "Áp dụng"}
-						</button>
+						{!single && (
+							<button type="button" className="u030-ok" aria-disabled={!canApply} onClick={apply}>
+								{applied ? "Đã chọn" : "Áp dụng"}
+							</button>
+						)}
 					</div>
 				</div>,
 				document.body,

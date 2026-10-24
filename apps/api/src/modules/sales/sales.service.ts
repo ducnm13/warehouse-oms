@@ -11,6 +11,11 @@ const dateAtNoon = (date: string) => new Date(`${date}T12:00:00.000Z`);
 const nowIso = () => new Date().toISOString();
 
 type CalculatedInput = Omit<SalesDraftInput, "details"> & { details: Array<SalesDraftInput["details"][number] & { lineType?: "SALE" | "PROMOTION"; promotionProgramId?: number; promotionCode?: string; promotionName?: string }> };
+const orderDiscountFromNote = (note?: string | null) => {
+  const match = String(note || "").match(/(?:^|\n)Chiết khấu đơn\s+([\d.,]+)\s*%\s*(?:\n|$)/i);
+  const rate = Number(match?.[1]?.replace(",", ".") || 0);
+  return Number.isFinite(rate) ? Math.min(Math.max(rate, 0), 100) : 0;
+};
 function calculate(input: CalculatedInput) {
   const details = input.details.map(line => {
     const gross = line.quantity * line.unitPrice;
@@ -19,9 +24,11 @@ function calculate(input: CalculatedInput) {
   });
   const gross = details.reduce((sum, line) => sum + line.gross, 0);
   const subtotal = details.reduce((sum, line) => sum + line.lineTotal, 0);
-  const discountAmount = gross - subtotal;
-  const taxAmount = subtotal * input.taxRate / 100;
-  return { details, subtotal, discountAmount, taxAmount, totalAmount: subtotal + taxAmount };
+  const lineDiscountAmount = gross - subtotal;
+  const orderDiscountAmount = subtotal * orderDiscountFromNote(input.note) / 100;
+  const taxableAmount = subtotal - orderDiscountAmount;
+  const taxAmount = taxableAmount * input.taxRate / 100;
+  return { details, subtotal, discountAmount: lineDiscountAmount + orderDiscountAmount, taxAmount, totalAmount: taxableAmount + taxAmount };
 }
 
 async function validateMasterData(input: SalesDraftInput) {
@@ -61,21 +68,34 @@ function assertVersion(current: any, version: number) {
   if (Number(current.version) !== version) throw new HttpError(409, "VERSION_CONFLICT", "Chứng từ đã được người khác cập nhật");
 }
 
-async function averageCost(tx: any, packagingId: number, warehouseId: number) {
+async function averageCosts(tx: any, packagingIds: number[], warehouseId: number) {
+  const uniqueIds = [...new Set(packagingIds)];
+  const costs = new Map<number, number>();
+  if (!uniqueIds.length) return costs;
+  const placeholders = uniqueIds.map(() => "?").join(",");
   const rows = await tx.$queryRawUnsafe(
-    `SELECT COALESCE(SUM(CASE WHEN direction='IN' THEN quantity ELSE -quantity END),0) quantity,
+    `SELECT packagingId,
+            COALESCE(SUM(CASE WHEN direction='IN' THEN quantity ELSE -quantity END),0) quantity,
             COALESCE(SUM(totalValue),0) totalValue
-     FROM inventory_ledger WHERE packagingId=? AND warehouseId=?`,
-    packagingId, warehouseId,
-  ) as Array<{ quantity: unknown; totalValue: unknown }>;
-  const ledgerQuantity = Number(rows[0]?.quantity || 0);
-  const ledgerValue = Number(rows[0]?.totalValue || 0);
-  if (ledgerQuantity > 0 && ledgerValue > 0) return ledgerValue / ledgerQuantity;
-  const latestPurchase = await tx.purchase_document_details.findFirst({
-    where: { packagingId, purchase_documents: { documentStatus: "POSTED" } },
-    orderBy: { id: "desc" }, select: { unitPrice: true },
-  });
-  return Number(latestPurchase?.unitPrice || 0);
+     FROM inventory_ledger
+     WHERE warehouseId=? AND packagingId IN (${placeholders})
+     GROUP BY packagingId`,
+    warehouseId, ...uniqueIds,
+  ) as Array<{ packagingId: unknown; quantity: unknown; totalValue: unknown }>;
+  for (const row of rows) {
+    const ledgerQuantity = Number(row.quantity || 0);
+    const ledgerValue = Number(row.totalValue || 0);
+    if (ledgerQuantity > 0 && ledgerValue > 0) costs.set(Number(row.packagingId), ledgerValue / ledgerQuantity);
+  }
+  for (const packagingId of uniqueIds) {
+    if (costs.has(packagingId)) continue;
+    const latestPurchase = await tx.purchase_document_details.findFirst({
+      where: { packagingId, purchase_documents: { documentStatus: "POSTED" } },
+      orderBy: { id: "desc" }, select: { unitPrice: true },
+    });
+    costs.set(packagingId, Number(latestPurchase?.unitPrice || 0));
+  }
+  return costs;
 }
 
 async function applyCustomerCredit(tx: any, document: any, userId: number, occurredAt: Date) {
@@ -216,18 +236,25 @@ export const salesService = {
     const totals = calculate(input);
     const code = await resolveDocumentCode("sales", (input as { code?: string }).code);
     const now = nowIso();
-    const row = await prisma.sales_orders.create({
-      data: {
-        code, orderDate: input.orderDate, deliveryDate: input.deliveryDate || null, dueDate: input.dueDate || null,
-        customerId: input.customerId, warehouseId: input.warehouseId, status: "DRAFT", note: input.note,
-        subtotal: totals.subtotal, discountAmount: totals.discountAmount, taxAmount: totals.taxAmount,
-        totalAmount: totals.totalAmount, paidAmount: 0, paymentStatus: "UNPAID", paymentIntent: input.paymentIntent,
-        paymentMethod: input.paymentMethod, createdBy: userId, createdAt: now, updatedAt: now,
-        sales_order_details: { create: totals.details.map(lineData) },
-      }, include: salesInclude,
-    });
-    await prisma.audit_logs.create({ data: { action: "Tạo nháp bán hàng v1", details: code, userId, userName: String(userId), createdAt: now } });
-    return mapSalesDocument(row);
+    return prisma.$transaction(async tx => {
+      const created = await tx.sales_orders.create({
+        data: {
+          code, orderDate: input.orderDate, deliveryDate: input.deliveryDate || null, dueDate: input.dueDate || null,
+          customerId: input.customerId, warehouseId: input.warehouseId, status: "DRAFT", note: input.note,
+          subtotal: totals.subtotal, discountAmount: totals.discountAmount, taxAmount: totals.taxAmount,
+          totalAmount: totals.totalAmount, paidAmount: 0, paymentStatus: "UNPAID", paymentIntent: input.paymentIntent,
+          paymentMethod: input.paymentMethod, createdBy: userId, createdAt: now, updatedAt: now,
+        },
+        select: { id: true },
+      });
+      await tx.sales_order_details.createMany({
+        data: totals.details.map(line => ({ ...lineData(line), orderId: created.id })),
+      });
+      await tx.audit_logs.create({ data: { action: "Tạo nháp bán hàng v1", details: code, userId, userName: String(userId), createdAt: now } });
+      const row = await tx.sales_orders.findUnique({ where: { id: created.id }, include: salesInclude });
+      if (!row) throw new HttpError(500, "SALES_CREATE_FAILED", "Không thể tạo chứng từ bán hàng");
+      return mapSalesDocument(row);
+    }, { timeout: 15_000 });
   },
 
   async updateDraft(id: number, input: SalesUpdateInput, userId: number) {
@@ -241,21 +268,26 @@ export const salesService = {
       const code = normalizedCode && normalizedCode !== current.code
         ? await resolveDocumentCode("sales", normalizedCode)
         : current.code;
+      const updatedAt = nowIso();
       await tx.sales_order_details.deleteMany({ where: { orderId: id } });
-      const updated = await tx.sales_orders.update({
+      await tx.sales_orders.update({
         where: { id }, data: {
           code,
           orderDate: input.orderDate, deliveryDate: input.deliveryDate || null, dueDate: input.dueDate || null,
           customerId: input.customerId, warehouseId: input.warehouseId, note: input.note,
           subtotal: totals.subtotal, discountAmount: totals.discountAmount, taxAmount: totals.taxAmount,
           totalAmount: totals.totalAmount, paymentIntent: input.paymentIntent, paymentMethod: input.paymentMethod,
-          rejectionReason: null, version: { increment: 1 }, updatedAt: nowIso(),
-          sales_order_details: { create: totals.details.map(lineData) },
-        }, include: salesInclude,
+          rejectionReason: null, version: { increment: 1 }, updatedAt,
+        },
       });
-      await tx.audit_logs.create({ data: { action: "Cập nhật nháp bán hàng v1", details: updated.code, userId, userName: String(userId), createdAt: nowIso() } });
-      return mapSalesDocument(updated);
-    });
+      await tx.sales_order_details.createMany({
+        data: totals.details.map(line => ({ ...lineData(line), orderId: id })),
+      });
+      await tx.audit_logs.create({ data: { action: "Cập nhật nháp bán hàng v1", details: code, userId, userName: String(userId), createdAt: updatedAt } });
+      const row = await tx.sales_orders.findUnique({ where: { id }, include: salesInclude });
+      if (!row) throw new HttpError(404, "SALES_NOT_FOUND", "Không tìm thấy chứng từ bán hàng");
+      return mapSalesDocument(row);
+    }, { timeout: 15_000 });
   },
 
   async post(id: number, version: number, userId: number) {
@@ -292,22 +324,50 @@ export const salesService = {
         },
       });
 
-      for (const line of document.sales_order_details) {
+      const costs = await averageCosts(
+        tx,
+        document.sales_order_details.map(line => line.packagingId),
+        document.warehouseId,
+      );
+      const costByLine = document.sales_order_details.map(line => {
         const quantity = Number(line.quantity);
-        const unitCost = await averageCost(tx, line.packagingId, document.warehouseId);
-        const costAmount = quantity * unitCost;
-        await tx.inventorytransactiondetails.create({ data: { transactionId: inventoryTransaction.id, packagingId: line.packagingId, quantity, note: document.code, createdAt: now, updatedAt: now } });
+        const unitCost = costs.get(line.packagingId) || 0;
+        return { line, quantity, unitCost, costAmount: quantity * unitCost };
+      });
+      await tx.inventorytransactiondetails.createMany({
+        data: costByLine.map(({ line, quantity }) => ({
+          transactionId: inventoryTransaction.id, packagingId: line.packagingId,
+          quantity, note: document.code, createdAt: now, updatedAt: now,
+        })),
+      });
+      for (const [packagingId, quantity] of requiredByPackaging) {
         await tx.productwarehouses.update({
-          where: { packagingId_warehouseId: { packagingId: line.packagingId, warehouseId: document.warehouseId } },
+          where: { packagingId_warehouseId: { packagingId, warehouseId: document.warehouseId } },
           data: { stock_quantity: { decrement: quantity }, updatedAt: now },
         });
-        await tx.inventory_ledger.create({ data: {
+      }
+      await tx.inventory_ledger.createMany({
+        data: costByLine.map(({ line, quantity, unitCost, costAmount }) => ({
           sourceType: "SALE", sourceId: id, sourceLineId: line.id, documentCode: document.code, direction: "OUT",
           packagingId: line.packagingId, warehouseId: document.warehouseId, quantity: decimal(quantity),
           unitCost: decimal(unitCost), totalValue: money(-costAmount), occurredAt: postedAt, createdBy: userId,
-        } });
-        await tx.sales_order_details.update({ where: { id: line.id }, data: { unitCost: decimal(unitCost), costAmount: money(costAmount) } });
-        if (line.lineType === "PROMOTION" && line.promotionProgramId) await tx.promotion_usage_logs.create({ data: { programId: line.promotionProgramId, salesOrderId: document.id, salesOrderLineId: line.id, rewardPackagingId: line.packagingId, rewardQuantity: decimal(quantity), programCode: line.promotionCode || "", programName: line.promotionName || "" } });
+        })),
+      });
+      for (const { line, unitCost, costAmount } of costByLine) {
+        await tx.sales_order_details.update({
+          where: { id: line.id },
+          data: { unitCost: decimal(unitCost), costAmount: money(costAmount) },
+        });
+      }
+      const promotionLines = costByLine.filter(({ line }) => line.lineType === "PROMOTION" && line.promotionProgramId);
+      if (promotionLines.length) {
+        await tx.promotion_usage_logs.createMany({
+          data: promotionLines.map(({ line, quantity }) => ({
+            programId: line.promotionProgramId!, salesOrderId: document.id, salesOrderLineId: line.id,
+            rewardPackagingId: line.packagingId, rewardQuantity: decimal(quantity),
+            programCode: line.promotionCode || "", programName: line.promotionName || "",
+          })),
+        });
       }
 
       const charge = await tx.receivable_transactions.create({ data: {
