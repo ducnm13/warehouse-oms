@@ -4,6 +4,9 @@ import toast from '../components/ui/toast';
 import { confirm } from '../components/ui/confirm';
 import { apiV1 } from '../lib/apiV1';
 import { User, Role } from '../types';
+import ListToolbar from '../components/ListToolbar';
+import type { FilterField, FilterValues } from '../components/FilterDrawer';
+import { exportExcelFile } from '../lib/excelExport';
 
 const ROLE_META: Record<string, { label: string; css: string }> = {
   ADMIN: { label: "Quản trị viên", css: "bg-purple-100 text-purple-700" },
@@ -34,7 +37,7 @@ const Users = () => {
   const [selectedUser, setSelectedUser] = useState<Partial<User> & { password?: string } | null>(null);
   const [selectedRoleCodes, setSelectedRoleCodes] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [roleFilter, setRoleFilter] = useState('');
+  const [filters, setFilters] = useState<FilterValues>({});
   const [showPassword, setShowPassword] = useState(false);
 
   const currentUserId = (() => {
@@ -177,7 +180,7 @@ const Users = () => {
       u.fullName?.toLowerCase().includes(keyword) ||
       u.username?.toLowerCase().includes(keyword);
     const codes = userRoleCodes(u);
-    const matchRole = !roleFilter || codes.includes(roleFilter);
+    const matchRole = !filters.role || codes.includes(filters.role);
     return matchKeyword && matchRole;
   });
 
@@ -185,6 +188,36 @@ const Users = () => {
   const filterOptions = allRoles.length
     ? allRoles
     : (Object.keys(ROLE_META)).map(code => ({ id: 0, code, name: ROLE_META[code].label }));
+  const filterFields: FilterField[] = [
+    {
+      type: 'select',
+      key: 'role',
+      label: 'Vai trò',
+      options: filterOptions.map(role => ({ value: role.code, label: role.name })),
+    },
+  ];
+  const exportUsers = () =>
+    exportExcelFile(
+      'tai-khoan.xlsx',
+      'Tai khoan',
+      [
+        { header: 'Tên đăng nhập', value: (user: User) => user.username },
+        { header: 'Họ tên', value: (user: User) => user.fullName, width: 28 },
+        {
+          header: 'Vai trò',
+          value: (user: User) =>
+            userRoleCodes(user)
+              .map(code => getRoleLabel(code, allRoles))
+              .join(', '),
+          width: 28,
+        },
+        {
+          header: 'Quyền',
+          value: (user: User) => (user.permissions || []).length,
+        },
+      ],
+      filteredUsers,
+    );
 
   return (
     <div className="erp-page">
@@ -223,27 +256,24 @@ const Users = () => {
       </div>
 
       <div className="erp-card overflow-hidden">
-        <div className="erp-toolbar">
-          <div className="erp-search">
-            <Search size={16} />
-            <input
-              type="text"
-              placeholder="Tìm theo tên, tên đăng nhập..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-            />
-          </div>
-          <select
-            value={roleFilter}
-            onChange={e => setRoleFilter(e.target.value)}
-            className="w-52 rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
-          >
-            <option value="">Tất cả vai trò</option>
-            {filterOptions.map(role => (
-              <option key={role.code} value={role.code}>{role.name}</option>
-            ))}
-          </select>
-        </div>
+        <ListToolbar
+          fields={filterFields}
+          values={filters}
+          onChange={setFilters}
+          onExport={exportUsers}
+          exportDisabled={filteredUsers.length === 0}
+          search={
+            <div className="erp-search">
+              <Search size={16} />
+              <input
+                type="text"
+                placeholder="Tìm theo tên, tên đăng nhập..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+              />
+            </div>
+          }
+        />
 
         <div className="overflow-x-auto">
           <table className="erp-table">

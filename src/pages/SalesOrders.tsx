@@ -5,7 +5,6 @@ import { useForm } from "react-hook-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useReactToPrint } from "react-to-print";
 import {
-	ChevronRight,
 	CheckCircle2,
 	CircleDollarSign,
 	Copy,
@@ -36,11 +35,12 @@ import type {
 import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
 import TableActions from "../components/TableActions";
+import ListToolbar from "../components/ListToolbar";
+import type { FilterField, FilterValues } from "../components/FilterDrawer";
+import { exportExcelFile } from "../lib/excelExport";
 import { SalesOrderDocument } from "../components/SalesOrderDocument";
 import Button from "../components/ui/button";
-import Badge from "../components/ui/badge";
 import { Card } from "../components/ui/card";
-import { Field, FieldLabel } from "../components/ui/input";
 import { DateInput } from "../components/DateRangeCalendar";
 import {
 	formatDate,
@@ -125,6 +125,45 @@ const statusMeta: Record<
 	},
 };
 
+const SALES_FILTER_FIELDS: FilterField[] = [
+	{
+		type: "select",
+		key: "status",
+		label: "Trạng thái",
+		options: [
+			{ value: "POSTED", label: "Đã lưu" },
+			{ value: "DRAFT", label: "Nháp" },
+			{ value: "CANCELLED", label: "Đã hủy" },
+		],
+	},
+	{
+		type: "select",
+		key: "paymentStatus",
+		label: "Trạng thái thanh toán",
+		options: [
+			{ value: "UNPAID", label: "Chưa thanh toán" },
+			{ value: "PARTIAL", label: "Thanh toán một phần" },
+			{ value: "PAID", label: "Đã thanh toán" },
+		],
+	},
+	{
+		type: "select",
+		key: "deliveryStatus",
+		label: "Trạng thái xuất hàng",
+		options: [
+			{ value: "DELIVERED", label: "Đã xuất đủ" },
+			{ value: "PENDING", label: "Chưa xuất" },
+		],
+	},
+	{
+		type: "dateRange",
+		key: "orderDate",
+		label: "Thời gian",
+		fromKey: "dateFrom",
+		toKey: "dateTo",
+	},
+];
+
 const cloneRowStyle = (source: ExcelJS.Row, target: ExcelJS.Row) => {
 	target.height = source.height;
 	for (let column = 1; column <= 14; column++) {
@@ -138,7 +177,8 @@ const cloneRowStyle = (source: ExcelJS.Row, target: ExcelJS.Row) => {
 export default function SalesOrders() {
 	const queryClient = useQueryClient();
 	const [search, setSearch] = useState("");
-	const [status, setStatus] = useState<"" | V1Status>("");
+	const [filters, setFilters] = useState<FilterValues>({});
+	const status = (filters.status || "") as "" | V1Status;
 	const [page, setPage] = useState(1);
 	const [open, setOpen] = useState(false);
 	const [editing, setEditing] = useState<SalesOrder | null>(null);
@@ -353,6 +393,27 @@ export default function SalesOrders() {
 	});
 	const orders = documents.data?.data || [];
 	const meta = documents.data?.meta as any;
+	const visibleOrders = useMemo(() => {
+		const from = filters.dateFrom || "";
+		const to = filters.dateTo || "";
+		return orders.filter(order => {
+			if (filters.paymentStatus) {
+				if (filters.paymentStatus === "UNPAID") {
+					if (order.paymentStatus === "PAID") return false;
+				} else if (order.paymentStatus !== filters.paymentStatus) return false;
+			}
+			if (filters.deliveryStatus) {
+				const delivered =
+					Boolean(order.fulfilledAt) || order.status === "POSTED";
+				if (filters.deliveryStatus === "DELIVERED" && !delivered) return false;
+				if (filters.deliveryStatus === "PENDING" && delivered) return false;
+			}
+			const date = (order.orderDate || "").slice(0, 10);
+			if (from && date < from) return false;
+			if (to && date > to) return false;
+			return true;
+		});
+	}, [orders, filters]);
 	const finishedGoodsWarehouseId = useMemo(() => {
 		const warehouses = references.data?.warehouses || [];
 		const byName = warehouses.find(warehouse =>
@@ -755,6 +816,7 @@ export default function SalesOrders() {
 			: 0;
 		const customerPriceBookId = getCustomerPriceBookId(document.customerId);
 		form.reset({
+			code: document.code,
 			orderDate: document.orderDate,
 			deliveryDate: document.deliveryDate || "",
 			dueDate: document.dueDate || "",
@@ -1077,6 +1139,55 @@ export default function SalesOrders() {
 		}
 	};
 
+	const exportSalesList = () =>
+		exportExcelFile(
+			"danh-sach-don-ban-hang.xlsx",
+			"Don ban hang",
+			[
+				{ header: "Mã đơn", value: (order: SalesOrder) => order.code },
+				{ header: "Ngày đơn", value: (order: SalesOrder) => order.orderDate },
+				{
+					header: "Khách hàng",
+					value: (order: SalesOrder) => order.customerName || "",
+					width: 28,
+				},
+				{
+					header: "Tổng tiền",
+					value: (order: SalesOrder) => Number(order.totalAmount || 0),
+				},
+				{
+					header: "Đã thanh toán",
+					value: (order: SalesOrder) => Number(order.paidAmount || 0),
+				},
+				{
+					header: "Trạng thái",
+					value: (order: SalesOrder) =>
+						statusMeta[order.status as V1Status]?.label || order.status,
+				},
+				{
+					header: "Thanh toán",
+					value: (order: SalesOrder) =>
+						order.paymentStatus === "PAID"
+							? "Đã thanh toán"
+							: order.paymentStatus === "PARTIAL"
+								? "Thanh toán một phần"
+								: "Chưa thanh toán",
+				},
+				{
+					header: "Xuất hàng",
+					value: (order: SalesOrder) =>
+						order.fulfilledAt || order.status === "POSTED"
+							? "Đã xuất đủ"
+							: "Chưa xuất",
+				},
+				{
+					header: "Kho",
+					value: (order: SalesOrder) => order.warehouseName || "",
+				},
+			],
+			visibleOrders,
+		);
+
 	const exportOrder = async (order: SalesOrder) => {
 		const workbook = await buildOrderWorkbook(order);
 		if (!workbook) return;
@@ -1112,7 +1223,7 @@ export default function SalesOrders() {
 					onClick={openCreate}
 					disabled={!references.data?.customers.length}
 				>
-					<Plus size={17} /> Thêm đơn bán
+					<Plus size={17} /> Thêm
 				</Button>
 			</div>
 			<div className="grid gap-4 md:grid-cols-3">
@@ -1148,35 +1259,29 @@ export default function SalesOrders() {
 				</div>
 			</div>
 			<Card className="overflow-hidden !p-0">
-				<div className="erp-toolbar">
-					<div className="erp-search">
-						<Search size={17} />
-						<input
-							value={search}
-							onChange={event => {
-								setSearch(event.target.value);
-								setPage(1);
-							}}
-							placeholder="Tìm số đơn, khách hàng..."
-						/>
-					</div>
-					<div className="list-box">
-						<select
-							value={status}
-							onChange={event => {
-								setStatus(event.target.value as any);
-								setPage(1);
-							}}
-						>
-							<option value="">Tất cả trạng thái</option>
-							{Object.entries(statusMeta).map(([key, value]) => (
-								<option key={key} value={key}>
-									{value.label}
-								</option>
-							))}
-						</select>
-					</div>
-				</div>
+				<ListToolbar
+					fields={SALES_FILTER_FIELDS}
+					values={filters}
+					onChange={next => {
+						setFilters(next);
+						setPage(1);
+					}}
+					onExport={exportSalesList}
+					exportDisabled={visibleOrders.length === 0}
+					search={
+						<div className="erp-search">
+							<Search size={17} />
+							<input
+								value={search}
+								onChange={event => {
+									setSearch(event.target.value);
+									setPage(1);
+								}}
+								placeholder="Tìm số đơn, khách hàng..."
+							/>
+						</div>
+					}
+				/>
 				{documents.isLoading ? (
 					<div className="erp-table-loading">Đang tải chứng từ...</div>
 				) : documents.isError ? (
@@ -1186,13 +1291,13 @@ export default function SalesOrders() {
 						</p>
 						{(documents.error as any)?.status === 403 && (
 							<p className="mx-auto mt-2 max-w-xl text-sm text-slate-500">
-								Tài khoản chưa có quyền xem bán hàng. Vui lòng đăng nhập lại để
-								nhận token mới, hoặc nhờ quản trị viên gán vai trò có quyền{" "}
-								<b>sales.view</b> trong bảng user_roles.
+								Tài khoản chưa có quyền xem bán hàng. Vui lòng đăng nhập lại,
+								hoặc liên hệ quản trị viên để hỗ trợ!{" "}
+								{/* <b>sales.view</b> trong bảng user_roles. */}
 							</p>
 						)}
 					</div>
-				) : orders.length === 0 ? (
+				) : visibleOrders.length === 0 ? (
 					<div className="erp-empty">
 						<PackagePlus size={48} />
 						<p>Chưa có chứng từ bán hàng nào</p>
@@ -1202,20 +1307,21 @@ export default function SalesOrders() {
 						<table className="erp-table">
 							<thead>
 								<tr>
-									<th>Số đơn / Ngày</th>
+									<th>Ngày</th>
+									<th>Đơn hàng</th>
 									<th>Khách hàng</th>
-									<th>Kho xuất</th>
+									<th className="text-right">Tổng tiền</th>
 									<th>Trạng thái</th>
-									<th className="text-right">Tổng tiền / Công nợ</th>
-									<th></th>
+									<th>Chức năng</th>
 								</tr>
 							</thead>
 							<tbody>
-								{orders.map(order => (
+								{visibleOrders.map(order => (
 									<tr
 										key={order.id}
 										className={statusMeta[order.status as V1Status]?.row}
 									>
+										<td>{formatDate(order.orderDate)}</td>
 										<td>
 											<button
 												className="font-bold text-[#422afb] hover:underline"
@@ -1250,15 +1356,24 @@ export default function SalesOrders() {
 											>
 												{order.code}
 											</button>
-											<small>
-												{formatDate(order.orderDate)} · v{order.version}
-											</small>
 										</td>
 										<td>
 											<b>{order.customerName}</b>
-											<small>{order.customerPhone}</small>
+											{/* <small>{order.customerPhone}</small> */}
 										</td>
-										<td>{order.warehouseName}</td>
+										{/* <td>{order.warehouseName}</td> */}
+										<td className="text-right font-semibold">
+											{formatNumber(order.totalAmount)} ₫
+											{order.status === "POSTED" && (
+												<small>
+													Còn nợ:{" "}
+													{formatNumber(
+														order.totalAmount - Number(order.paidAmount || 0),
+													)}{" "}
+													₫
+												</small>
+											)}
+										</td>
 										<td>
 											<span
 												className={`erp-badge ${statusMeta[order.status as V1Status].css}`}
@@ -1275,18 +1390,7 @@ export default function SalesOrders() {
 												</small>
 											)}
 										</td>
-										<td className="text-right font-semibold">
-											{formatNumber(order.totalAmount)} ₫
-											{order.status === "POSTED" && (
-												<small>
-													Còn nợ:{" "}
-													{formatNumber(
-														order.totalAmount - Number(order.paidAmount || 0),
-													)}{" "}
-													₫
-												</small>
-											)}
-										</td>
+
 										<td>
 											<TableActions
 												actions={[
@@ -1934,11 +2038,36 @@ export default function SalesOrders() {
 									{formatNumber(selected.totalAmount)} ₫
 								</b>
 							</div>
+							<div className="rounded bg-slate-50 p-3">
+								<b>Thông tin khách hàng</b>
+								<div className="mt-2 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+									<div>
+										<span className="text-slate-500">Mã khách hàng: </span>
+										<b>{selected.customerCode || "—"}</b>
+									</div>
+									<div>
+										<span className="text-slate-500">Tên khách hàng: </span>
+										<b>{selected.customerName || "—"}</b>
+									</div>
+									<div>
+										<span className="text-slate-500">Điện thoại: </span>
+										{selected.customerPhone || "—"}
+									</div>
+									<div>
+										<span className="text-slate-500">Mã số thuế: </span>
+										{selected.customerTaxCode || "—"}
+									</div>
+									<div className="sm:col-span-2">
+										<span className="text-slate-500">Địa chỉ: </span>
+										{selected.customerAddress || "—"}
+									</div>
+								</div>
+							</div>
 							<table className="erp-table">
 								<thead>
 									<tr>
 										<th>Hàng hóa</th>
-										<th>SL</th>
+										<th>Số lượng</th>
 										<th className="text-right">Đơn giá</th>
 										<th className="text-right">Thành tiền</th>
 										<th className="text-right">Giá vốn</th>
@@ -2195,9 +2324,7 @@ export default function SalesOrders() {
 												{
 													onSuccess: response => {
 														setSelected(response.data);
-														toast.success(
-															"Đã hủy lưu, bạn có thể bấm Sửa đơn",
-														);
+														toast.success("Đã hủy lưu, bạn có thể bấm Sửa đơn");
 													},
 												},
 											);

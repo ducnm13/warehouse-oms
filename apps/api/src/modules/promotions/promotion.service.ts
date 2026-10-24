@@ -40,7 +40,7 @@ export const promotionService = {
     return prisma.$transaction(async tx => {
       const current = (await tx.$queryRawUnsafe("SELECT id,status,version FROM promotion_programs WHERE id=? AND deletedAt IS NULL FOR UPDATE", id) as any[])[0];
       if (!current) throw new HttpError(404, "PROMOTION_NOT_FOUND", "Không tìm thấy chương trình");
-      if (current.status !== "DRAFT") throw new HttpError(409, "PROMOTION_NOT_EDITABLE", "Chỉ chương trình nháp được sửa");
+      if (!["DRAFT", "INACTIVE"].includes(current.status)) throw new HttpError(409, "PROMOTION_NOT_EDITABLE", "Chỉ chương trình nháp hoặc đã ngừng áp dụng được sửa");
       if (Number(current.version) !== input.version) throw new HttpError(409, "VERSION_CONFLICT", "Chương trình đã được cập nhật");
       await tx.promotion_conditions.deleteMany({ where: { programId: id } }); await tx.promotion_rewards.deleteMany({ where: { programId: id } });
       const row = await tx.promotion_programs.update({ where: { id }, data: { code: input.code, name: input.name, startDate: day(input.startDate), endDate: day(input.endDate), customerScope: input.customerScope, customerGroup: input.customerScope === "GROUP" ? input.customerGroup : null, priority: input.priority, note: input.note || null, version: { increment: 1 }, updatedAt: new Date(), ...nested(input) }, include: promotionInclude });

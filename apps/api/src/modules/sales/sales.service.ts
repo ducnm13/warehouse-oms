@@ -3,7 +3,7 @@ import type { SalesCancelInput, SalesDraftInput, SalesPaymentInput, SalesUpdateI
 import { HttpError } from "../../common/http-error";
 import { mapSalesDocument } from "./sales.mapper";
 import { prisma, salesInclude, salesRepository } from "./sales.repository";
-import { resolveDocumentCode } from "../../common/document-code";
+import { normalizeCodeInput, resolveDocumentCode } from "../../common/document-code";
 
 const decimal = (value: number) => new Prisma.Decimal(value.toFixed(4));
 const money = (value: number) => new Prisma.Decimal(value.toFixed(2));
@@ -52,7 +52,7 @@ const lineData = (line: ReturnType<typeof calculate>["details"][number]) => ({
 });
 
 async function lockOrder(tx: any, id: number) {
-  const rows = await tx.$queryRawUnsafe("SELECT id,status,version FROM sales_orders WHERE id=? FOR UPDATE", id) as any[];
+  const rows = await tx.$queryRawUnsafe("SELECT id,code,status,version FROM sales_orders WHERE id=? FOR UPDATE", id) as any[];
   if (!rows[0]) throw new HttpError(404, "SALES_NOT_FOUND", "Không tìm thấy chứng từ bán hàng");
   return rows[0];
 }
@@ -185,10 +185,27 @@ export const salesService = {
       if (current.status !== "DRAFT") {
         throw new HttpError(409, "SALES_NOT_DELETABLE", "Đơn đã lưu phải hủy và đảo, không được xóa trực tiếp");
       }
-      await tx.sales_document_links_v1.deleteMany({ where: { salesOrderId: id } });
-      await tx.promotion_usage_logs.deleteMany({ where: { salesOrderId: id } });
-      await tx.sales_order_details.deleteMany({ where: { orderId: id } });
-      await tx.sales_orders.delete({ where: { id } });
+      const [returnCount, paymentCount] = await Promise.all([
+        tx.sales_returns.count({ where: { originalSalesOrderId: id } }),
+        tx.customer_payments.count({ where: { salesOrderId: id } }),
+      ]);
+      if (returnCount > 0) {
+        throw new HttpError(409, "SALES_RETURN_EXISTS", "Đơn hàng đã có phiếu trả hàng, không thể xóa. Hãy xóa phiếu trả hàng trước.");
+      }
+      if (paymentCount > 0) {
+        throw new HttpError(409, "SALES_PAYMENT_EXISTS", "Đơn hàng đã có lịch sử thanh toán, không thể xóa. Hãy hủy các khoản thu liên quan trước.");
+      }
+      try {
+        await tx.sales_document_links_v1.deleteMany({ where: { salesOrderId: id } });
+        await tx.promotion_usage_logs.deleteMany({ where: { salesOrderId: id } });
+        await tx.sales_order_details.deleteMany({ where: { orderId: id } });
+        await tx.sales_orders.delete({ where: { id } });
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
+          throw new HttpError(409, "SALES_DELETE_CONFLICT", "Không thể xóa đơn hàng vì còn dữ liệu liên quan.");
+        }
+        throw error;
+      }
       await tx.audit_logs.create({ data: { action: "Xóa chứng từ bán hàng v1", details: `Sales order ${id}`, userId, userName: String(userId), createdAt: nowIso() } });
       return { id };
     });
@@ -220,9 +237,14 @@ export const salesService = {
       const current = await lockOrder(tx, id);
       if (current.status !== "DRAFT") throw new HttpError(409, "SALES_NOT_EDITABLE", "Đơn đã lưu phải hủy lưu trước khi sửa");
       assertVersion(current, input.version);
+      const normalizedCode = normalizeCodeInput(input.code);
+      const code = normalizedCode && normalizedCode !== current.code
+        ? await resolveDocumentCode("sales", normalizedCode)
+        : current.code;
       await tx.sales_order_details.deleteMany({ where: { orderId: id } });
       const updated = await tx.sales_orders.update({
         where: { id }, data: {
+          code,
           orderDate: input.orderDate, deliveryDate: input.deliveryDate || null, dueDate: input.dueDate || null,
           customerId: input.customerId, warehouseId: input.warehouseId, note: input.note,
           subtotal: totals.subtotal, discountAmount: totals.discountAmount, taxAmount: totals.taxAmount,

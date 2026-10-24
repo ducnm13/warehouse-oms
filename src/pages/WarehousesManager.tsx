@@ -4,6 +4,9 @@ import { Plus, Edit, Trash2, Warehouse, Search, Save, X, MapPin } from "lucide-r
 import toast from "../components/ui/toast";
 import { confirm } from "../components/ui/confirm";
 import { apiV1 } from "../lib/apiV1";
+import ListToolbar from "../components/ListToolbar";
+import type { FilterField, FilterValues } from "../components/FilterDrawer";
+import { exportExcelFile } from "../lib/excelExport";
 
 interface WarehouseItem {
   id: number;
@@ -27,6 +30,7 @@ const WAREHOUSE_TYPES: Record<string, { label: string; color: string }> = {
 export default function WarehousesManager() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
+  const [filters, setFilters] = useState<FilterValues>({});
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<WarehouseItem | null>(null);
 
@@ -53,10 +57,68 @@ export default function WarehousesManager() {
   });
 
   const warehouses = (data?.data as any) ?? [];
-  const filtered = warehouses.filter((w: WarehouseItem) =>
-    w.name.toLowerCase().includes(search.toLowerCase()) ||
-    w.code.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = warehouses.filter((w: WarehouseItem) => {
+    const keyword = search.toLowerCase();
+    const matchSearch =
+      w.name.toLowerCase().includes(keyword) ||
+      w.code.toLowerCase().includes(keyword);
+    const matchType = !filters.type || w.type === filters.type;
+    const matchStatus =
+      !filters.status ||
+      (filters.status === "ACTIVE" ? w.isActive !== 0 : w.isActive === 0);
+    return matchSearch && matchType && matchStatus;
+  });
+  const filterFields: FilterField[] = [
+    {
+      type: "select",
+      key: "type",
+      label: "Loại kho",
+      options: Object.entries(WAREHOUSE_TYPES).map(([value, meta]) => ({
+        value,
+        label: meta.label,
+      })),
+    },
+    {
+      type: "select",
+      key: "status",
+      label: "Trạng thái",
+      options: [
+        { value: "ACTIVE", label: "Đang hoạt động" },
+        { value: "INACTIVE", label: "Ngừng hoạt động" },
+      ],
+    },
+  ];
+  const exportWarehouses = () =>
+    exportExcelFile(
+      "kho-hang.xlsx",
+      "Kho hang",
+      [
+        { header: "Mã kho", value: (row: WarehouseItem) => row.code },
+        { header: "Tên kho", value: (row: WarehouseItem) => row.name, width: 30 },
+        {
+          header: "Loại kho",
+          value: (row: WarehouseItem) =>
+            WAREHOUSE_TYPES[row.type]?.label || row.type,
+        },
+        { header: "Vị trí", value: (row: WarehouseItem) => row.location || "" },
+        {
+          header: "Địa chỉ",
+          value: (row: WarehouseItem) => row.address || "",
+          width: 36,
+        },
+        {
+          header: "Tồn kho",
+          value: (row: WarehouseItem) =>
+            row._count?.productwarehouses || 0,
+        },
+        {
+          header: "Trạng thái",
+          value: (row: WarehouseItem) =>
+            row.isActive !== 0 ? "Đang hoạt động" : "Ngừng hoạt động",
+        },
+      ],
+      filtered,
+    );
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["warehouses-manage"] });
@@ -121,20 +183,23 @@ export default function WarehousesManager() {
       </div>
 
       <div className="erp-card bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 w-80">
-            <Search size={16} className="text-slate-400" />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Tìm theo mã hoặc tên kho..."
-              className="bg-transparent border-0 outline-none text-sm w-full text-slate-800 placeholder-slate-400"
-            />
-          </div>
-          <div className="text-xs text-slate-500">
-            Tổng số: <strong className="text-slate-800">{warehouses.length}</strong> kho
-          </div>
-        </div>
+        <ListToolbar
+          fields={filterFields}
+          values={filters}
+          onChange={setFilters}
+          onExport={exportWarehouses}
+          exportDisabled={filtered.length === 0}
+          search={
+            <div className="erp-search">
+              <Search size={16} />
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Tìm theo mã hoặc tên kho..."
+              />
+            </div>
+          }
+        />
 
         {isLoading ? (
           <div className="p-12 text-center text-slate-400 text-sm">Đang tải danh sách kho...</div>

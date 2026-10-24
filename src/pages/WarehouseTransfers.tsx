@@ -33,6 +33,9 @@ import type {
 	Warehouse,
 	WarehouseTransferV1,
 } from "../types";
+import ListToolbar from "../components/ListToolbar";
+import type { FilterField, FilterValues } from "../components/FilterDrawer";
+import { exportExcelFile } from "../lib/excelExport";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
 import TableActions from "../components/TableActions";
@@ -71,11 +74,33 @@ const statusMeta = {
 	CANCELLED: { label: "Đã hủy", css: "bg-red-100 text-red-700", icon: Undo2 },
 } as const;
 
+const TRANSFER_FILTER_FIELDS: FilterField[] = [
+	{
+		type: "select",
+		key: "status",
+		label: "Trạng thái",
+		options: [
+			{ value: "DRAFT", label: "Nháp" },
+			{ value: "IN_TRANSIT", label: "Đang vận chuyển" },
+			{ value: "RECEIVED", label: "Đã nhận" },
+			{ value: "CANCELLED", label: "Đã hủy" },
+		],
+	},
+	{
+		type: "dateRange",
+		key: "transferDate",
+		label: "Thời gian",
+		fromKey: "dateFrom",
+		toKey: "dateTo",
+	},
+];
+
 export default function WarehouseTransfers() {
 	const queryClient = useQueryClient();
 	const [page, setPage] = useState(1),
-		[search, setSearch] = useState(""),
-		[status, setStatus] = useState("");
+		[search, setSearch] = useState("");
+	const [filters, setFilters] = useState<FilterValues>({});
+	const status = filters.status || "";
 	const [fromFilter, setFromFilter] = useState(0),
 		[toFilter, setToFilter] = useState(0);
 	const [open, setOpen] = useState(false),
@@ -238,13 +263,10 @@ export default function WarehouseTransfers() {
 	});
 	const deleteMutation = useMutation({
 		mutationFn: (document: WarehouseTransferV1) =>
-			apiV1(
-				`/api/v1/warehouse-transfers/${document.id}/delete`,
-				{
-					method: "POST",
-					body: JSON.stringify({ version: document.version }),
-				},
-			),
+			apiV1(`/api/v1/warehouse-transfers/${document.id}/delete`, {
+				method: "POST",
+				body: JSON.stringify({ version: document.version }),
+			}),
 		onSuccess: response => {
 			toast.success(response.message);
 			setSelected(null);
@@ -311,7 +333,9 @@ export default function WarehouseTransfers() {
 			return;
 		if (
 			action === "receive" &&
-			!(await confirm(`Xác nhận đã nhận đủ hàng tại ${document.toWarehouseName}?`))
+			!(await confirm(
+				`Xác nhận đã nhận đủ hàng tại ${document.toWarehouseName}?`,
+			))
 		)
 			return;
 		if (
@@ -323,7 +347,11 @@ export default function WarehouseTransfers() {
 			return;
 		const reason =
 			action === "cancel"
-				? await prompt({ title: "Hủy phiếu chuyển kho", message: "Nhập lý do hủy:", minLength: 3 })
+				? await prompt({
+						title: "Hủy phiếu chuyển kho",
+						message: "Nhập lý do hủy:",
+						minLength: 3,
+					})
 				: undefined;
 		if (action === "cancel" && !reason) return;
 		actionMutation.mutate({ document, action, reason: reason?.trim() });
@@ -337,6 +365,60 @@ export default function WarehouseTransfers() {
 	const rows = documents.data?.data || [],
 		meta = documents.data?.meta;
 	const inTransit = rows.filter(row => row.status === "IN_TRANSIT").length;
+	const visibleRows = useMemo(() => {
+		const from = filters.dateFrom || "";
+		const to = filters.dateTo || "";
+		return rows.filter(document => {
+			const date = (document.transferDate || "").slice(0, 10);
+			if (from && date < from) return false;
+			if (to && date > to) return false;
+			return true;
+		});
+	}, [rows, filters]);
+
+	const exportTransferList = () =>
+		exportExcelFile(
+			"danh-sach-dieu-chuyen-kho.xlsx",
+			"Dieu chuyen kho",
+			[
+				{ header: "Mã phiếu", value: (row: WarehouseTransferV1) => row.code },
+				{
+					header: "Ngày chuyển",
+					value: (row: WarehouseTransferV1) => row.transferDate,
+				},
+				{
+					header: "Kho nguồn",
+					value: (row: WarehouseTransferV1) => row.fromWarehouseName || "",
+				},
+				{
+					header: "Kho đích",
+					value: (row: WarehouseTransferV1) => row.toWarehouseName || "",
+				},
+				{
+					header: "Tổng số dòng",
+					value: (row: WarehouseTransferV1) => row.details?.length || 0,
+				},
+				{
+					header: "Tổng giá trị",
+					value: (row: WarehouseTransferV1) =>
+						(row.details || []).reduce(
+							(sum, detail) => sum + Number(detail.totalValue || 0),
+							0,
+						),
+				},
+				{
+					header: "Trạng thái",
+					value: (row: WarehouseTransferV1) =>
+						statusMeta[row.status]?.label || row.status,
+				},
+				{
+					header: "Ghi chú",
+					value: (row: WarehouseTransferV1) => row.note || "",
+					width: 30,
+				},
+			],
+			visibleRows,
+		);
 
 	return (
 		<div className="erp-page">
@@ -385,61 +467,62 @@ export default function WarehouseTransfers() {
 				</div>
 			)}
 			<div className="erp-card overflow-hidden">
-				<div className="erp-toolbar flex-wrap">
-					<div className="erp-search">
-						<Search size={17} />
-						<input
-							value={search}
-							onChange={event => {
-								setSearch(event.target.value);
-								setPage(1);
-							}}
-							placeholder="Tìm mã phiếu, kho, diễn giải..."
-						/>
-					</div>
-					<select
-						value={status}
-						onChange={event => {
-							setStatus(event.target.value);
-							setPage(1);
-						}}
-					>
-						<option value="">Mọi trạng thái</option>
-						{Object.entries(statusMeta).map(([value, meta]) => (
-							<option key={value} value={value}>
-								{meta.label}
-							</option>
-						))}
-					</select>
-					<select
-						value={fromFilter}
-						onChange={event => {
-							setFromFilter(+event.target.value);
-							setPage(1);
-						}}
-					>
-						<option value={0}>Mọi kho nguồn</option>
-						{references.data?.warehouses.map(warehouse => (
-							<option key={warehouse.id} value={warehouse.id}>
-								{warehouse.name}
-							</option>
-						))}
-					</select>
-					<select
-						value={toFilter}
-						onChange={event => {
-							setToFilter(+event.target.value);
-							setPage(1);
-						}}
-					>
-						<option value={0}>Mọi kho đích</option>
-						{references.data?.warehouses.map(warehouse => (
-							<option key={warehouse.id} value={warehouse.id}>
-								{warehouse.name}
-							</option>
-						))}
-					</select>
-				</div>
+				<ListToolbar
+					className="flex-wrap"
+					fields={TRANSFER_FILTER_FIELDS}
+					values={filters}
+					onChange={next => {
+						setFilters(next);
+						setPage(1);
+					}}
+					onExport={exportTransferList}
+					exportDisabled={visibleRows.length === 0}
+					search={
+						<div className="erp-search">
+							<Search size={17} />
+							<input
+								value={search}
+								onChange={event => {
+									setSearch(event.target.value);
+									setPage(1);
+								}}
+								placeholder="Tìm mã phiếu, kho, diễn giải..."
+							/>
+						</div>
+					}
+					// extra={
+					// 	<>
+					// 		<select
+					// 			value={fromFilter}
+					// 			onChange={event => {
+					// 				setFromFilter(+event.target.value);
+					// 				setPage(1);
+					// 			}}
+					// 		>
+					// 			<option value={0}>Mọi kho nguồn</option>
+					// 			{references.data?.warehouses.map(warehouse => (
+					// 				<option key={warehouse.id} value={warehouse.id}>
+					// 					{warehouse.name}
+					// 				</option>
+					// 			))}
+					// 		</select>
+					// 		<select
+					// 			value={toFilter}
+					// 			onChange={event => {
+					// 				setToFilter(+event.target.value);
+					// 				setPage(1);
+					// 			}}
+					// 		>
+					// 			<option value={0}>Mọi kho đích</option>
+					// 			{references.data?.warehouses.map(warehouse => (
+					// 				<option key={warehouse.id} value={warehouse.id}>
+					// 					{warehouse.name}
+					// 				</option>
+					// 			))}
+					// 		</select>
+					// 	</>
+					// }
+				/>
 				<div className="overflow-x-auto">
 					<table className="erp-table">
 						<thead>
@@ -458,7 +541,7 @@ export default function WarehouseTransfers() {
 										Đang tải...
 									</td>
 								</tr>
-							) : rows.length === 0 ? (
+							) : visibleRows.length === 0 ? (
 								<tr>
 									<td colSpan={5} className="text-center text-slate-400">
 										Chưa có phiếu chuyển kho
@@ -541,8 +624,7 @@ export default function WarehouseTransfers() {
 															label: "Xuất giao",
 															icon: <Truck size={15} />,
 															tone: "warning",
-															disabled:
-																actionMutation.isPending,
+															disabled: actionMutation.isPending,
 															hidden: document.status !== "DRAFT",
 															onClick: () => act(document, "ship"),
 														},
@@ -551,8 +633,7 @@ export default function WarehouseTransfers() {
 															label: "Xác nhận nhận",
 															icon: <PackageCheck size={15} />,
 															tone: "success",
-															disabled:
-																actionMutation.isPending,
+															disabled: actionMutation.isPending,
 															hidden: document.status !== "IN_TRANSIT",
 															onClick: () => act(document, "receive"),
 														},
@@ -571,9 +652,9 @@ export default function WarehouseTransfers() {
 															icon: <Undo2 size={15} />,
 															tone: "danger",
 															disabled: actionMutation.isPending,
-															hidden: !(["IN_TRANSIT", "RECEIVED"] as string[]).includes(
-																document.status,
-															),
+															hidden: !(
+																["IN_TRANSIT", "RECEIVED"] as string[]
+															).includes(document.status),
 															onClick: () => act(document, "unpost"),
 														},
 														{
@@ -582,9 +663,9 @@ export default function WarehouseTransfers() {
 															icon: <Trash2 size={15} />,
 															tone: "danger",
 															disabled: deleteMutation.isPending,
-															hidden: !(["DRAFT", "CANCELLED"] as string[]).includes(
-																document.status,
-															),
+															hidden: !(
+																["DRAFT", "CANCELLED"] as string[]
+															).includes(document.status),
 															onClick: async () => {
 																if (
 																	await confirm(
@@ -924,92 +1005,100 @@ export default function WarehouseTransfers() {
 										<PackageCheck size={16} /> Xác nhận nhận
 									</button>
 								)}
-							{selected.status === "DRAFT" && (
-								<button
-									className="erp-btn text-red-600"
-									onClick={() => act(selected, "cancel")}
-								>
-									<Undo2 size={16} /> Hủy phiếu
-								</button>
-							)}
-							{(["IN_TRANSIT", "RECEIVED"] as string[]).includes(
-								selected.status,
-							) && (
-								<button
-									className="erp-btn text-red-600"
-									disabled={actionMutation.isPending}
-									onClick={() => act(selected, "unpost")}
-								>
-									<Undo2 size={16} /> Hủy lưu
-								</button>
-							)}
-							{(["DRAFT", "CANCELLED"] as string[]).includes(
-								selected.status,
-							) && (
-								<button
-									className="erp-btn text-red-600"
-									disabled={deleteMutation.isPending}
-											onClick={async () => {
-												if (
-													await confirm(
-														`Xóa phiếu chuyển kho ${selected.code}?`,
-													)
-												)
-													deleteMutation.mutate(selected);
-									}}
-								>
-									<Trash2 size={16} /> Xóa phiếu
-								</button>
-							)}
-						</div>
+								{selected.status === "DRAFT" && (
+									<button
+										className="erp-btn text-red-600"
+										onClick={() => act(selected, "cancel")}
+									>
+										<Undo2 size={16} /> Hủy phiếu
+									</button>
+								)}
+								{(["IN_TRANSIT", "RECEIVED"] as string[]).includes(
+									selected.status,
+								) && (
+									<button
+										className="erp-btn text-red-600"
+										disabled={actionMutation.isPending}
+										onClick={() => act(selected, "unpost")}
+									>
+										<Undo2 size={16} /> Hủy lưu
+									</button>
+								)}
+								{(["DRAFT", "CANCELLED"] as string[]).includes(
+									selected.status,
+								) && (
+									<button
+										className="erp-btn text-red-600"
+										disabled={deleteMutation.isPending}
+										onClick={async () => {
+											if (
+												await confirm(`Xóa phiếu chuyển kho ${selected.code}?`)
+											)
+												deleteMutation.mutate(selected);
+										}}
+									>
+										<Trash2 size={16} /> Xóa phiếu
+									</button>
+								)}
+							</div>
 						</div>
 					</div>
 				</div>
 			)}
-<PrintPreview
-			open={!!printTarget}
-			title={printTarget ? `Xem trước phiếu chuyển kho ${printTarget.code}` : "Xem trước in"}
-			fill={printTarget ? ((worksheet, company) => {
-				const details = printTarget.details || [];
-				const total = details.reduce(
-					(sum, line) =>
-						sum +
-						Number(
-							line.totalValue ?? Number(line.quantity || 0) * Number(line.unitCost || 0),
-						),
-					0,
-				);
-				fillGenericDocument(
-					worksheet,
-					company as CompanyPrintProfile | null,
-					GENERIC_LAYOUTS.transfer,
-					{
-						code: printTarget.code,
-						documentDate: printTarget.transferDate,
-						title: "PHIẾU XUẤT CHUYỂN KHO",
-						partner: `${printTarget.fromWarehouseName || ""} → ${printTarget.toWarehouseName || ""}`,
-						dienGiai:
-							printTarget.note ||
-							`Chuyển hàng từ ${printTarget.fromWarehouseName || ""} sang ${printTarget.toWarehouseName || ""}`,
-						total,
-						rows: details.map((line, index) => ({
-							stt: index + 1,
-							sku: line.sku || "",
-							name: [line.productName, line.packagingName]
-								.filter(Boolean)
-								.join(" - "),
-							unit: line.unit || "",
-							quantity: Number(line.quantity || 0),
-							unitPrice: Number(line.unitCost || 0),
-							amount: Number(
-								line.totalValue ??
-									Number(line.quantity || 0) * Number(line.unitCost || 0),
-							),
-						})),
-					},
-				);
-			}) : null}
-			onClose={() => setPrintTarget(null)}
+			<PrintPreview
+				open={!!printTarget}
+				title={
+					printTarget
+						? `Xem trước phiếu chuyển kho ${printTarget.code}`
+						: "Xem trước in"
+				}
+				fill={
+					printTarget
+						? (worksheet, company) => {
+								const details = printTarget.details || [];
+								const total = details.reduce(
+									(sum, line) =>
+										sum +
+										Number(
+											line.totalValue ??
+												Number(line.quantity || 0) * Number(line.unitCost || 0),
+										),
+									0,
+								);
+								fillGenericDocument(
+									worksheet,
+									company as CompanyPrintProfile | null,
+									GENERIC_LAYOUTS.transfer,
+									{
+										code: printTarget.code,
+										documentDate: printTarget.transferDate,
+										title: "PHIẾU XUẤT CHUYỂN KHO",
+										partner: `${printTarget.fromWarehouseName || ""} → ${printTarget.toWarehouseName || ""}`,
+										dienGiai:
+											printTarget.note ||
+											`Chuyển hàng từ ${printTarget.fromWarehouseName || ""} sang ${printTarget.toWarehouseName || ""}`,
+										total,
+										rows: details.map((line, index) => ({
+											stt: index + 1,
+											sku: line.sku || "",
+											name: [line.productName, line.packagingName]
+												.filter(Boolean)
+												.join(" - "),
+											unit: line.unit || "",
+											quantity: Number(line.quantity || 0),
+											unitPrice: Number(line.unitCost || 0),
+											amount: Number(
+												line.totalValue ??
+													Number(line.quantity || 0) *
+														Number(line.unitCost || 0),
+											),
+										})),
+									},
+								);
+							}
+						: null
+				}
+				onClose={() => setPrintTarget(null)}
 			/>
 		</div>
 	);

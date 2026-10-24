@@ -647,24 +647,112 @@ export interface FinancialSummaryReportV1 {
 	receivables: number;
 	payables: number;
 	inventoryValue: number;
-	monthly: Array<{ monthKey: string; revenue: number; cogs: number; purchases: number; profit: number }>;
-	topCustomerDebts: Array<{ id: number; code?: string; name: string; debt: number }>;
+	monthly: Array<{
+		monthKey: string;
+		revenue: number;
+		cogs: number;
+		purchases: number;
+		profit: number;
+	}>;
+	topCustomerDebts: Array<{
+		id: number;
+		code?: string;
+		name: string;
+		debt: number;
+	}>;
 }
 export interface PurchaseBySupplierReportV1 {
-	rows: Array<{ supplierId: number; supplierCode?: string; supplierName: string; documents: number; goodsAmount: number; taxAmount: number; totalAmount: number; paidAmount: number; outstanding: number }>;
-	summary: { documents: number; goodsAmount: number; taxAmount: number; totalAmount: number; paidAmount: number; outstanding: number };
+	rows: Array<{
+		supplierId: number;
+		supplierCode?: string;
+		supplierName: string;
+		documents: number;
+		goodsAmount: number;
+		taxAmount: number;
+		totalAmount: number;
+		paidAmount: number;
+		outstanding: number;
+	}>;
+	summary: {
+		documents: number;
+		goodsAmount: number;
+		taxAmount: number;
+		totalAmount: number;
+		paidAmount: number;
+		outstanding: number;
+	};
 }
 export interface PurchaseByProductReportV1 {
-	rows: Array<{ packagingId: number; sku?: string; packagingName: string; unit?: string; productName: string; documents: number; quantity: number; goodsAmount: number; taxAmount: number; totalAmount: number; avgUnitPrice: number }>;
-	summary: { documents: number; quantity: number; goodsAmount: number; taxAmount: number; totalAmount: number };
+	rows: Array<{
+		packagingId: number;
+		sku?: string;
+		packagingName: string;
+		unit?: string;
+		productName: string;
+		documents: number;
+		quantity: number;
+		goodsAmount: number;
+		taxAmount: number;
+		totalAmount: number;
+		avgUnitPrice: number;
+	}>;
+	summary: {
+		documents: number;
+		quantity: number;
+		goodsAmount: number;
+		taxAmount: number;
+		totalAmount: number;
+	};
 }
 export interface SalesReturnReportV1 {
-	rows: Array<{ id: number; code: string; returnDate: string; status: string; reason: string; settlementType: string; customerId: number; customerCode?: string; customerName: string; warehouseName: string; originalOrderCode: string; lineCount: number; subtotal: number; taxAmount: number; totalAmount: number; costAmount: number }>;
-	summary: { documents: number; posted: number; subtotal: number; taxAmount: number; totalAmount: number; costAmount: number };
+	rows: Array<{
+		id: number;
+		code: string;
+		returnDate: string;
+		status: string;
+		reason: string;
+		settlementType: string;
+		customerId: number;
+		customerCode?: string;
+		customerName: string;
+		warehouseName: string;
+		originalOrderCode: string;
+		lineCount: number;
+		subtotal: number;
+		taxAmount: number;
+		totalAmount: number;
+		costAmount: number;
+	}>;
+	summary: {
+		documents: number;
+		posted: number;
+		subtotal: number;
+		taxAmount: number;
+		totalAmount: number;
+		costAmount: number;
+	};
 }
 export interface StockOnHandReportV1 {
-	rows: Array<{ packagingId: number; sku?: string; packagingName: string; unit?: string; productId: number; productName: string; category?: string; stockQuantity: number; minStock: number; unitCost: number; stockValue: number; lowStock: boolean }>;
-	summary: { items: number; stockValue: number; lowStock: number; outOfStock: number };
+	rows: Array<{
+		packagingId: number;
+		sku?: string;
+		packagingName: string;
+		unit?: string;
+		productId: number;
+		productName: string;
+		category?: string;
+		stockQuantity: number;
+		minStock: number;
+		unitCost: number;
+		stockValue: number;
+		lowStock: boolean;
+	}>;
+	summary: {
+		items: number;
+		stockValue: number;
+		lowStock: number;
+		outOfStock: number;
+	};
 }
 
 export interface ProductionDetail {
@@ -811,6 +899,7 @@ export interface SalesReturnV1 {
 }
 
 export interface SalesOrder {
+	customerCode: string | number | readonly string[] | undefined;
 	id: number;
 	code: string;
 	orderDate: string;
@@ -929,6 +1018,7 @@ export interface PurchaseDocument {
 	supplierId: number;
 	supplierCode?: string;
 	supplierName?: string;
+	supplierPhone?: string;
 	supplierAddress?: string;
 	supplierTaxCode?: string;
 	deliveryPerson?: string;

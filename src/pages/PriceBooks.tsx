@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useMemo, useState, useEffect, useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	ChevronDown,
@@ -21,6 +21,9 @@ import { apiV1 } from "../lib/apiV1";
 import { formatNumber, formatNumberInput, parseNumberWithSeparators } from "../lib/utils";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+import ListToolbar from "../components/ListToolbar";
+import type { FilterField, FilterValues } from "../components/FilterDrawer";
+import { exportExcelFile } from "../lib/excelExport";
 
 interface PriceBook {
 	id: number;
@@ -118,6 +121,7 @@ function PriceBooks() {
 	const qc = useQueryClient();
 	const [page, setPage] = useState(1);
 	const [search, setSearch] = useState("");
+	const [filters, setFilters] = useState<FilterValues>({});
 	const [expandedBooks, setExpandedBooks] = useState<Record<number, PriceBook>>({});
 	const [editedPrices, setEditedPrices] = useState<Record<number, { salePrice: number }>>({});
 
@@ -244,6 +248,55 @@ const isExpanded = (bookId: number) => !!expandedBooks[bookId];
 	const rows =
 		(Array.isArray(priceBooks.data?.data) ? priceBooks.data.data : priceBooks.data?.data?.data) ?? [];
 	const meta = Array.isArray(priceBooks.data?.data) ? priceBooks.data?.meta : priceBooks.data?.data?.meta;
+	const filterFields: FilterField[] = [
+		{
+			type: "select",
+			key: "status",
+			label: "Trạng thái",
+			options: [
+				{ value: "ACTIVE", label: "Kích hoạt" },
+				{ value: "INACTIVE", label: "Không kích hoạt" },
+			],
+		},
+		{
+			type: "dateRange",
+			key: "validFrom",
+			label: "Hiệu lực từ",
+			fromKey: "dateFrom",
+			toKey: "dateTo",
+		},
+	];
+	const visibleRows = useMemo(
+		() =>
+			rows.filter((book) => {
+				if (
+					filters.status === "ACTIVE" && !book.isActive ||
+					filters.status === "INACTIVE" && book.isActive
+				) {
+					return false;
+				}
+				const date = (book.validFrom || "").slice(0, 10);
+				if (filters.dateFrom && (!date || date < filters.dateFrom)) return false;
+				if (filters.dateTo && (!date || date > filters.dateTo)) return false;
+				return true;
+			}),
+		[rows, filters],
+	);
+	const exportPriceBooks = () =>
+		exportExcelFile(
+			"bang-gia.xlsx",
+			"Bang gia",
+			[
+				{ header: "Mã", value: (book: PriceBook) => book.code },
+				{ header: "Tên bảng giá", value: (book: PriceBook) => book.name, width: 30 },
+				{ header: "Mô tả", value: (book: PriceBook) => book.description || "", width: 36 },
+				{ header: "Từ ngày", value: (book: PriceBook) => book.validFrom || "" },
+				{ header: "Đến ngày", value: (book: PriceBook) => book.validTo || "" },
+				{ header: "Mặc định", value: (book: PriceBook) => (book.isDefault ? "Có" : "Không") },
+				{ header: "Kích hoạt", value: (book: PriceBook) => (book.isActive ? "Có" : "Không") },
+			],
+			visibleRows,
+		);
 
 	// Mutations
 	const invalidate = () => qc.invalidateQueries({ queryKey: ["price-books"] });
@@ -519,19 +572,29 @@ const isExpanded = (bookId: number) => !!expandedBooks[bookId];
 
 			{/* Price Books List */}
 			<Card className="overflow-hidden !p-0">
-				<div className="erp-toolbar">
-					<div className="erp-search">
-						<Search size={15} />
-						<input
-							value={search}
-							onChange={(e) => {
-								setSearch(e.target.value);
-								setPage(1);
-							}}
-							placeholder="Tìm tên bảng giá..."
-						/>
-					</div>
-				</div>
+				<ListToolbar
+					fields={filterFields}
+					values={filters}
+					onChange={next => {
+						setFilters(next);
+						setPage(1);
+					}}
+					onExport={exportPriceBooks}
+					exportDisabled={visibleRows.length === 0}
+					search={
+						<div className="erp-search">
+							<Search size={15} />
+							<input
+								value={search}
+								onChange={(e) => {
+									setSearch(e.target.value);
+									setPage(1);
+								}}
+								placeholder="Tìm tên bảng giá..."
+							/>
+						</div>
+					}
+				/>
 
 				{priceBooks.isLoading ? (
 					<div className="erp-empty">
@@ -541,14 +604,14 @@ const isExpanded = (bookId: number) => !!expandedBooks[bookId];
 					<div className="erp-empty">
 						<p className="text-red-500">{(priceBooks.error as Error).message}</p>
 					</div>
-				) : !rows.length ? (
+				) : !visibleRows.length ? (
 					<div className="erp-empty">
 						<PackagePlus size={48} />
 						<p>Chưa có bảng giá nào</p>
 					</div>
 				) : (
 					<div>
-						{rows.map((book) => {
+						{visibleRows.map((book) => {
 							const expanded = isExpanded(book.id);
 							const expandedBook = expandedBooks[book.id];
 							const validFromStr = book.validFrom

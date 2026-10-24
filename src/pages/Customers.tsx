@@ -13,6 +13,9 @@ import { confirm } from "../components/ui/confirm";
 import { Customer } from "../types";
 import RightDrawer from "../components/RightDrawer";
 import CustomerGroups from "./CustomerGroups";
+import ListToolbar from "../components/ListToolbar";
+import type { FilterField, FilterValues } from "../components/FilterDrawer";
+import { exportExcelFile } from "../lib/excelExport";
 
 interface CustomerGroupOption {
 	id: number;
@@ -35,15 +38,19 @@ const Customers = ({
 }: {
 	initialTab?: "customers" | "groups";
 }) => {
-	const [activeTab, setActiveTab] = useState<"customers" | "groups">(initialTab);
+	const [activeTab, setActiveTab] = useState<"customers" | "groups">(
+		initialTab,
+	);
 	const [customers, setCustomers] = useState<Customer[]>([]);
-	const [customerGroups, setCustomerGroups] = useState<CustomerGroupOption[]>([]);
+	const [customerGroups, setCustomerGroups] = useState<CustomerGroupOption[]>(
+		[],
+	);
 	const [loading, setLoading] = useState(true);
 	const [saving, setSaving] = useState(false);
 	const [isModalOpen, setIsModalOpen] = useState(false);
 	const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
 	const [searchTerm, setSearchTerm] = useState("");
-	const [groupFilter, setGroupFilter] = useState("");
+	const [filters, setFilters] = useState<FilterValues>({});
 	const [nextCustomerCode, setNextCustomerCode] = useState("KH00001");
 	const [form, setForm] = useState(emptyCustomerForm());
 
@@ -147,7 +154,7 @@ const Customers = ({
 	};
 
 	const handleDelete = async (customer: Customer) => {
-    if (!(await confirm(`Xóa khách hàng "${customer.name}"?`))) return;
+		if (!(await confirm(`Xóa khách hàng "${customer.name}"?`))) return;
 		try {
 			const res = await fetch(`/api/customers/${customer.id}`, {
 				method: "DELETE",
@@ -195,7 +202,8 @@ const Customers = ({
 				},
 			);
 			const data = await res.json().catch(() => ({}));
-			if (!res.ok) throw new Error(data.error || data.message || "Có lỗi xảy ra");
+			if (!res.ok)
+				throw new Error(data.error || data.message || "Có lỗi xảy ra");
 			toast.success(isEdit ? "Cập nhật thành công" : "Đã thêm khách hàng");
 			setIsModalOpen(false);
 			setEditingCustomer(null);
@@ -216,9 +224,63 @@ const Customers = ({
 			c.name?.toLowerCase().includes(keyword) ||
 			c.phone?.toLowerCase().includes(keyword) ||
 			c.taxCode?.toLowerCase().includes(keyword);
-		const matchGroup = !groupFilter || c.groupId === Number(groupFilter);
-		return matchKeyword && matchGroup;
+		const matchGroup =
+			!filters.groupId || c.groupId === Number(filters.groupId);
+		const isSupplier = Number(c.isSupplier) === 1;
+		const matchRole =
+			!filters.role || (filters.role === "SUPPLIER" ? isSupplier : !isSupplier);
+		return matchKeyword && matchGroup && matchRole;
 	});
+	const customerFilterFields: FilterField[] = [
+		{
+			type: "select",
+			key: "groupId",
+			label: "Nhóm khách hàng",
+			options: customerGroups.map(group => ({
+				value: String(group.id),
+				label: `${group.name} (${group.code})`,
+			})),
+		},
+		{
+			type: "select",
+			key: "role",
+			label: "Vai trò",
+			options: [
+				{ value: "CUSTOMER", label: "Khách hàng" },
+				{ value: "SUPPLIER", label: "Nhà cung cấp" },
+			],
+		},
+	];
+	const exportCustomers = () =>
+		exportExcelFile(
+			"khach-hang.xlsx",
+			"Khach hang",
+			[
+				{ header: "Mã", value: (row: Customer) => row.code || "" },
+				{ header: "Tên", value: (row: Customer) => row.name, width: 30 },
+				{ header: "Điện thoại", value: (row: Customer) => row.phone || "" },
+				{ header: "Mã số thuế", value: (row: Customer) => row.taxCode || "" },
+				{
+					header: "Địa chỉ",
+					value: (row: Customer) => row.address || "",
+					width: 36,
+				},
+				{
+					header: "Nhóm KH",
+					value: (row: Customer) => row.groupName || "",
+				},
+				{
+					header: "Vai trò",
+					value: (row: Customer) =>
+						Number(row.isSupplier) === 1 ? "Nhà cung cấp" : "Khách hàng",
+				},
+				{
+					header: "Công nợ",
+					value: (row: Customer) => Number(row.debt || 0),
+				},
+			],
+			filteredCustomers,
+		);
 
 	return (
 		<div className="erp-page">
@@ -264,36 +326,34 @@ const Customers = ({
 							<p>Danh mục khách hàng và nhà cung cấp</p>
 						</div>
 						<div className="flex items-center gap-2">
-							<button onClick={handleCreate} className="erp-btn erp-btn-primary">
-								<UserPlus size={16} /> Thêm khách hàng
+							<button
+								onClick={handleCreate}
+								className="erp-btn erp-btn-primary"
+							>
+								<UserPlus size={16} /> Thêm
 							</button>
 						</div>
 					</div>
 
 					<div className="erp-card overflow-hidden">
-						<div className="erp-toolbar">
-							<div className="erp-search">
-								<Search size={16} />
-								<input
-									type="text"
-									placeholder="Tìm kiếm theo tên, SĐT, mã số thuế..."
-									value={searchTerm}
-									onChange={e => setSearchTerm(e.target.value)}
-								/>
-							</div>
-							<select
-								value={groupFilter}
-								onChange={e => setGroupFilter(e.target.value)}
-								className="w-52 rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
-							>
-								<option value="">Tất cả nhóm</option>
-								{customerGroups.map(g => (
-									<option key={g.id} value={g.id}>
-										{g.name} ({g.code})
-									</option>
-								))}
-							</select>
-						</div>
+						<ListToolbar
+							fields={customerFilterFields}
+							values={filters}
+							onChange={setFilters}
+							onExport={exportCustomers}
+							exportDisabled={filteredCustomers.length === 0}
+							search={
+								<div className="erp-search">
+									<Search size={16} />
+									<input
+										type="text"
+										placeholder="Tìm kiếm theo tên, SĐT, mã số thuế..."
+										value={searchTerm}
+										onChange={e => setSearchTerm(e.target.value)}
+									/>
+								</div>
+							}
+						/>
 
 						<div className="overflow-x-auto">
 							<table className="erp-table">
@@ -311,7 +371,10 @@ const Customers = ({
 								<tbody>
 									{loading ? (
 										<tr>
-											<td colSpan={7} className="py-12 text-center text-slate-400">
+											<td
+												colSpan={7}
+												className="py-12 text-center text-slate-400"
+											>
 												Đang tải...
 											</td>
 										</tr>
@@ -401,7 +464,9 @@ const Customers = ({
 
 					<RightDrawer
 						open={isModalOpen}
-						title={editingCustomer ? "Chỉnh sửa khách hàng" : "Thêm khách hàng mới"}
+						title={
+							editingCustomer ? "Chỉnh sửa khách hàng" : "Thêm khách hàng mới"
+						}
 						subtitle="Thông tin khách hàng và nhóm áp dụng"
 						onClose={() => {
 							setIsModalOpen(false);
@@ -432,7 +497,11 @@ const Customers = ({
 									}
 									className="erp-btn erp-btn-primary"
 								>
-									{saving ? "Đang lưu..." : editingCustomer ? "Cập nhật" : "Thêm khách hàng"}
+									{saving
+										? "Đang lưu..."
+										: editingCustomer
+											? "Cập nhật"
+											: "Thêm khách hàng"}
 								</button>
 							</>
 						}
@@ -449,7 +518,11 @@ const Customers = ({
 										<input
 											type="text"
 											readOnly
-											value={editingCustomer ? (form.code || editingCustomer.code || "") : nextCustomerCode}
+											value={
+												editingCustomer
+													? form.code || editingCustomer.code || ""
+													: nextCustomerCode
+											}
 											className="flex-1 rounded border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-sm text-slate-600 outline-none"
 										/>
 										{!editingCustomer && (
@@ -475,7 +548,9 @@ const Customers = ({
 											type="text"
 											placeholder="09xxx..."
 											value={form.phone}
-											onChange={e => setForm({ ...form, phone: e.target.value })}
+											onChange={e =>
+												setForm({ ...form, phone: e.target.value })
+											}
 											style={{ paddingLeft: "2.5rem" }}
 											className="w-full rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
 										/>
@@ -483,7 +558,8 @@ const Customers = ({
 								</label>
 								<label className="col-span-2 text-[13px] font-medium text-slate-700">
 									<span className="mb-1 block">
-										Họ và tên / Tên công ty <span className="text-red-500">*</span>
+										Họ và tên / Tên công ty{" "}
+										<span className="text-red-500">*</span>
 									</span>
 									<input
 										type="text"
@@ -500,7 +576,9 @@ const Customers = ({
 										type="text"
 										placeholder="370xxxxx..."
 										value={form.taxCode}
-										onChange={e => setForm({ ...form, taxCode: e.target.value })}
+										onChange={e =>
+											setForm({ ...form, taxCode: e.target.value })
+										}
 										className="w-full rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
 									/>
 								</label>
@@ -508,7 +586,9 @@ const Customers = ({
 									<span className="mb-1 block">Nhóm khách hàng</span>
 									<select
 										value={form.groupId}
-										onChange={e => setForm({ ...form, groupId: Number(e.target.value) || 0 })}
+										onChange={e =>
+											setForm({ ...form, groupId: Number(e.target.value) || 0 })
+										}
 										className="w-full rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
 									>
 										<option value={0}>-- Chưa phân nhóm --</option>
@@ -532,7 +612,9 @@ const Customers = ({
 										rows={3}
 										placeholder="Số nhà, đường, phường/xã..."
 										value={form.address}
-										onChange={e => setForm({ ...form, address: e.target.value })}
+										onChange={e =>
+											setForm({ ...form, address: e.target.value })
+										}
 										style={{ paddingLeft: "2.5rem" }}
 										className="w-full rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
 									/>
@@ -542,7 +624,9 @@ const Customers = ({
 								<input
 									type="checkbox"
 									checked={form.isSupplier}
-									onChange={e => setForm({ ...form, isSupplier: e.target.checked })}
+									onChange={e =>
+										setForm({ ...form, isSupplier: e.target.checked })
+									}
 									className="h-4 w-4 accent-emerald-600"
 								/>
 								Đối tác này vừa là khách hàng, vừa là nhà cung cấp

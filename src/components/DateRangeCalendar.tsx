@@ -137,22 +137,35 @@ export default function DateRangeCalendar({
 		const trigger = triggerRef.current;
 		if (!trigger) return;
 		const rect = trigger.getBoundingClientRect();
-		const popHeight = 480;
+		const popHeight = Math.min(popRef.current?.offsetHeight || 460, window.innerHeight - 16);
 		const spaceBelow = window.innerHeight - rect.bottom;
 		const placeAbove = spaceBelow < popHeight + 12 && rect.top > popHeight + 12;
-		const width = Math.min(300, window.innerWidth - 16);
+		const width = Math.min(popRef.current?.offsetWidth || 300, window.innerWidth - 16);
 		const left = align === "right"
 			? Math.max(8, rect.right - width)
 			: Math.min(rect.left, Math.max(8, window.innerWidth - width - 8));
 		setPopPos(placeAbove
 			? { bottom: window.innerHeight - rect.top + 8, left }
-			: { top: rect.bottom + 8, left });
+			: {
+					top: Math.min(
+						rect.bottom + 8,
+						Math.max(8, window.innerHeight - popHeight - 8),
+					),
+					left,
+				});
 	};
 
 	useLayoutEffect(() => {
 		if (open) updatePopPosition();
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [open ]);
+
+	// Re-measure once the portal is mounted so the popup stays inside the viewport.
+	useLayoutEffect(() => {
+		if (!open || !popRef.current) return;
+		updatePopPosition();
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [open, popPos?.top, popPos?.bottom, popPos?.left]);
 
 	// Close on outside click / Escape / page scroll (popup chrome)
 	useEffect(() => {

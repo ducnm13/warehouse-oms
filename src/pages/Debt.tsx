@@ -26,7 +26,15 @@ import {
 	GENERIC_LAYOUTS,
 	type CompanyPrintProfile,
 } from "../lib/printTemplate";
-import type { DebtAgingResult, DebtKind, DebtPaymentV1 } from "../types";
+import type {
+	DebtAgingResult,
+	DebtAgingRow,
+	DebtKind,
+	DebtPaymentV1,
+} from "../types";
+import ListToolbar from "../components/ListToolbar";
+import type { FilterField, FilterValues } from "../components/FilterDrawer";
+import { exportExcelFile } from "../lib/excelExport";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
 
@@ -58,6 +66,36 @@ const methodLabel = (m: string) => {
 	}
 };
 
+const PAYMENT_FILTER_FIELDS: FilterField[] = [
+	{
+		type: "select",
+		key: "status",
+		label: "Trạng thái",
+		options: [
+			{ value: "DRAFT", label: "Nháp" },
+			{ value: "POSTED", label: "Đã lưu" },
+			{ value: "CANCELLED", label: "Đã hủy" },
+		],
+	},
+	{
+		type: "dateRange",
+		key: "paymentDate",
+		label: "Ngày phiếu",
+		fromKey: "dateFrom",
+		toKey: "dateTo",
+	},
+];
+
+const AGING_FILTER_FIELDS: FilterField[] = [
+	{
+		type: "dateRange",
+		key: "documentDate",
+		label: "Ngày chứng từ",
+		fromKey: "dateFrom",
+		toKey: "dateTo",
+	},
+];
+
 export default function Debt() {
 	const queryClient = useQueryClient();
 	const role = JSON.parse(localStorage.getItem("user") || "{}").role as
@@ -66,8 +104,9 @@ export default function Debt() {
 	const canReceive = role === "ADMIN" || role === "S_SALES";
 	const canPay = role === "ADMIN" || role === "W_MANAGER";
 	const [view, setView] = useState<View>("receivables"),
-		[search, setSearch] = useState(""),
-		[status, setStatus] = useState("");
+		[search, setSearch] = useState("");
+	const [filters, setFilters] = useState<FilterValues>({});
+	const status = filters.status || "";
 	const [open, setOpen] = useState(false),
 		[editing, setEditing] = useState<DebtPaymentV1 | null>(null),
 		[selected, setSelected] = useState<DebtPaymentV1 | null>(null);
@@ -317,6 +356,95 @@ export default function Debt() {
 		view === "receipts" ? receipts.data?.data || [] : vouchers.data?.data || [];
 	const agingView =
 		view === "receivables" ? receivables.data?.data : payables.data?.data;
+	const inDateRange = (date: string) => {
+		const day = (date || "").slice(0, 10);
+		if (filters.dateFrom && day < filters.dateFrom) return false;
+		if (filters.dateTo && day > filters.dateTo) return false;
+		return true;
+	};
+	const visibleAgingRows = (agingView?.rows || []).filter(row =>
+		inDateRange(row.documentDate),
+	);
+	const visiblePaymentRows = paymentRows.filter(row =>
+		inDateRange(row.paymentDate),
+	);
+	const exportDebtList = () => {
+		if (view === "receipts" || view === "vouchers") {
+			return exportExcelFile(
+				view === "receipts" ? "phieu-thu.xlsx" : "phieu-chi.xlsx",
+				view === "receipts" ? "Phieu thu" : "Phieu chi",
+				[
+					{ header: "Mã phiếu", value: (row: DebtPaymentV1) => row.code },
+					{
+						header: "Ngày",
+						value: (row: DebtPaymentV1) => row.paymentDate,
+					},
+					{
+						header: "Đối tác",
+						value: (row: DebtPaymentV1) =>
+							row.partnerName || row.partnerCode || "",
+						width: 28,
+					},
+					{
+						header: "Phương thức",
+						value: (row: DebtPaymentV1) => row.method,
+					},
+					{
+						header: "Số tiền",
+						value: (row: DebtPaymentV1) => Number(row.amount || 0),
+					},
+					{
+						header: "Trạng thái",
+						value: (row: DebtPaymentV1) =>
+							statusMeta[row.status]?.label || row.status,
+					},
+					{
+						header: "Diễn giải",
+						value: (row: DebtPaymentV1) => row.note || "",
+						width: 32,
+					},
+				],
+				visiblePaymentRows,
+			);
+		}
+		return exportExcelFile(
+			view === "receivables" ? "cong-no-phai-thu.xlsx" : "cong-no-phai-tra.xlsx",
+			view === "receivables" ? "Cong no phai thu" : "Cong no phai tra",
+			[
+				{
+					header: "Chứng từ",
+					value: (row: DebtAgingRow) => row.documentCode,
+				},
+				{
+					header: "Ngày",
+					value: (row: DebtAgingRow) => row.documentDate,
+				},
+				{
+					header: "Đối tác",
+					value: (row: DebtAgingRow) =>
+						`${row.partnerName}${row.partnerCode ? ` (${row.partnerCode})` : ""}`,
+					width: 28,
+				},
+				{
+					header: "Hạn thanh toán",
+					value: (row: DebtAgingRow) => row.dueDate || "",
+				},
+				{
+					header: "Giá trị",
+					value: (row: DebtAgingRow) => Number(row.totalAmount || 0),
+				},
+				{
+					header: "Còn nợ",
+					value: (row: DebtAgingRow) => Number(row.outstanding || 0),
+				},
+				{
+					header: "Quá hạn (ngày)",
+					value: (row: DebtAgingRow) => row.daysOverdue,
+				},
+			],
+			visibleAgingRows,
+		);
+	};
 
 	return (
 		<div className="erp-page">
@@ -393,16 +521,23 @@ export default function Debt() {
 						</div>
 					</div>
 					<div className="erp-card overflow-hidden">
-						<div className="erp-toolbar">
-							<div className="erp-search">
-								<Search size={17} />
-								<input
-									value={search}
-									onChange={event => setSearch(event.target.value)}
-									placeholder="Tìm mã chứng từ, đối tác..."
-								/>
-							</div>
-						</div>
+						<ListToolbar
+							fields={AGING_FILTER_FIELDS}
+							values={filters}
+							onChange={setFilters}
+							onExport={exportDebtList}
+							exportDisabled={visibleAgingRows.length === 0}
+							search={
+								<div className="erp-search">
+									<Search size={17} />
+									<input
+										value={search}
+										onChange={event => setSearch(event.target.value)}
+										placeholder="Tìm mã chứng từ, đối tác..."
+									/>
+								</div>
+							}
+						/>
 						<div className="overflow-x-auto">
 							<table className="erp-table">
 								<thead>
@@ -416,7 +551,7 @@ export default function Debt() {
 									</tr>
 								</thead>
 								<tbody>
-									{agingView?.rows && agingView.rows.length === 0 && (
+									{visibleAgingRows.length === 0 && (
 										<tr>
 											<td colSpan={6} className="text-center text-slate-400">
 												<div className="erp-empty">
@@ -426,7 +561,7 @@ export default function Debt() {
 											</td>
 										</tr>
 									)}
-									{(agingView?.rows || []).map(row => (
+									{visibleAgingRows.map(row => (
 										<tr key={row.documentId}>
 											<td>
 												<b>{row.documentCode}</b>
@@ -460,27 +595,24 @@ export default function Debt() {
 			)}
 			{(view === "receipts" || view === "vouchers") && (
 				<div className="erp-card overflow-hidden">
-					<div className="erp-toolbar flex-wrap">
-						<div className="erp-search">
-							<Search size={17} />
-							<input
-								value={search}
-								onChange={event => setSearch(event.target.value)}
-								placeholder="Tìm mã phiếu, diễn giải..."
-							/>
-						</div>
-						<select
-							value={status}
-							onChange={event => setStatus(event.target.value)}
-						>
-							<option value="">Mọi trạng thái</option>
-							{Object.entries(statusMeta).map(([key, value]) => (
-								<option value={key} key={key}>
-									{value.label}
-								</option>
-							))}
-						</select>
-					</div>
+					<ListToolbar
+						className="flex-wrap"
+						fields={PAYMENT_FILTER_FIELDS}
+						values={filters}
+						onChange={setFilters}
+						onExport={exportDebtList}
+						exportDisabled={visiblePaymentRows.length === 0}
+						search={
+							<div className="erp-search">
+								<Search size={17} />
+								<input
+									value={search}
+									onChange={event => setSearch(event.target.value)}
+									placeholder="Tìm mã phiếu, diễn giải..."
+								/>
+							</div>
+						}
+					/>
 					<div className="overflow-x-auto">
 						<table className="erp-table">
 							<thead>
@@ -495,7 +627,7 @@ export default function Debt() {
 								</tr>
 							</thead>
 							<tbody>
-								{!paymentRows.length && (
+								{!visiblePaymentRows.length && (
 									<tr>
 										<td colSpan={7} className="text-center text-slate-400">
 											<div className="erp-empty">
@@ -505,7 +637,7 @@ export default function Debt() {
 										</td>
 									</tr>
 								)}
-								{paymentRows.map(document => {
+								{visiblePaymentRows.map(document => {
 									const canManage =
 										document.kind === "RECEIPT" ? canReceive : canPay;
 									return (

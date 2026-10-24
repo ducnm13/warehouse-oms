@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	CheckCircle,
@@ -29,6 +29,9 @@ import {
 import type { Warehouse } from "../types";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
+import ListToolbar from "../components/ListToolbar";
+import type { FilterField, FilterValues } from "../components/FilterDrawer";
+import { exportExcelFile } from "../lib/excelExport";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface OpeningLine {
@@ -82,6 +85,26 @@ const STATUS_COLOR: Record<string, string> = {
 	CANCELLED: "bg-slate-100 text-slate-500",
 };
 
+const OPENING_FILTER_FIELDS: FilterField[] = [
+	{
+		type: "select",
+		key: "status",
+		label: "Trạng thái",
+		options: [
+			{ value: "DRAFT", label: "Nháp" },
+			{ value: "POSTED", label: "Đã lưu" },
+			{ value: "CANCELLED", label: "Đã hủy" },
+		],
+	},
+	{
+		type: "dateRange",
+		key: "documentDate",
+		label: "Ngày chứng từ",
+		fromKey: "dateFrom",
+		toKey: "dateTo",
+	},
+];
+
 const emptyLine = (): OpeningLine => ({
 	packagingId: 0,
 	quantity: 1,
@@ -112,7 +135,8 @@ export default function OpeningInventory() {
 	const qc = useQueryClient();
 	const [page, setPage] = useState(1);
 	const [search, setSearch] = useState("");
-	const [statusFilter, setStatusFilter] = useState("");
+	const [filters, setFilters] = useState<FilterValues>({});
+	const statusFilter = filters.status || "";
 	const [warehouseFilter, setWarehouseFilter] = useState("");
 
 	// Modal state
@@ -233,6 +257,48 @@ export default function OpeningInventory() {
 	});
 
 	const rows = (data?.data as unknown as OpeningDocument[]) ?? [];
+	const visibleRows = useMemo(() => {
+		const from = filters.dateFrom || "";
+		const to = filters.dateTo || "";
+		return rows.filter(doc => {
+			const date = (doc.documentDate || "").slice(0, 10);
+			if (from && date < from) return false;
+			if (to && date > to) return false;
+			return true;
+		});
+	}, [rows, filters]);
+	const exportOpeningList = () =>
+		exportExcelFile(
+			"ton-dau-ky.xlsx",
+			"Ton dau ky",
+			[
+				{ header: "Số phiếu", value: (doc: OpeningDocument) => doc.code },
+				{
+					header: "Ngày",
+					value: (doc: OpeningDocument) => doc.documentDate,
+				},
+				{
+					header: "Kho",
+					value: (doc: OpeningDocument) =>
+						doc.warehouse?.name || String(doc.warehouseId),
+				},
+				{
+					header: "Số dòng",
+					value: (doc: OpeningDocument) =>
+						doc._count?.lines ?? doc.lines?.length ?? 0,
+				},
+				{
+					header: "Trạng thái",
+					value: (doc: OpeningDocument) => STATUS_LABEL[doc.status] || doc.status,
+				},
+				{
+					header: "Ghi chú",
+					value: (doc: OpeningDocument) => doc.note || "",
+					width: 32,
+				},
+			],
+			visibleRows,
+		);
 	const meta = data?.meta as { page: number; limit: number; total: number; totalPages: number } | undefined;
 	const viewDocDetail = getDoc.data?.data;
 	const getDocError = getDoc.error;
@@ -585,45 +651,45 @@ export default function OpeningInventory() {
 
 			{/* Table */}
 			<div className="erp-card overflow-hidden">
-				<div className="erp-toolbar">
-					<div className="erp-search">
-						<Search size={16} />
-						<input
-							value={search}
+				<ListToolbar
+					className="flex-wrap"
+					fields={OPENING_FILTER_FIELDS}
+					values={filters}
+					onChange={next => {
+						setFilters(next);
+						setPage(1);
+					}}
+					onExport={exportOpeningList}
+					search={
+						<div className="erp-search">
+							<Search size={16} />
+							<input
+								value={search}
+								onChange={e => {
+									setSearch(e.target.value);
+									setPage(1);
+								}}
+								placeholder="Tìm số phiếu..."
+							/>
+						</div>
+					}
+					extra={
+						<select
+							value={warehouseFilter}
 							onChange={e => {
-								setSearch(e.target.value);
+								setWarehouseFilter(e.target.value);
 								setPage(1);
 							}}
-							placeholder="Tìm số phiếu..."
-						/>
-					</div>
-					<select
-						value={statusFilter}
-						onChange={e => {
-							setStatusFilter(e.target.value);
-							setPage(1);
-						}}
-					>
-						<option value="">Mọi trạng thái</option>
-						<option value="DRAFT">Nháp</option>
-						<option value="POSTED">Đã lưu</option>
-						<option value="CANCELLED">Đã hủy</option>
-					</select>
-					<select
-						value={warehouseFilter}
-						onChange={e => {
-							setWarehouseFilter(e.target.value);
-							setPage(1);
-						}}
-					>
-						<option value="">Tất cả kho</option>
-						{(warehouses.data ?? []).map((w: Warehouse) => (
-							<option key={w.id} value={w.id}>
-								{w.name}
-							</option>
-						))}
-					</select>
-				</div>
+						>
+							<option value="">Tất cả kho</option>
+							{(warehouses.data ?? []).map((w: Warehouse) => (
+								<option key={w.id} value={w.id}>
+									{w.name}
+								</option>
+							))}
+						</select>
+					}
+				/>
 
 				{isLoading ? (
 					<div className="p-12 text-center">Đang tải...</div>
@@ -631,7 +697,7 @@ export default function OpeningInventory() {
 					<div className="p-12 text-center text-red-500">
 						{(error as Error).message}
 					</div>
-				) : !rows.length ? (
+				) : !visibleRows.length ? (
 					<div className="p-12 text-center text-slate-400">
 						Chưa có phiếu tồn đầu kỳ nào
 					</div>
@@ -650,7 +716,7 @@ export default function OpeningInventory() {
 								</tr>
 							</thead>
 							<tbody>
-								{rows.map(doc => (
+								{visibleRows.map(doc => (
 									<tr key={doc.id}>
 										<td>
 											<button

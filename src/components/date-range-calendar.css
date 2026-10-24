@@ -73,6 +73,9 @@
 	position: relative;
 	width: 300px;
 	max-width: calc(100vw - 32px);
+	max-height: calc(100vh - 16px);
+	overflow-y: auto;
+	overscroll-behavior: contain;
 	padding: 14px 12px 12px;
 	border-radius: 22px;
 	background: var(--ux-surface);

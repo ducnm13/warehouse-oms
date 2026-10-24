@@ -37,6 +37,9 @@ import { buildCompanyPrintProfile } from "../lib/printTemplate";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
 import TableActions from "../components/TableActions";
+import ListToolbar from "../components/ListToolbar";
+import type { FilterField, FilterValues } from "../components/FilterDrawer";
+import { exportExcelFile } from "../lib/excelExport";
 
 const headerSchema = z.object({
 	documentDate: z.string().min(1, "Chọn ngày chứng từ"),
@@ -72,6 +75,45 @@ const statusMeta = {
 	CANCELLED: { label: "Đã hủy", css: "bg-red-100 text-red-700" },
 } as const;
 
+const PURCHASE_FILTER_FIELDS: FilterField[] = [
+	{
+		type: "select",
+		key: "status",
+		label: "Trạng thái",
+		options: [
+			{ value: "POSTED", label: "Đã lưu" },
+			{ value: "DRAFT", label: "Nháp" },
+			{ value: "CANCELLED", label: "Đã hủy" },
+		],
+	},
+	{
+		type: "select",
+		key: "paymentStatus",
+		label: "Trạng thái thanh toán",
+		options: [
+			{ value: "UNPAID", label: "Chưa thanh toán" },
+			{ value: "PARTIAL", label: "Thanh toán một phần" },
+			{ value: "PAID", label: "Đã thanh toán" },
+		],
+	},
+	{
+		type: "select",
+		key: "deliveryStatus",
+		label: "Trạng thái nhập hàng",
+		options: [
+			{ value: "RECEIVED", label: "Đã nhập đủ" },
+			{ value: "PENDING", label: "Chưa nhập" },
+		],
+	},
+	{
+		type: "dateRange",
+		key: "documentDate",
+		label: "Thời gian",
+		fromKey: "dateFrom",
+		toKey: "dateTo",
+	},
+];
+
 const linkTypeLabel = (type: string) => {
 	switch (type) {
 		case "INVENTORY_RECEIPT":
@@ -96,7 +138,8 @@ const linkTypeLabel = (type: string) => {
 export default function Purchases() {
 	const queryClient = useQueryClient();
 	const [search, setSearch] = useState("");
-	const [status, setStatus] = useState<"" | keyof typeof statusMeta>("");
+	const [filters, setFilters] = useState<FilterValues>({});
+	const status = (filters.status || "") as "" | keyof typeof statusMeta;
 	const [page, setPage] = useState(1);
 	const [open, setOpen] = useState(false);
 	const [editing, setEditing] = useState<PurchaseDocument | null>(null);
@@ -480,6 +523,79 @@ export default function Purchases() {
 	const total = goods + tax + purchaseCost;
 	const rows = documents.data?.data || [];
 	const meta = documents.data?.meta as any;
+	const visibleRows = useMemo(() => {
+		const from = filters.dateFrom || "";
+		const to = filters.dateTo || "";
+		return rows.filter(document => {
+			if (filters.paymentStatus) {
+				if (filters.paymentStatus === "UNPAID") {
+					if (document.paymentStatus === "PAID") return false;
+				} else if (document.paymentStatus !== filters.paymentStatus)
+					return false;
+			}
+			if (filters.deliveryStatus) {
+				const received = document.documentStatus === "POSTED";
+				if (filters.deliveryStatus === "RECEIVED" && !received) return false;
+				if (filters.deliveryStatus === "PENDING" && received) return false;
+			}
+			const date = (document.documentDate || "").slice(0, 10);
+			if (from && date < from) return false;
+			if (to && date > to) return false;
+			return true;
+		});
+	}, [rows, filters]);
+
+	const exportPurchaseList = () =>
+		exportExcelFile(
+			"danh-sach-chung-tu-mua-hang.xlsx",
+			"Chung tu mua hang",
+			[
+				{ header: "Mã chứng từ", value: (row: PurchaseDocument) => row.code },
+				{
+					header: "Ngày chứng từ",
+					value: (row: PurchaseDocument) => row.documentDate,
+				},
+				{
+					header: "Nhà cung cấp",
+					value: (row: PurchaseDocument) => row.supplierName || "",
+					width: 28,
+				},
+				{
+					header: "Diễn giải",
+					value: (row: PurchaseDocument) => row.description || "",
+					width: 30,
+				},
+				{
+					header: "Trạng thái",
+					value: (row: PurchaseDocument) =>
+						statusMeta[row.documentStatus || "POSTED"]?.label ||
+						row.documentStatus ||
+						"",
+				},
+				{
+					header: "Thanh toán",
+					value: (row: PurchaseDocument) =>
+						row.paymentStatus === "PAID"
+							? "Đã thanh toán"
+							: row.paymentStatus === "PARTIAL"
+								? "Thanh toán một phần"
+								: "Chưa thanh toán",
+				},
+				{
+					header: "Tiền hàng",
+					value: (row: PurchaseDocument) => Number(row.goodsAmount || 0),
+				},
+				{
+					header: "Tổng tiền",
+					value: (row: PurchaseDocument) => Number(row.totalAmount || 0),
+				},
+				{
+					header: "Đã trả",
+					value: (row: PurchaseDocument) => Number(row.paidAmount || 0),
+				},
+			],
+			visibleRows,
+		);
 
 	return (
 		<div className="erp-page">
@@ -527,38 +643,36 @@ export default function Purchases() {
 				</div>
 			</div>
 			<div className="erp-card overflow-hidden">
-				<div className="erp-toolbar">
-					<div className="erp-search">
-						<Search size={17} />
-						<input
-							value={search}
-							onChange={event => {
-								setSearch(event.target.value);
-								setPage(1);
-							}}
-							placeholder="Tìm số chứng từ, nhà cung cấp..."
-						/>
-					</div>
-					<select
-						value={status}
-						onChange={event => {
-							setStatus(event.target.value as any);
-							setPage(1);
-						}}
-					>
-						<option value="">Tất cả trạng thái</option>
-						<option value="DRAFT">Nháp</option>
-						<option value="POSTED">Đã lưu</option>
-						<option value="CANCELLED">Đã hủy</option>
-					</select>
-				</div>
+				<ListToolbar
+					fields={PURCHASE_FILTER_FIELDS}
+					values={filters}
+					onChange={next => {
+						setFilters(next);
+						setPage(1);
+					}}
+					onExport={exportPurchaseList}
+					exportDisabled={visibleRows.length === 0}
+					search={
+						<div className="erp-search">
+							<Search size={17} />
+							<input
+								value={search}
+								onChange={event => {
+									setSearch(event.target.value);
+									setPage(1);
+								}}
+								placeholder="Tìm số chứng từ, nhà cung cấp..."
+							/>
+						</div>
+					}
+				/>
 				{documents.isLoading ? (
 					<div className="p-12 text-center">Đang tải chứng từ...</div>
 				) : documents.isError ? (
 					<div className="p-12 text-center text-red-600">
 						{(documents.error as Error).message}
 					</div>
-				) : rows.length === 0 ? (
+				) : visibleRows.length === 0 ? (
 					<div className="erp-empty">
 						<PackagePlus size={48} />
 						<p>Chưa có bảng giá nào</p>
@@ -568,7 +682,8 @@ export default function Purchases() {
 						<table className="erp-table">
 							<thead>
 								<tr>
-									<th>Số chứng từ / Ngày</th>
+									<th>Ngày</th>
+									<th>Đơn hàng</th>
 									<th>Nhà cung cấp</th>
 									<th>Diễn giải</th>
 									<th>Trạng thái</th>
@@ -578,8 +693,9 @@ export default function Purchases() {
 								</tr>
 							</thead>
 							<tbody>
-								{rows.map(document => (
+								{visibleRows.map(document => (
 									<tr key={document.id}>
+										<td> {formatDate(document.documentDate)}</td>
 										<td>
 											<button
 												className="font-bold text-[#422afb] hover:underline"
@@ -587,14 +703,9 @@ export default function Purchases() {
 											>
 												{document.code}
 											</button>
-											<small>
-												{formatDate(document.documentDate)}
-												{/* · v {document.version} */}
-											</small>
 										</td>
 										<td>
 											<b>{document.supplierName}</b>
-											<small>{document.supplierCode}</small>
 										</td>
 										<td className="max-w-[240px]" title={document.description}>
 											{document.description}
@@ -660,9 +771,7 @@ export default function Purchases() {
 														),
 														onClick: async () => {
 															if (
-																await confirm(
-																	`Xóa chứng từ ${document.code}?`,
-																)
+																await confirm(`Xóa chứng từ ${document.code}?`)
 															)
 																deleteMutation.mutate(document);
 														},
@@ -1047,6 +1156,31 @@ export default function Purchases() {
 							</button>
 						</div>
 						<div className="erp-modal-body space-y-4">
+							<div className="rounded bg-slate-50 p-3">
+								<b>Thông tin nhà cung cấp</b>
+								<div className="mt-2 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+									<div>
+										<span className="text-slate-500">Mã nhà cung cấp: </span>
+										<b>{selected.supplierCode || "—"}</b>
+									</div>
+									<div>
+										<span className="text-slate-500">Tên nhà cung cấp: </span>
+										<b>{selected.supplierName || "—"}</b>
+									</div>
+									<div>
+										<span className="text-slate-500">Điện thoại: </span>
+										{selected.supplierPhone || "—"}
+									</div>
+									<div>
+										<span className="text-slate-500">Mã số thuế: </span>
+										{selected.supplierTaxCode || "—"}
+									</div>
+									<div className="sm:col-span-2">
+										<span className="text-slate-500">Địa chỉ: </span>
+										{selected.supplierAddress || "—"}
+									</div>
+								</div>
+							</div>
 							<table className="erp-table">
 								<thead>
 									<tr>

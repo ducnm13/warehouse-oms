@@ -3,7 +3,6 @@ import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import {
 	History,
 	Search,
-	RotateCcw,
 	Calendar,
 	Monitor,
 	Globe,
@@ -14,7 +13,9 @@ import {
 	FileText,
 } from "lucide-react";
 import { apiV1, legacyApi } from "../lib/apiV1";
-import { DateInput } from "../components/DateRangeCalendar";
+import ListToolbar from "../components/ListToolbar";
+import type { FilterField, FilterValues } from "../components/FilterDrawer";
+import { exportExcelFile } from "../lib/excelExport";
 
 interface AuditLog {
 	id: number;
@@ -93,10 +94,11 @@ const parseDevice = (ua?: string | null) => {
 const AuditLogs = () => {
 	const [search, setSearch] = useState("");
 	const [debouncedSearch, setDebouncedSearch] = useState("");
-	const [actionFilter, setActionFilter] = useState("");
-	const [userFilter, setUserFilter] = useState("");
-	const [fromDate, setFromDate] = useState("");
-	const [toDate, setToDate] = useState("");
+	const [filters, setFilters] = useState<FilterValues>({});
+	const actionFilter = filters.action || "";
+	const userFilter = filters.userId || "";
+	const fromDate = filters.dateFrom || "";
+	const toDate = filters.dateTo || "";
 	const [page, setPage] = useState(1);
 	const [limit, setLimit] = useState(50);
 	const [detail, setDetail] = useState<AuditLog | null>(null);
@@ -145,17 +147,63 @@ const AuditLogs = () => {
 	const total = meta?.total ?? logs.length;
 	const totalPages = meta?.totalPages ?? 1;
 
-	const hasFilter =
-		!!search || !!actionFilter || !!userFilter || !!fromDate || !!toDate;
-
-	const resetFilters = () => {
-		setSearch("");
-		setActionFilter("");
-		setUserFilter("");
-		setFromDate("");
-		setToDate("");
-		setLimit(50);
-	};
+	const filterFields: FilterField[] = [
+		{
+			type: "select",
+			key: "action",
+			label: "Hành động",
+			options: (filtersQuery.data?.data?.actions || []).map(name => ({
+				value: name,
+				label: name,
+			})),
+		},
+		{
+			type: "select",
+			key: "userId",
+			label: "Nhân viên",
+			options: (usersQuery.data || []).map(user => ({
+				value: String(user.id),
+				label: user.fullName || user.username,
+			})),
+		},
+		{
+			type: "dateRange",
+			key: "date",
+			label: "Thời gian",
+			fromKey: "dateFrom",
+			toKey: "dateTo",
+		},
+	];
+	const exportLogs = () =>
+		exportExcelFile(
+			"nhat-ky-hoat-dong.xlsx",
+			"Nhat ky hoat dong",
+			[
+				{
+					header: "Thời gian",
+					value: (log: AuditLog) =>
+						new Date(log.createdAt).toLocaleString("vi-VN"),
+					width: 20,
+				},
+				{ header: "Hành động", value: (log: AuditLog) => log.action },
+				{
+					header: "Chi tiết",
+					value: (log: AuditLog) => log.details || "",
+					width: 48,
+				},
+				{
+					header: "Nhân viên",
+					value: (log: AuditLog) => log.userName || log.username || "",
+				},
+				{ header: "IP", value: (log: AuditLog) => log.ipAddress || "" },
+				{
+					header: "Thiết bị",
+					value: (log: AuditLog) => parseDevice(log.userAgent),
+					width: 24,
+				},
+			],
+			logs,
+		);
 
 	return (
 		<div className="erp-page space-y-6">
@@ -174,62 +222,26 @@ const AuditLogs = () => {
 				</div>
 			</div>
 
-			<div className="erp-card p-4">
-				<div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-					<div className="relative xl:col-span-2">
-						<span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-[#a3aed0]">
+			<div className="erp-card">
+				<ListToolbar
+					className="flex-wrap"
+					fields={filterFields}
+					values={filters}
+					onChange={setFilters}
+					onExport={exportLogs}
+					exportDisabled={logs.length === 0}
+					search={
+						<div className="erp-search">
 							<Search size={16} />
-						</span>
-						<input
-							type="text"
-							placeholder="Tìm hành động, chi tiết, nhân viên..."
-							className="!pl-10"
-							value={search}
-							onChange={e => setSearch(e.target.value)}
-						/>
-					</div>
-					<select
-						value={actionFilter}
-						onChange={e => setActionFilter(e.target.value)}
-						
-					>
-						<option value="">Mọi hành động</option>
-						{(filtersQuery.data?.data?.actions || []).map(name => (
-							<option key={name} value={name}>
-								{name}
-							</option>
-						))}
-					</select>
-					<select
-						value={userFilter}
-						onChange={e => setUserFilter(e.target.value)}
-						
-					>
-						<option value="">Mọi nhân viên</option>
-						{(usersQuery.data || []).map(u => (
-							<option key={u.id} value={u.id}>
-								{u.fullName || u.username}
-							</option>
-						))}
-					</select>
-					<div>
-						<DateInput value={fromDate} onChange={setFromDate} />
-					</div>
-					<div>
-						<DateInput value={toDate} onChange={setToDate} />
-					</div>
-				</div>
-				{hasFilter && (
-					<div className="mt-3 flex justify-end">
-						<button
-							type="button"
-							onClick={resetFilters}
-							className="erp-btn"
-						>
-							<RotateCcw size={14} /> Xóa bộ lọc
-						</button>
-					</div>
-				)}
+							<input
+								type="text"
+								placeholder="Tìm hành động, chi tiết, nhân viên..."
+								value={search}
+								onChange={e => setSearch(e.target.value)}
+							/>
+						</div>
+					}
+				/>
 			</div>
 
 			<div className="erp-card overflow-hidden">

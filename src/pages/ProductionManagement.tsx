@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useReactToPrint } from "react-to-print";
 import {
@@ -30,6 +30,9 @@ import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
 import SearchableSelect from "../components/SearchableSelect";
 import TableActions from "../components/TableActions";
+import ListToolbar from "../components/ListToolbar";
+import type { FilterField, FilterValues } from "../components/FilterDrawer";
+import { exportExcelFile } from "../lib/excelExport";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -39,6 +42,25 @@ const statusMeta = {
 	COMPLETED: { label: "Đã xong", css: "bg-emerald-100 text-emerald-700" },
 	CANCELLED: { label: "Đã hủy", css: "bg-red-100 text-red-700" },
 } as const;
+
+const PRODUCTION_MGMT_FILTER_FIELDS: FilterField[] = [
+	{
+		type: "select",
+		key: "status",
+		label: "Trạng thái",
+		options: Object.entries(statusMeta).map(([value, meta]) => ({
+			value,
+			label: meta.label,
+		})),
+	},
+	{
+		type: "dateRange",
+		key: "orderDate",
+		label: "Ngày lệnh",
+		fromKey: "dateFrom",
+		toKey: "dateTo",
+	},
+];
 
 const addMonths = (dateStr: string, months: number) => {
 	const d = new Date(dateStr);
@@ -110,9 +132,9 @@ export default function ProductionManagement({
 		user.role === "P_MANAGER" ||
 		user.role === "W_MANAGER" ||
 		(user.permissions || []).includes("production.manage");
-	const [month, setMonth] = useState(today().slice(0, 7));
-	const [status, setStatus] = useState("");
 	const [search, setSearch] = useState("");
+	const [filters, setFilters] = useState<FilterValues>({});
+	const status = filters.status || "";
 	const [selected, setSelected] = useState<ProductionOrderV1 | null>(null);
 	const [reportOrder, setReportOrder] = useState<ProductionOrderV1 | null>(
 		null,
@@ -182,11 +204,23 @@ export default function ProductionManagement({
 	});
 
 	const docs = useQuery({
-		queryKey: ["production-v1-mgmt", month, status, search],
-		queryFn: () =>
-			apiV1<ProductionOrderV1[]>(
-				`/api/v1/production-orders?page=1&limit=100&month=${month}&search=${encodeURIComponent(search)}${status ? `&status=${status}` : ""}`,
-			),
+		queryKey: [
+			"production-v1-mgmt",
+			filters.dateFrom,
+			filters.dateTo,
+			status,
+			search,
+		],
+		queryFn: () => {
+			const params = new URLSearchParams({ page: "1", limit: "100" });
+			if (search) params.set("search", search);
+			if (status) params.set("status", status);
+			if (filters.dateFrom) params.set("from", filters.dateFrom);
+			if (filters.dateTo) params.set("to", filters.dateTo);
+			return apiV1<ProductionOrderV1[]>(
+				`/api/v1/production-orders?${params.toString()}`,
+			);
+		},
 	});
 
 	const packagingOptions = useMemo(
@@ -367,22 +401,6 @@ export default function ProductionManagement({
 			setSelected(null);
 			setEditForm(null);
 			invalidate();
-		},
-		onError: (error: Error) => toast.error(error.message),
-	});
-
-	const syncMaterialsMutation = useMutation({
-		mutationFn: (orderId: number) =>
-			apiV1<ProductionOrderV1>(
-				`/api/v1/production-orders/${orderId}/sync-materials`,
-				{
-					method: "POST",
-				},
-			),
-		onSuccess: () => {
-			toast.success("Đã đồng bộ nguyên vật liệu từ phiếu xuất kho");
-			invalidate();
-			if (selected) setSelected({ ...selected, version: selected.version + 1 }); // trigger refetch
 		},
 		onError: (error: Error) => toast.error(error.message),
 	});
@@ -657,6 +675,40 @@ export default function ProductionManagement({
 	const canEditBatch = isDraft || isProgress;
 
 	const rows = docs.data?.data || [];
+	const exportProductionList = () =>
+		exportExcelFile(
+			"quan-ly-san-xuat.xlsx",
+			"Quan ly san xuat",
+			[
+				{ header: "Mã lệnh", value: (row: ProductionOrderV1) => row.code },
+				{ header: "Ngày", value: (row: ProductionOrderV1) => row.orderDate },
+				{
+					header: "Thành phẩm",
+					value: (row: ProductionOrderV1) =>
+						(row.outputs || [])
+							.filter(output => Number(output.plannedQuantity || 0) > 0)
+							.map(output => output.packagingName || output.sku || "")
+							.join("; "),
+					width: 32,
+				},
+				{
+					header: "Số lô",
+					value: (row: ProductionOrderV1) => row.batchNumber || "",
+				},
+				{
+					header: "Trạng thái",
+					value: (row: ProductionOrderV1) =>
+						statusMeta[row.status as keyof typeof statusMeta]?.label ||
+						row.status,
+				},
+				{
+					header: "Diễn giải",
+					value: (row: ProductionOrderV1) => row.note || "",
+					width: 36,
+				},
+			],
+			rows,
+		);
 
 	return (
 		<div className="erp-page">
@@ -667,44 +719,6 @@ export default function ProductionManagement({
 						Theo dõi lệnh sản xuất, bổ sung thông tin mẻ, phân bổ SKU và chốt
 						nhập kho
 					</p>
-				</div>
-			</div>
-
-			<div className="erp-card p-1 flex flex-wrap gap-1">
-				<select
-					value={month}
-					onChange={e => setMonth(e.target.value)}
-					className="erp-select w-auto"
-				>
-					{Array.from({ length: 12 }, (_, i) => {
-						const m = new Date();
-						m.setMonth(m.getMonth() - i);
-						const val = m.toISOString().slice(0, 7);
-						return (
-							<option key={val} value={val}>
-								{val}
-							</option>
-						);
-					})}
-				</select>
-				<select
-					value={status}
-					onChange={e => setStatus(e.target.value)}
-					className="erp-select w-auto"
-				>
-					<option value="">Tất cả trạng thái</option>
-					<option value="DRAFT">Nháp</option>
-					<option value="IN_PROGRESS">Đang sản xuất</option>
-					<option value="COMPLETED">Đã xong</option>
-					<option value="CANCELLED">Đã hủy</option>
-				</select>
-				<div className="erp-search flex-1 min-w-[250px] max-w-[400px]">
-					<Search size={16} />
-					<input
-						value={search}
-						onChange={e => setSearch(e.target.value)}
-						placeholder="Tìm mã lệnh, số lô..."
-					/>
 				</div>
 			</div>
 
@@ -740,6 +754,23 @@ export default function ProductionManagement({
 			</div>
 
 			<div className="erp-card overflow-hidden">
+				<ListToolbar
+					fields={PRODUCTION_MGMT_FILTER_FIELDS}
+					values={filters}
+					onChange={setFilters}
+					onExport={exportProductionList}
+					exportDisabled={rows.length === 0}
+					search={
+						<div className="erp-search">
+							<Search size={16} />
+							<input
+								value={search}
+								onChange={e => setSearch(e.target.value)}
+								placeholder="Tìm mã lệnh, số lô..."
+							/>
+						</div>
+					}
+				/>
 				{docs.isLoading ? (
 					<div className="p-12 text-center">Đang tải...</div>
 				) : docs.isError ? (
@@ -755,12 +786,13 @@ export default function ProductionManagement({
 						<table className="erp-table">
 							<thead>
 								<tr>
+									{/* <th>Ngày</th> */}
 									<th>LSX/LOT</th>
 									<th>NSX/HSD</th>
 									<th>Thành phẩm</th>
 									<th>Diễn giải</th>
-									<th className="text-center">Đã lập đủ PN</th>
-									<th className="text-center">Đã lập đủ PX</th>
+									{/* <th className="text-center">Đã lập đủ PN</th>
+									<th className="text-center">Đã lập đủ PX</th> */}
 									<th>Trạng thái</th>
 									<th>Số máy</th>
 									<th>Thao tác</th>
@@ -775,29 +807,34 @@ export default function ProductionManagement({
 										}
 									>
 										<td>
-											<b>{order.code}</b>
-											{order.batchNumber && (
-												<small className="block text-blue-600">
-													Lô: {order.batchNumber}
-												</small>
-											)}
+											<button
+												className="font-bold text-[#422afb] hover:underline"
+												onClick={() => setSelected(order)}
+											>
+												{order.code}
+											</button>
 										</td>
 										<td>
-											{order.mfgDate && <div>{formatDate(order.mfgDate)}</div>}
-											{order.expDate && (
-												<small>Hạn: {formatDate(order.expDate)}</small>
+											{order.mfgDate && <p> NSX:{formatDate(order.mfgDate)}</p>}
+											{order.expDate && <p>HSD:{formatDate(order.expDate)}</p>}
+											{order.batchNumber && (
+												<p className="text-[#F5B027]">
+													LOT:{order.batchNumber}
+												</p>
 											)}
 										</td>
 										<td>
 											{(order.outputs || []).map(d => (
 												<div key={d.id} className="text-sm">
-													<b>{d.packagingName}</b>
+													<p className="font-medium text-[#422afb]">
+														{d.packagingName}
+													</p>
 													<small>
-														KH: {formatNumber(d.plannedQuantity)} {d.unit}
+														Lệnh: {formatNumber(d.plannedQuantity)} {d.unit}
 													</small>
 													{(d.actualQuantity || 0) > 0 && (
 														<small className="block text-emerald-700">
-															TT: {formatNumber(d.actualQuantity)} {d.unit}
+															Chốt: {formatNumber(d.actualQuantity)} {d.unit}
 														</small>
 													)}
 												</div>
@@ -806,7 +843,7 @@ export default function ProductionManagement({
 										<td className="max-w-[260px] whitespace-normal text-slate-600">
 											{order.note || "—"}
 										</td>
-										<td className="text-center">
+										{/* <td className="text-center">
 											<input
 												type="checkbox"
 												disabled
@@ -841,7 +878,7 @@ export default function ProductionManagement({
 														.join(", ") || "Chưa lập phiếu xuất"
 												}
 											/>
-										</td>
+										</td> */}
 										<td>
 											<span
 												className={`erp-badge ${statusMeta[order.status as keyof typeof statusMeta]?.css || "bg-slate-100"}`}
@@ -1622,19 +1659,6 @@ export default function ProductionManagement({
 							) : null}
 						</div>
 						<div className="erp-modal-footer">
-							{/* {selected.links.some(
-								(l: any) => l.linkType === "INVENTORY_ISSUE",
-							) && (
-								<button
-									className="erp-btn"
-									onClick={() => syncMaterialsMutation.mutate(selected.id)}
-									disabled={syncMaterialsMutation.isPending}
-								>
-									{syncMaterialsMutation.isPending
-										? "Đang đồng bộ..."
-										: "Đồng bộ NVL từ phiếu xuất"}
-								</button>
-							)} */}
 							{(selected.status === "DRAFT" ||
 								selected.status === "IN_PROGRESS" ||
 								selected.status === "COMPLETED") &&

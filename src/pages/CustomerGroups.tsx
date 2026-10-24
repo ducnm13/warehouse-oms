@@ -11,6 +11,9 @@ import toast from '../components/ui/toast';
 import { confirm } from '../components/ui/confirm';
 import RightDrawer from '../components/RightDrawer';
 import { apiV1 } from '../lib/apiV1';
+import ListToolbar from '../components/ListToolbar';
+import type { FilterField, FilterValues } from '../components/FilterDrawer';
+import { exportExcelFile } from '../lib/excelExport';
 
 interface CustomerGroup {
   id: number;
@@ -35,6 +38,7 @@ function CustomerGroups() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [filters, setFilters] = useState<FilterValues>({});
   const [modalOpen, setModalOpen] = useState<'create' | 'edit' | null>(null);
   const [editingGroup, setEditingGroup] = useState<CustomerGroup | null>(null);
   const [form, setForm] = useState(emptyForm());
@@ -161,10 +165,38 @@ function CustomerGroups() {
   const keyword = searchTerm.trim().toLowerCase();
   const filtered = groups.filter(
     g =>
-      !keyword ||
-      g.code?.toLowerCase().includes(keyword) ||
-      g.name?.toLowerCase().includes(keyword),
+      (!keyword ||
+        g.code?.toLowerCase().includes(keyword) ||
+        g.name?.toLowerCase().includes(keyword)) &&
+      (!filters.priceBookId ||
+        String(g.priceBookId || '') === filters.priceBookId),
   );
+  const filterFields: FilterField[] = [
+    {
+      type: 'select',
+      key: 'priceBookId',
+      label: 'Bảng giá',
+      options: priceBooks.map(book => ({
+        value: String(book.id),
+        label: `${book.name} (${book.code})`,
+      })),
+    },
+  ];
+  const exportGroups = () =>
+    exportExcelFile(
+      'nhom-khach-hang.xlsx',
+      'Nhom khach hang',
+      [
+        { header: 'Mã nhóm', value: (row: CustomerGroup) => row.code },
+        { header: 'Tên nhóm', value: (row: CustomerGroup) => row.name, width: 30 },
+        {
+          header: 'Bảng giá',
+          value: (row: CustomerGroup) => priceBookLabel(row),
+          width: 28,
+        },
+      ],
+      filtered,
+    );
 
   return (
     <div>
@@ -181,16 +213,23 @@ function CustomerGroups() {
       </div>
 
       <div className="erp-card overflow-hidden">
-        <div className="erp-toolbar">
-          <div className="erp-search">
-            <Search size={16} />
-            <input
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              placeholder="Tìm kiếm theo mã, tên nhóm..."
-            />
-          </div>
-        </div>
+        <ListToolbar
+          fields={filterFields}
+          values={filters}
+          onChange={setFilters}
+          onExport={exportGroups}
+          exportDisabled={filtered.length === 0}
+          search={
+            <div className="erp-search">
+              <Search size={16} />
+              <input
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                placeholder="Tìm kiếm theo mã, tên nhóm..."
+              />
+            </div>
+          }
+        />
 
         <div className="overflow-x-auto">
           <table className="erp-table">

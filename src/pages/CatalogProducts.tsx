@@ -1,10 +1,9 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	AlertTriangle,
 	ChevronDown,
 	ChevronUp,
-	Download,
 	Edit,
 	Eye,
 	EyeOff,
@@ -20,11 +19,12 @@ import {
 import toast from "../components/ui/toast";
 import { confirm } from "../components/ui/confirm";
 import ExcelJS from "exceljs";
+import ListToolbar from "../components/ListToolbar";
+import type { FilterField, FilterValues } from "../components/FilterDrawer";
 import { saveAs } from "file-saver";
 import Button from "../components/ui/button";
-import Badge from "../components/ui/badge";
 import { Card } from "../components/ui/card";
-import { Field, FieldLabel, Input, Select } from "../components/ui/input";
+import { Field, FieldLabel, Input } from "../components/ui/input";
 import { apiV1 } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
 import { formatNumber, formatProductName } from "../lib/utils";
@@ -324,7 +324,8 @@ export default function CatalogProducts({
 	const qc = useQueryClient();
 	const [page, setPage] = useState(1);
 	const [search, setSearch] = useState("");
-	const [category, setCategory] = useState("");
+	const [filters, setFilters] = useState<FilterValues>({});
+	const category = filters.category || "";
 	const [expandedId, setExpandedId] = useState<number | null>(null);
 	const [tab, setTab] = useState<"list" | "lowstock">("list");
 	const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -408,6 +409,38 @@ export default function CatalogProducts({
 	});
 
 	const rows = (Array.isArray(data?.data) ? data.data : data?.data?.data) ?? [];
+	const filterFields: FilterField[] = [
+		{
+			type: "select",
+			key: "category",
+			label: "Loại hàng",
+			options: CATEGORIES.map(item => ({
+				value: item.value,
+				label: item.label,
+			})),
+		},
+		{
+			type: "select",
+			key: "status",
+			label: "Trạng thái",
+			options: [
+				{ value: "ACTIVE", label: "Đang bán" },
+				{ value: "INACTIVE", label: "Ngừng bán" },
+			],
+		},
+	];
+	const visibleRows = useMemo(
+		() =>
+			rows.filter(product => {
+				const isActive =
+					Number(product.isActive ?? 1) !== 0 ||
+					product.productpackagings.some(pk => pk.isActive);
+				if (filters.status === "ACTIVE" && !isActive) return false;
+				if (filters.status === "INACTIVE" && isActive) return false;
+				return true;
+			}),
+		[rows, filters.status],
+	);
 	const meta = Array.isArray(data?.data) ? data?.meta : data?.data?.meta;
 	const lowRows: LowStockRow[] = (lowStock.data?.data as any) ?? [];
 
@@ -742,9 +775,6 @@ export default function CatalogProducts({
 					</p>
 				</div>
 				<div className="flex gap-2.5 flex-wrap">
-					<Button variant="outline" onClick={exportExcel}>
-						<Download size={15} /> Xuất Excel
-					</Button>
 					<div className="relative" data-catalog-add-menu>
 						<div className="flex">
 							<Button
@@ -812,33 +842,29 @@ export default function CatalogProducts({
 			{/* ── Tab: Danh sách ── */}
 			{tab === "list" && (
 				<Card className="overflow-hidden !p-0">
-					<div className="erp-toolbar">
-						<div className="erp-search">
-							<Search size={15} />
-							<input
-								value={search}
-								onChange={e => {
-									setSearch(e.target.value);
-									setPage(1);
-								}}
-								placeholder="Tìm tên, SKU..."
-							/>
-						</div>
-						<select
-							value={category}
-							onChange={e => {
-								setCategory(e.target.value);
-								setPage(1);
-							}}
-						>
-							<option value="">Tất cả loại</option>
-							{CATEGORIES.map(c => (
-								<option key={c.value} value={c.value}>
-									{c.label}
-								</option>
-							))}
-						</select>
-					</div>
+					<ListToolbar
+						fields={filterFields}
+						values={filters}
+						onChange={next => {
+							setFilters(next);
+							setPage(1);
+						}}
+						onExport={exportExcel}
+						exportDisabled={visibleRows.length === 0}
+						search={
+							<div className="erp-search">
+								<Search size={15} />
+								<input
+									value={search}
+									onChange={e => {
+										setSearch(e.target.value);
+										setPage(1);
+									}}
+									placeholder="Tìm tên, SKU..."
+								/>
+							</div>
+						}
+					/>
 
 					{isLoading ? (
 						<div className="erp-empty">
@@ -848,14 +874,14 @@ export default function CatalogProducts({
 						<div className="erp-empty">
 							<p className="text-red-500">{(error as Error).message}</p>
 						</div>
-					) : !rows.length ? (
+					) : !visibleRows.length ? (
 						<div className="erp-empty">
 							<Package size={48} />
 							<p>Chưa có hàng hóa nào</p>
 						</div>
 					) : (
 						<div>
-							{rows.map(prod => {
+							{visibleRows.map(prod => {
 								const expanded = expandedId === prod.id;
 								const totalStock = prod.productpackagings.reduce(
 									(s, pk) =>

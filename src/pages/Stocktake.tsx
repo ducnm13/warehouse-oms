@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	CheckCircle2,
@@ -28,6 +28,9 @@ import type { InventoryBalanceV1, StocktakeV1, Warehouse } from "../types";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
 import TableActions from "../components/TableActions";
+import ListToolbar from "../components/ListToolbar";
+import type { FilterField, FilterValues } from "../components/FilterDrawer";
+import { exportExcelFile } from "../lib/excelExport";
 
 type CountLine = {
 	packagingId: number;
@@ -45,11 +48,32 @@ const statusMeta = {
 	CANCELLED: { label: "Đã hủy", css: "bg-red-100 text-red-700" },
 } as const;
 
+const STOCKTAKE_FILTER_FIELDS: FilterField[] = [
+	{
+		type: "select",
+		key: "status",
+		label: "Trạng thái",
+		options: [
+			{ value: "DRAFT", label: "Nháp" },
+			{ value: "COMPLETED", label: "Đã chốt" },
+			{ value: "CANCELLED", label: "Đã hủy" },
+		],
+	},
+	{
+		type: "dateRange",
+		key: "date",
+		label: "Ngày kiểm kê",
+		fromKey: "dateFrom",
+		toKey: "dateTo",
+	},
+];
+
 export default function Stocktake() {
 	const queryClient = useQueryClient();
 	const [page, setPage] = useState(1),
-		[status, setStatus] = useState(""),
 		[warehouseFilter, setWarehouseFilter] = useState(0);
+	const [filters, setFilters] = useState<FilterValues>({});
+	const status = filters.status || "";
 	const [open, setOpen] = useState(false),
 		[editing, setEditing] = useState<StocktakeV1 | null>(null),
 		[selected, setSelected] = useState<StocktakeV1 | null>(null);
@@ -349,6 +373,45 @@ export default function Stocktake() {
 	};
 	const rows = documents.data?.data || [],
 		meta = documents.data?.meta || {};
+	const visibleRows = useMemo(() => {
+		const from = filters.dateFrom || "";
+		const to = filters.dateTo || "";
+		return rows.filter(document => {
+			const date = (document.date || "").slice(0, 10);
+			if (from && date < from) return false;
+			if (to && date > to) return false;
+			return true;
+		});
+	}, [rows, filters]);
+	const exportStocktakeList = () =>
+		exportExcelFile(
+			"phieu-kiem-ke.xlsx",
+			"Phieu kiem ke",
+			[
+				{ header: "Mã phiếu", value: (document: StocktakeV1) => document.code },
+				{ header: "Ngày", value: (document: StocktakeV1) => document.date },
+				{
+					header: "Kho",
+					value: (document: StocktakeV1) =>
+						document.warehouseName || String(document.warehouseId),
+				},
+				{
+					header: "Trạng thái",
+					value: (document: StocktakeV1) =>
+						statusMeta[document.status]?.label || document.status,
+				},
+				{
+					header: "Số dòng",
+					value: (document: StocktakeV1) => document.details?.length || 0,
+				},
+				{
+					header: "Ghi chú",
+					value: (document: StocktakeV1) => document.note || "",
+					width: 32,
+				},
+			],
+			visibleRows,
+		);
 	const changed = lines.filter(
 		line => Math.abs(line.actualQuantity - line.expectedQuantity) > 0.0001,
 	).length;
@@ -395,9 +458,16 @@ export default function Stocktake() {
 				</div>
 			</div>
 			<div className="erp-card">
-				<div className="erp-toolbar">
-					<b>Danh sách phiếu kiểm kê</b>
-					<div className="flex flex-wrap gap-2">
+				<ListToolbar
+					className="flex-wrap"
+					fields={STOCKTAKE_FILTER_FIELDS}
+					values={filters}
+					onChange={next => {
+						setFilters(next);
+						setPage(1);
+					}}
+					onExport={exportStocktakeList}
+					extra={
 						<select
 							value={warehouseFilter}
 							onChange={event => {
@@ -412,22 +482,8 @@ export default function Stocktake() {
 								</option>
 							))}
 						</select>
-						<select
-							value={status}
-							onChange={event => {
-								setStatus(event.target.value);
-								setPage(1);
-							}}
-						>
-							<option value="">Tất cả trạng thái</option>
-							{Object.entries(statusMeta).map(([key, item]) => (
-								<option key={key} value={key}>
-									{item.label}
-								</option>
-							))}
-						</select>
-					</div>
-				</div>
+					}
+				/>
 				<div className="overflow-x-auto">
 					<table className="erp-table">
 						<thead>
@@ -448,14 +504,14 @@ export default function Stocktake() {
 										Đang tải...
 									</td>
 								</tr>
-							) : rows.length === 0 ? (
+							) : visibleRows.length === 0 ? (
 								<tr>
 									<td colSpan={7} className="text-center text-slate-400">
 										Chưa có phiếu kiểm kê
 									</td>
 								</tr>
 							) : (
-								rows.map(document => {
+								visibleRows.map(document => {
 									const differences = document.details.filter(
 										line => Math.abs(Number(line.difference)) > 0.0001,
 									).length;

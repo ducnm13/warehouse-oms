@@ -40,6 +40,9 @@ import type {
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
 import TableActions from "../components/TableActions";
+import ListToolbar from "../components/ListToolbar";
+import type { FilterField, FilterValues } from "../components/FilterDrawer";
+import { exportExcelFile } from "../lib/excelExport";
 
 type Line = {
 	packagingId: number;
@@ -77,14 +80,35 @@ const statusMeta = {
 	CANCELLED: { label: "Đã hủy", css: "bg-red-100 text-red-700" },
 } as const;
 
+const INVENTORY_FILTER_FIELDS: FilterField[] = [
+	{
+		type: "select",
+		key: "status",
+		label: "Trạng thái",
+		options: [
+			{ value: "POSTED", label: "Đã lưu" },
+			{ value: "DRAFT", label: "Nháp" },
+			{ value: "CANCELLED", label: "Đã hủy" },
+		],
+	},
+	{
+		type: "dateRange",
+		key: "transactionDate",
+		label: "Thời gian",
+		fromKey: "dateFrom",
+		toKey: "dateTo",
+	},
+];
+
 export default function Transactions({
 	initialType = "IMPORT",
 }: { initialType?: "IMPORT" | "EXPORT" } = {}) {
 	const queryClient = useQueryClient();
 	const [view, setView] = useState<View>("documents");
-	const [search, setSearch] = useState(""),
-		[status, setStatus] = useState(""),
-		[type, setType] = useState<string>(initialType || ""),
+	const [search, setSearch] = useState("");
+	const [filters, setFilters] = useState<FilterValues>({});
+	const status = filters.status || "";
+	const [type, setType] = useState<string>(initialType || ""),
 		[warehouseId, setWarehouseId] = useState(0),
 		[sourceModule, setSourceModule] = useState(""),
 		[page, setPage] = useState(1);
@@ -576,6 +600,118 @@ export default function Transactions({
 		balances = balanceQuery.data?.data || [],
 		reconciliations = reconciliationQuery.data?.data || [],
 		meta = documents.data?.meta || {};
+	const visibleRows = useMemo(() => {
+		const from = filters.dateFrom || "";
+		const to = filters.dateTo || "";
+		return rows.filter(document => {
+			const date = (document.transactionDate || "").slice(0, 10);
+			if (from && date < from) return false;
+			if (to && date > to) return false;
+			return true;
+		});
+	}, [rows, filters]);
+
+	const exportInventoryList = () => {
+		if (view === "balances") {
+			return exportExcelFile(
+				"ton-kho-theo-kho.xlsx",
+				"Ton kho",
+				[
+					{ header: "SKU", value: (row: InventoryBalanceV1) => row.sku || "" },
+					{
+						header: "Hàng hóa",
+						value: (row: InventoryBalanceV1) =>
+							`${row.productName} - ${row.packagingName}`,
+						width: 32,
+					},
+					{
+						header: "Kho",
+						value: (row: InventoryBalanceV1) => row.warehouseName,
+					},
+					{ header: "ĐVT", value: (row: InventoryBalanceV1) => row.unit || "" },
+					{
+						header: "Số lượng",
+						value: (row: InventoryBalanceV1) => Number(row.quantity || 0),
+					},
+				],
+				balances,
+			);
+		}
+		if (view === "reconciliation") {
+			return exportExcelFile(
+				"doi-soat-ton-kho.xlsx",
+				"Doi soat ton kho",
+				[
+					{
+						header: "SKU",
+						value: (row: InventoryReconciliationV1) => row.sku || "",
+					},
+					{
+						header: "Hàng hóa",
+						value: (row: InventoryReconciliationV1) =>
+							`${row.productName} - ${row.packagingName}`,
+						width: 32,
+					},
+					{
+						header: "Kho",
+						value: (row: InventoryReconciliationV1) => row.warehouseName,
+					},
+					{
+						header: "Thực tế",
+						value: (row: InventoryReconciliationV1) =>
+							Number(row.actualQuantity || 0),
+					},
+					{
+						header: "Kỳ vọng",
+						value: (row: InventoryReconciliationV1) =>
+							Number(row.expectedQuantity || 0),
+					},
+					{
+						header: "Chênh lệch",
+						value: (row: InventoryReconciliationV1) =>
+							Number(row.difference || 0),
+					},
+				],
+				reconciliations,
+			);
+		}
+		return exportExcelFile(
+			"danh-sach-chung-tu-kho.xlsx",
+			"Chung tu kho",
+			[
+				{ header: "Mã chứng từ", value: (row: InventoryDocumentV1) => row.code },
+				{
+					header: "Ngày",
+					value: (row: InventoryDocumentV1) => row.transactionDate,
+				},
+				{
+					header: "Loại",
+					value: (row: InventoryDocumentV1) =>
+						row.type === "IMPORT" ? "Nhập kho" : "Xuất kho",
+				},
+				{
+					header: "Kho",
+					value: (row: InventoryDocumentV1) => row.warehouseName || "",
+				},
+				{
+					header: "Diễn giải",
+					value: (row: InventoryDocumentV1) =>
+						row.reason || row.note || row.recipient || "",
+					width: 32,
+				},
+				{
+					header: "Trạng thái",
+					value: (row: InventoryDocumentV1) =>
+						statusMeta[row.documentStatus]?.label || row.documentStatus,
+				},
+				{
+					header: "Số dòng",
+					value: (row: InventoryDocumentV1) => row.details?.length || 0,
+				},
+			],
+			visibleRows,
+		);
+	};
 	React.useEffect(() => {
 		if (view !== "documents" || documents.isLoading || rows.length !== 1)
 			return;
@@ -678,80 +814,78 @@ export default function Transactions({
 				</button>
 			</div>
 			<div className="erp-card">
-				<div className="erp-toolbar">
-					<div className="erp-search">
-						<Search size={16} />
-						<input
-							value={search}
-							onChange={event => {
-								setSearch(event.target.value);
-								setPage(1);
-							}}
-							placeholder={
-								view === "documents"
-									? "Tìm mã PX-BH..., người nhận, diễn giải..."
-									: "Tìm hàng hóa, SKU..."
-							}
-						/>
-					</div>
-					<div className="flex flex-wrap gap-2">
-						<select
-							value={warehouseId}
-							onChange={event => {
-								setWarehouseId(+event.target.value);
-								setPage(1);
-							}}
-						>
-							<option value={0}>Tất cả kho</option>
-							{references.data?.warehouses.map(warehouse => (
-								<option key={warehouse.id} value={warehouse.id}>
-									{warehouse.name}
-								</option>
-							))}
-						</select>
-						{view === "documents" && !initialType && (
-							<>
-								<select
-									value={type}
-									onChange={event => {
-										setType(event.target.value);
-										setPage(1);
-									}}
-								>
-									<option value="">Tất cả loại</option>
-									<option value="IMPORT">Nhập kho</option>
-									<option value="EXPORT">Xuất kho</option>
-								</select>
-								<select
-									value={sourceModule}
-									onChange={event => {
-										setSourceModule(event.target.value);
-										setPage(1);
-									}}
-								>
-									<option value="">Tất cả nguồn</option>
-									<option value="MANUAL_V1">Nhập tay</option>
-									<option value="SALE_V1">Bán hàng tự sinh</option>
-									<option value="PURCHASE_V1">Mua hàng</option>
-								</select>
-								<select
-									value={status}
-									onChange={event => {
-										setStatus(event.target.value);
-										setPage(1);
-									}}
-								>
-									<option value="">Tất cả trạng thái</option>
-									{Object.entries(statusMeta).map(([key, item]) => (
-										<option key={key} value={key}>
-											{item.label}
-										</option>
-									))}
-								</select>
-							</>
-						)}
-					</div>
-				</div>
+				<ListToolbar
+					className="flex-wrap"
+					fields={view === "documents" ? INVENTORY_FILTER_FIELDS : []}
+					values={filters}
+					onChange={next => {
+						setFilters(next);
+						setPage(1);
+					}}
+					onExport={exportInventoryList}
+					search={
+						<div className="erp-search">
+							<Search size={16} />
+							<input
+								value={search}
+								onChange={event => {
+									setSearch(event.target.value);
+									setPage(1);
+								}}
+								placeholder={
+									view === "documents"
+										? "Tìm mã PX-BH..., người nhận, diễn giải..."
+										: "Tìm hàng hóa, SKU..."
+								}
+							/>
+						</div>
+					}
+					extra={
+						<>
+							<select
+								value={warehouseId}
+								onChange={event => {
+									setWarehouseId(+event.target.value);
+									setPage(1);
+								}}
+							>
+								<option value={0}>Tất cả kho</option>
+								{references.data?.warehouses.map(warehouse => (
+									<option key={warehouse.id} value={warehouse.id}>
+										{warehouse.name}
+									</option>
+								))}
+							</select>
+							{view === "documents" && !initialType && (
+								<>
+									<select
+										value={type}
+										onChange={event => {
+											setType(event.target.value);
+											setPage(1);
+										}}
+									>
+										<option value="">Tất cả loại</option>
+										<option value="IMPORT">Nhập kho</option>
+										<option value="EXPORT">Xuất kho</option>
+									</select>
+									<select
+										value={sourceModule}
+										onChange={event => {
+											setSourceModule(event.target.value);
+											setPage(1);
+										}}
+									>
+										<option value="">Tất cả nguồn</option>
+										<option value="MANUAL_V1">Nhập tay</option>
+										<option value="SALE_V1">Bán hàng tự sinh</option>
+										<option value="PURCHASE_V1">Mua hàng</option>
+									</select>
+								</>
+							)}
+						</>
+					}
+				/>
 				{view === "documents" && (
 					<>
 						<div className="overflow-x-auto">
@@ -774,7 +908,7 @@ export default function Transactions({
 												Đang tải...
 											</td>
 										</tr>
-									) : rows.length === 0 ? (
+									) : visibleRows.length === 0 ? (
 										<tr>
 											<td colSpan={7} className="text-center text-slate-400">
 												Chưa có chứng từ kho, kể cả phiếu do bán hàng tự sinh

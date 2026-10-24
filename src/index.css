@@ -612,6 +612,122 @@ header.sticky {
 	flex-shrink: 0;
 }
 
+.list-toolbar {
+	position: relative;
+}
+
+.list-toolbar-summary {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	max-width: min(46vw, 540px);
+	padding: 7px 8px 7px 11px;
+	border: 1px solid #ddd6fe;
+	border-radius: 12px;
+	background: #f5f3ff;
+	color: #5b21b6;
+	font-size: 12.5px;
+	font-weight: 600;
+}
+
+.list-toolbar-summary-text {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.list-toolbar-clear {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	flex-shrink: 0;
+	border: 0;
+	border-radius: 8px;
+	background: transparent;
+	color: #7c3aed;
+	cursor: pointer;
+	transition: background 0.12s;
+}
+
+.list-toolbar-clear:hover {
+	background: #ede9fe;
+}
+
+.list-toolbar-icon {
+	width: 38px;
+	height: 38px;
+	border: 1px solid #e0e5f2;
+	background: #fff;
+}
+
+.list-toolbar-view {
+	flex: 1;
+	text-align: right;
+	color: #707eae;
+	font-size: 12.5px;
+}
+
+.list-toolbar-count {
+	position: absolute;
+	top: -5px;
+	right: -5px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 17px;
+	height: 17px;
+	padding: 0 4px;
+	border-radius: 99px;
+	background: #422afb;
+	color: #fff;
+	font-size: 10px;
+	font-weight: 700;
+	line-height: 1;
+}
+
+/* Filter drawer form controls (rendered in a portal, outside .erp-page/.erp-card) */
+.filter-drawer select {
+	width: 100%;
+	min-height: 40px;
+	padding: 9px 30px 9px 14px;
+	border: 1px solid #e0e5f2;
+	border-radius: 14px;
+	background-color: #fff;
+	color: #2b3674;
+	font-size: 13.5px;
+	font-family: inherit;
+	line-height: 1.45;
+	outline: none;
+	cursor: pointer;
+	appearance: none;
+	-webkit-appearance: none;
+	-moz-appearance: none;
+	background-image:
+		linear-gradient(45deg, transparent 50%, #a3aed0 50%),
+		linear-gradient(135deg, #a3aed0 50%, transparent 50%);
+	background-position:
+		calc(100% - 18px) 50%,
+		calc(100% - 13px) 50%;
+	background-size: 5px 5px;
+	background-repeat: no-repeat;
+	transition:
+		border-color 0.15s,
+		box-shadow 0.15s,
+		background-color 0.15s;
+}
+.filter-drawer select:hover {
+	border-color: #a3aed0;
+}
+.filter-drawer select:focus {
+	border-color: var(--color-primary);
+	background-color: #fff;
+	box-shadow: none;
+}
+
 .erp-search {
 	display: flex;
 	align-items: center;

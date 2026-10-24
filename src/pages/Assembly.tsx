@@ -1,16 +1,13 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	Copy,
-	Edit,
 	Eye,
-	FileSpreadsheet,
 	Plus,
 	Printer,
 	Search,
 	Trash2,
 	Undo2,
-	X,
 } from "lucide-react";
 import toast from "../components/ui/toast";
 import { confirm, prompt } from "../components/ui/confirm";
@@ -19,6 +16,9 @@ import SearchableSelect from "../components/SearchableSelect";
 import RightDrawer from "../components/RightDrawer";
 import DocumentActions from "../components/DocumentActions";
 import TableActions from "../components/TableActions";
+import ListToolbar from "../components/ListToolbar";
+import type { FilterField, FilterValues } from "../components/FilterDrawer";
+import { exportExcelFile } from "../lib/excelExport";
 import PrintPreview from "../components/PrintPreview";
 import NumberInput from "../components/NumberInput";
 import { formatDate, formatNumber, formatProductName } from "../lib/utils";
@@ -66,6 +66,26 @@ const statusLabel: Record<string, string> = {
 	CANCELLED: "Đã hủy",
 };
 
+const ASSEMBLY_FILTER_FIELDS: FilterField[] = [
+	{
+		type: "select",
+		key: "status",
+		label: "Trạng thái",
+		options: [
+			{ value: "DRAFT", label: "Nháp" },
+			{ value: "POSTED", label: "Đã lưu" },
+			{ value: "CANCELLED", label: "Đã hủy" },
+		],
+	},
+	{
+		type: "dateRange",
+		key: "orderDate",
+		label: "Ngày lệnh",
+		fromKey: "dateFrom",
+		toKey: "dateTo",
+	},
+];
+
 export default function Assembly({ user }: { user: User }) {
 	const qc = useQueryClient();
 	const manage =
@@ -73,6 +93,8 @@ export default function Assembly({ user }: { user: User }) {
 		user.role === "P_MANAGER" ||
 		user.role === "W_MANAGER";
 	const [tab, setTab] = useState<Tab>("ASSEMBLY");
+	const [search, setSearch] = useState("");
+	const [filters, setFilters] = useState<FilterValues>({});
 	const [open, setOpen] = useState(false);
 	const [editing, setEditing] = useState<
 		AssemblyOrderV1 | DisassemblyOrderV1 | null
@@ -271,7 +293,11 @@ export default function Assembly({ user }: { user: User }) {
 
 	const cancelOrder = useMutation({
 		mutationFn: async (row: AssemblyOrderV1 | DisassemblyOrderV1) => {
-			const reason = await prompt({ title: "Hủy lệnh", message: "Nhập lý do hủy:", minLength: 3 });
+			const reason = await prompt({
+				title: "Hủy lệnh",
+				message: "Nhập lý do hủy:",
+				minLength: 3,
+			});
 			if (!reason) throw Error("Đã bỏ hủy");
 			const base =
 				tab === "ASSEMBLY"
@@ -303,7 +329,10 @@ export default function Assembly({ user }: { user: User }) {
 					: "/api/v1/assembly/disassembly-orders";
 			return apiV1(`${base}/${row.id}/unpost`, {
 				method: "POST",
-				body: JSON.stringify({ version: row.version, reason: "Hủy lưu để chỉnh sửa" }),
+				body: JSON.stringify({
+					version: row.version,
+					reason: "Hủy lưu để chỉnh sửa",
+				}),
 			});
 		},
 		onSuccess: (r: any) => {
@@ -342,93 +371,131 @@ export default function Assembly({ user }: { user: User }) {
 		setOpen(true);
 	};
 
-  const [voucherDraft, setVoucherDraft] = useState<null | {
-    order: any;
-    type: "IMPORT" | "EXPORT";
-    warehouseId: number;
-    lines: Array<{ packagingId: number; sku?: string; productName?: string; packagingName?: string; unit?: string; quantity: number; unitCost: number }>;
-  }>(null);
+	const [voucherDraft, setVoucherDraft] = useState<null | {
+		order: any;
+		type: "IMPORT" | "EXPORT";
+		warehouseId: number;
+		lines: Array<{
+			packagingId: number;
+			sku?: string;
+			productName?: string;
+			packagingName?: string;
+			unit?: string;
+			quantity: number;
+			unitCost: number;
+		}>;
+	}>(null);
 
-  const openDraft = (
-    order: any,
-    type: "IMPORT" | "EXPORT",
-    detailLines: Array<{ packagingId: number; quantity: number }>,
-  ) => {
-    const enriched = detailLines
-      .map(line => {
-        const item = packagingOptions.find(x => x.id === line.packagingId);
-        return {
-          packagingId: line.packagingId,
-          sku: item?.sku,
-          productName: item?.productName,
-          packagingName: item?.name,
-          unit: item?.unit,
-quantity: Number(Number(line.quantity || 0).toFixed(3)),
-          unitCost: refs.data?.costMap.get(line.packagingId) || 0,
-        };
-      })
-      .filter(line => line.packagingId > 0 && line.quantity > 0);
-    if (!enriched.length) {
-      toast.error("Lệnh chưa có dòng hợp lệ để lập phiếu");
-      return;
-    }
-    setVoucherDraft({
-      order,
-      type,
-      warehouseId: order.componentWarehouseId || order.sourceWarehouseId || order.outputWarehouseId || order.recoveryWarehouseId || refs.data?.warehouses[0]?.id || 0,
-      lines: enriched,
-    });
-  };
+	const openDraft = (
+		order: any,
+		type: "IMPORT" | "EXPORT",
+		detailLines: Array<{ packagingId: number; quantity: number }>,
+	) => {
+		const enriched = detailLines
+			.map(line => {
+				const item = packagingOptions.find(x => x.id === line.packagingId);
+				return {
+					packagingId: line.packagingId,
+					sku: item?.sku,
+					productName: item?.productName,
+					packagingName: item?.name,
+					unit: item?.unit,
+					quantity: Number(Number(line.quantity || 0).toFixed(3)),
+					unitCost: refs.data?.costMap.get(line.packagingId) || 0,
+				};
+			})
+			.filter(line => line.packagingId > 0 && line.quantity > 0);
+		if (!enriched.length) {
+			toast.error("Lệnh chưa có dòng hợp lệ để lập phiếu");
+			return;
+		}
+		setVoucherDraft({
+			order,
+			type,
+			warehouseId:
+				order.componentWarehouseId ||
+				order.sourceWarehouseId ||
+				order.outputWarehouseId ||
+				order.recoveryWarehouseId ||
+				refs.data?.warehouses[0]?.id ||
+				0,
+			lines: enriched,
+		});
+	};
 
-  const [savingVoucher, setSavingVoucher] = useState(false);
-  const confirmDraftToInventory = async () => {
-    if (!voucherDraft || savingVoucher) return;
-    const { order, type, warehouseId, lines } = voucherDraft;
-    if (!warehouseId) {
-      toast.error("Chọn kho xuất/nhập trước khi lưu phiếu");
-      return;
-    }
-    const normalized = lines
-      .map(line => ({ packagingId: Number(line.packagingId || 0), quantity: Number(line.quantity || 0), unitCost: Number(line.unitCost || 0), note: order.code }))
-      .filter(line => line.packagingId > 0 && line.quantity > 0);
-    if (!normalized.length) {
-      toast.error("Phiếu chưa có dòng hợp lệ để lưu");
-      return;
-    }
-    setSavingVoucher(true);
-    try {
-      const created = await apiV1<any>("/api/v1/inventory/documents", {
-        method: "POST",
-        body: JSON.stringify({
-          type,
-          transactionDate: today(),
-          warehouseId,
-          recipient: type === "EXPORT" ? "Tổ lắp ráp" : "Kho thành phẩm",
-          reason: type === "EXPORT" ? "Xuất linh kiện lắp ráp" : "Nhập thành phẩm lắp ráp",
-          note: `${type === "EXPORT" ? "Xuất cho" : "Nhập từ"} lệnh ${order.code}`,
-          details: normalized,
-        }),
-      });
-      const base = tab === "ASSEMBLY" ? "/api/v1/assembly/orders" : "/api/v1/assembly/disassembly-orders";
-      await apiV1(`${base}/${order.id}/link-inventory`, {
-        method: "POST",
-        body: JSON.stringify({
-          linkType: type === "EXPORT" ? "INVENTORY_ISSUE" : "INVENTORY_RECEIPT",
-          linkedId: created.data.id,
-          linkedCode: created.data.code,
-        }),
-      });
-      toast.success(`Đã lưu ${type === "EXPORT" ? "phiếu xuất" : "phiếu nhập"} ${created.data.code} ngay trong lệnh ${order.code}`);
-      setVoucherDraft(null);
-      await viewOrder({ ...order, id: order.id } as any);
-      void invalidate();
-    } catch (e: any) {
-      const detail = e?.fieldErrors ? Object.entries(e.fieldErrors).map(([field, messages]) => `${field}: ${(messages as string[]).join(", ")}`).join("; ") : "";
-      toast.error([e.message || "Không lưu được phiếu kho", detail].filter(Boolean).join("\n"));
-    } finally {
-      setSavingVoucher(false);
-    }
-  };
+	const [savingVoucher, setSavingVoucher] = useState(false);
+	const confirmDraftToInventory = async () => {
+		if (!voucherDraft || savingVoucher) return;
+		const { order, type, warehouseId, lines } = voucherDraft;
+		if (!warehouseId) {
+			toast.error("Chọn kho xuất/nhập trước khi lưu phiếu");
+			return;
+		}
+		const normalized = lines
+			.map(line => ({
+				packagingId: Number(line.packagingId || 0),
+				quantity: Number(line.quantity || 0),
+				unitCost: Number(line.unitCost || 0),
+				note: order.code,
+			}))
+			.filter(line => line.packagingId > 0 && line.quantity > 0);
+		if (!normalized.length) {
+			toast.error("Phiếu chưa có dòng hợp lệ để lưu");
+			return;
+		}
+		setSavingVoucher(true);
+		try {
+			const created = await apiV1<any>("/api/v1/inventory/documents", {
+				method: "POST",
+				body: JSON.stringify({
+					type,
+					transactionDate: today(),
+					warehouseId,
+					recipient: type === "EXPORT" ? "Tổ lắp ráp" : "Kho thành phẩm",
+					reason:
+						type === "EXPORT"
+							? "Xuất linh kiện lắp ráp"
+							: "Nhập thành phẩm lắp ráp",
+					note: `${type === "EXPORT" ? "Xuất cho" : "Nhập từ"} lệnh ${order.code}`,
+					details: normalized,
+				}),
+			});
+			const base =
+				tab === "ASSEMBLY"
+					? "/api/v1/assembly/orders"
+					: "/api/v1/assembly/disassembly-orders";
+			await apiV1(`${base}/${order.id}/link-inventory`, {
+				method: "POST",
+				body: JSON.stringify({
+					linkType: type === "EXPORT" ? "INVENTORY_ISSUE" : "INVENTORY_RECEIPT",
+					linkedId: created.data.id,
+					linkedCode: created.data.code,
+				}),
+			});
+			toast.success(
+				`Đã lưu ${type === "EXPORT" ? "phiếu xuất" : "phiếu nhập"} ${created.data.code} ngay trong lệnh ${order.code}`,
+			);
+			setVoucherDraft(null);
+			await viewOrder({ ...order, id: order.id } as any);
+			void invalidate();
+		} catch (e: any) {
+			const detail = e?.fieldErrors
+				? Object.entries(e.fieldErrors)
+						.map(
+							([field, messages]) =>
+								`${field}: ${(messages as string[]).join(", ")}`,
+						)
+						.join("; ")
+				: "";
+			toast.error(
+				[e.message || "Không lưu được phiếu kho", detail]
+					.filter(Boolean)
+					.join("\n"),
+			);
+		} finally {
+			setSavingVoucher(false);
+		}
+	};
 
 	const openEditor = (order: any, duplicate = false) => {
 		setSelected(null);
@@ -497,20 +564,82 @@ quantity: Number(Number(line.quantity || 0).toFixed(3)),
 		}
 	};
 
-  const [printingOrder] = useState(false);
-  const [printTarget, setPrintTarget] = useState<any | null>(null);
-  const orderOutputs = (order: any) => order.outputs?.length
-    ? order.outputs
-    : order.sources?.length
-      ? order.sources.map((row: any) => ({ sku: row.sku, packagingName: row.packagingName, unit: row.unit, plannedQuantity: row.plannedQuantity }))
-      : [
-          {
-            sku: (order as any).output?.sku || (order as any).source?.sku,
-            packagingName: (order as any).output?.packagingName || (order as any).source?.packagingName,
-            unit: (order as any).output?.unit,
-            plannedQuantity: (order as any).plannedQuantity,
-          },
-        ];
+	const [printTarget, setPrintTarget] = useState<any | null>(null);
+	const orderOutputs = (order: any) =>
+		order.outputs?.length
+			? order.outputs
+			: order.sources?.length
+				? order.sources.map((row: any) => ({
+						sku: row.sku,
+						packagingName: row.packagingName,
+						unit: row.unit,
+						plannedQuantity: row.plannedQuantity,
+					}))
+				: [
+						{
+							sku: (order as any).output?.sku || (order as any).source?.sku,
+							packagingName:
+								(order as any).output?.packagingName ||
+								(order as any).source?.packagingName,
+							unit: (order as any).output?.unit,
+							plannedQuantity: (order as any).plannedQuantity,
+						},
+					];
+	const allRows: any[] = orders.data?.data || [];
+	const keyword = search.trim().toLowerCase();
+	const visibleRows = allRows.filter(row => {
+		if (filters.status && row.status !== filters.status) return false;
+		const date = String(row.orderDate || "").slice(0, 10);
+		if (filters.dateFrom && date < filters.dateFrom) return false;
+		if (filters.dateTo && date > filters.dateTo) return false;
+		if (!keyword) return true;
+		const haystack = [
+			row.code,
+			row.note,
+			row.output?.packagingName,
+			row.output?.productName,
+			row.output?.sku,
+			row.source?.packagingName,
+			row.source?.productName,
+			row.source?.sku,
+		]
+			.filter(Boolean)
+			.join(" ")
+			.toLowerCase();
+		return haystack.includes(keyword);
+	});
+	const exportAssemblyList = () =>
+		exportExcelFile(
+			tab === "ASSEMBLY" ? "lenh-lap-rap.xlsx" : "lenh-thao-do.xlsx",
+			tab === "ASSEMBLY" ? "Lenh lap rap" : "Lenh thao do",
+			[
+				{ header: "Mã lệnh", value: (row: any) => row.code },
+				{ header: "Ngày", value: (row: any) => row.orderDate },
+				{
+					header: "Thành phẩm",
+					value: (row: any) =>
+						orderOutputs(row)
+							.map((output: any) => output.packagingName || output.sku || "")
+							.join("; "),
+					width: 32,
+				},
+				{
+					header: "Tổng tiền",
+					value: (row: any) =>
+						Number(row.outputTotalValue || row.sourceTotalValue || 0),
+				},
+				{
+					header: "Trạng thái",
+					value: (row: any) => statusLabel[row.status] || row.status,
+				},
+				{
+					header: "Diễn giải",
+					value: (row: any) => row.note || "",
+					width: 36,
+				},
+			],
+			visibleRows,
+		);
 
 	return (
 		<div className="erp-page">
@@ -546,12 +675,23 @@ quantity: Number(Number(line.quantity || 0).toFixed(3)),
 			</div>
 
 			<div className="erp-card overflow-hidden">
-				<div className="erp-toolbar">
-					<div className="erp-search">
-						<Search size={16} />
-						<input placeholder="Tìm mã lệnh, diễn giải..." />
-					</div>
-				</div>
+				<ListToolbar
+					fields={ASSEMBLY_FILTER_FIELDS}
+					values={filters}
+					onChange={setFilters}
+					onExport={exportAssemblyList}
+					exportDisabled={visibleRows.length === 0}
+					search={
+						<div className="erp-search">
+							<Search size={16} />
+							<input
+								value={search}
+								onChange={e => setSearch(e.target.value)}
+								placeholder="Tìm mã lệnh, diễn giải..."
+							/>
+						</div>
+					}
+				/>
 				<table className="erp-table">
 					<thead>
 						<tr>
@@ -564,7 +704,17 @@ quantity: Number(Number(line.quantity || 0).toFixed(3)),
 						</tr>
 					</thead>
 					<tbody>
-						{(orders.data?.data || []).map((row: any) => (
+						{visibleRows.length === 0 && (
+							<tr>
+								<td
+									colSpan={6}
+									className="py-10 text-center text-sm text-[#a3aed0]"
+								>
+									Không có dữ liệu
+								</td>
+							</tr>
+						)}
+						{visibleRows.map((row: any) => (
 							<tr key={row.id}>
 								<td>
 									<button
@@ -691,13 +841,13 @@ quantity: Number(Number(line.quantity || 0).toFixed(3)),
 						</div>
 						<div className="space-y-3">
 							<div>
-							<label className="mb-1 block text-[13px] font-medium text-slate-700">
-								Ngày tạo lệnh
-							</label>
-							<DateInput
-								value={orderDate}
-								onChange={value => setOrderDate(value)}
-							/>
+								<label className="mb-1 block text-[13px] font-medium text-slate-700">
+									Ngày tạo lệnh
+								</label>
+								<DateInput
+									value={orderDate}
+									onChange={value => setOrderDate(value)}
+								/>
 							</div>
 							<div>
 								<label className="mb-1 block text-[13px] font-medium text-slate-700">
@@ -881,7 +1031,10 @@ quantity: Number(Number(line.quantity || 0).toFixed(3)),
 													<td>
 														<b className="font-mono">{row.sku}</b>
 														<small>
-															{formatProductName(row.productName, row.packagingName)}
+															{formatProductName(
+																row.productName,
+																row.packagingName,
+															)}
 														</small>
 													</td>
 													<td>{row.unit || ""}</td>
@@ -921,57 +1074,70 @@ quantity: Number(Number(line.quantity || 0).toFixed(3)),
 							onPrint={() => selected && setPrintTarget(selected)}
 							onEdit={() => selected && openEditor(selected)}
 						/>
-						{selected && ["DRAFT"].includes(selected.status) && !(selected.links || []).some((link: any) => link.linkType === "INVENTORY_ISSUE") && (
-							<button
-								type="button"
-								className="erp-btn erp-btn-primary"
-								onClick={() => {
-									openDraft(
-										selected,
-										"EXPORT",
-										(selected.lines || []).map((line: any) => ({
-											packagingId:
-												line.packagingId || line.componentPackagingId,
-											quantity: Number(line.plannedQuantity || 0),
-										})),
-									);
-								}}
-							>
-								Lập phiếu xuất
-							</button>
-						)}
-						{selected && ["DRAFT"].includes(selected.status) && !(selected.links || []).some((link: any) => link.linkType === "INVENTORY_RECEIPT") && (
-							<button
-								type="button"
-								className="erp-btn erp-btn-primary"
-								onClick={() => {
-									const outputs = selected.outputs?.length
-										? selected.outputs
-										: selected.sources?.length
-											? selected.sources.map((row: any) => ({ packagingId: row.sourcePackagingId || row.packagingId, plannedQuantity: row.plannedQuantity }))
-											: [
-													{
-														packagingId:
-															(selected as any).output?.packagingId ||
-															(selected as any).source?.packagingId,
-														plannedQuantity: (selected as any).plannedQuantity,
-													},
-												];
-									openDraft(
-										selected,
-										"IMPORT",
-										outputs
-											.filter((x: any) => x.packagingId)
-											.map((x: any) => ({
-												packagingId: x.packagingId,
-												quantity: Number(x.plannedQuantity || 0),
+						{selected &&
+							["DRAFT"].includes(selected.status) &&
+							!(selected.links || []).some(
+								(link: any) => link.linkType === "INVENTORY_ISSUE",
+							) && (
+								<button
+									type="button"
+									className="erp-btn erp-btn-primary"
+									onClick={() => {
+										openDraft(
+											selected,
+											"EXPORT",
+											(selected.lines || []).map((line: any) => ({
+												packagingId:
+													line.packagingId || line.componentPackagingId,
+												quantity: Number(line.plannedQuantity || 0),
 											})),
-									);
-								}}
-							>
-								Lập phiếu nhập
-							</button>
-						)}
+										);
+									}}
+								>
+									Lập phiếu xuất
+								</button>
+							)}
+						{selected &&
+							["DRAFT"].includes(selected.status) &&
+							!(selected.links || []).some(
+								(link: any) => link.linkType === "INVENTORY_RECEIPT",
+							) && (
+								<button
+									type="button"
+									className="erp-btn erp-btn-primary"
+									onClick={() => {
+										const outputs = selected.outputs?.length
+											? selected.outputs
+											: selected.sources?.length
+												? selected.sources.map((row: any) => ({
+														packagingId:
+															row.sourcePackagingId || row.packagingId,
+														plannedQuantity: row.plannedQuantity,
+													}))
+												: [
+														{
+															packagingId:
+																(selected as any).output?.packagingId ||
+																(selected as any).source?.packagingId,
+															plannedQuantity: (selected as any)
+																.plannedQuantity,
+														},
+													];
+										openDraft(
+											selected,
+											"IMPORT",
+											outputs
+												.filter((x: any) => x.packagingId)
+												.map((x: any) => ({
+													packagingId: x.packagingId,
+													quantity: Number(x.plannedQuantity || 0),
+												})),
+										);
+									}}
+								>
+									Lập phiếu nhập
+								</button>
+							)}
 						<button
 							type="button"
 							className="erp-btn"
@@ -997,11 +1163,19 @@ quantity: Number(Number(line.quantity || 0).toFixed(3)),
 												className="erp-badge bg-blue-100 text-blue-700 hover:bg-blue-200"
 												onClick={() => {
 													localStorage.setItem("activeTab", "transactions");
-													localStorage.setItem("inventory-deep-link-code", link.linkedCode || "");
+													localStorage.setItem(
+														"inventory-deep-link-code",
+														link.linkedCode || "",
+													);
 													window.open("/", "_blank");
 												}}
 											>
-												{link.linkType === "INVENTORY_ISSUE" ? "Phiếu xuất" : link.linkType === "INVENTORY_RECEIPT" ? "Phiếu nhập" : link.linkType}: {link.linkedCode} ↗
+												{link.linkType === "INVENTORY_ISSUE"
+													? "Phiếu xuất"
+													: link.linkType === "INVENTORY_RECEIPT"
+														? "Phiếu nhập"
+														: link.linkType}
+												: {link.linkedCode} ↗
 											</button>
 										))
 									) : (
@@ -1066,42 +1240,130 @@ quantity: Number(Number(line.quantity || 0).toFixed(3)),
 
 			<RightDrawer
 				open={!!voucherDraft}
-				title={voucherDraft ? `${voucherDraft.type === "EXPORT" ? "Phiếu xuất" : "Phiếu nhập"} nháp cho ${voucherDraft.order.code}` : "Phiếu nháp"}
+				title={
+					voucherDraft
+						? `${voucherDraft.type === "EXPORT" ? "Phiếu xuất" : "Phiếu nhập"} nháp cho ${voucherDraft.order.code}`
+						: "Phiếu nháp"
+				}
 				subtitle="Kiểm tra lại sản phẩm, số lượng, đơn giá vốn rồi lưu ngay tại đây"
 				widthClass="max-w-[68rem]"
 				onClose={() => setVoucherDraft(null)}
-				footer={(
+				footer={
 					<>
-						<button type="button" className="erp-btn" onClick={() => setVoucherDraft(null)}>Đóng</button>
-						<button type="button" className="erp-btn erp-btn-primary" disabled={savingVoucher} onClick={() => void confirmDraftToInventory()}>{savingVoucher ? "Đang lưu phiếu..." : "Lưu phiếu"}</button>
+						<button
+							type="button"
+							className="erp-btn"
+							onClick={() => setVoucherDraft(null)}
+						>
+							Đóng
+						</button>
+						<button
+							type="button"
+							className="erp-btn erp-btn-primary"
+							disabled={savingVoucher}
+							onClick={() => void confirmDraftToInventory()}
+						>
+							{savingVoucher ? "Đang lưu phiếu..." : "Lưu phiếu"}
+						</button>
 					</>
-				)}
+				}
 			>
 				{voucherDraft && (
 					<div className="space-y-4">
 						<div className="grid gap-3 md:grid-cols-3">
-							<div className="rounded bg-slate-50 p-3"><small>Kho xuất/nhập</small>
-								<select className="mt-1" value={voucherDraft.warehouseId} onChange={e => setVoucherDraft(current => current ? { ...current, warehouseId: Number(e.target.value) } : current)}>
+							<div className="rounded bg-slate-50 p-3">
+								<small>Kho xuất/nhập</small>
+								<select
+									className="mt-1"
+									value={voucherDraft.warehouseId}
+									onChange={e =>
+										setVoucherDraft(current =>
+											current
+												? { ...current, warehouseId: Number(e.target.value) }
+												: current,
+										)
+									}
+								>
 									<option value={0}>Chọn kho khi chuyển phiếu</option>
-									{refs.data?.warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+									{refs.data?.warehouses.map(w => (
+										<option key={w.id} value={w.id}>
+											{w.name}
+										</option>
+									))}
 								</select>
 							</div>
-							<div className="rounded bg-slate-50 p-3"><small>Loại phiếu</small><b className="block">{voucherDraft.type === "EXPORT" ? "Xuất kho" : "Nhập kho"}</b></div>
-							<div className="rounded bg-emerald-50 p-3"><small>Tổng giá vốn</small><b className="block text-emerald-700">{formatNumber(voucherDraft.lines.reduce((sum, line) => sum + line.quantity * line.unitCost, 0))} ₫</b></div>
+							<div className="rounded bg-slate-50 p-3">
+								<small>Loại phiếu</small>
+								<b className="block">
+									{voucherDraft.type === "EXPORT" ? "Xuất kho" : "Nhập kho"}
+								</b>
+							</div>
+							<div className="rounded bg-emerald-50 p-3">
+								<small>Tổng giá vốn</small>
+								<b className="block text-emerald-700">
+									{formatNumber(
+										voucherDraft.lines.reduce(
+											(sum, line) => sum + line.quantity * line.unitCost,
+											0,
+										),
+									)}{" "}
+									₫
+								</b>
+							</div>
 						</div>
 						<div className="overflow-x-auto rounded-lg border border-slate-200">
 							<table className="erp-table w-full min-w-[640px]">
-								<thead><tr><th>STT</th><th>Mã hàng hóa</th><th>Tên hàng hóa</th><th>ĐVT</th><th className="text-right">Số lượng</th><th className="text-right">Đơn giá vốn</th><th className="text-right">Thành tiền</th></tr></thead>
+								<thead>
+									<tr>
+										<th>STT</th>
+										<th>Mã hàng hóa</th>
+										<th>Tên hàng hóa</th>
+										<th>ĐVT</th>
+										<th className="text-right">Số lượng</th>
+										<th className="text-right">Đơn giá vốn</th>
+										<th className="text-right">Thành tiền</th>
+									</tr>
+								</thead>
 								<tbody>
 									{voucherDraft.lines.map((line, index) => (
 										<tr key={index}>
 											<td>{index + 1}</td>
-											<td className="font-mono font-semibold">{line.sku || "-"}</td>
-											<td>{formatProductName(line.productName, line.packagingName) || "-"}</td>
+											<td className="font-mono font-semibold">
+												{line.sku || "-"}
+											</td>
+											<td>
+												{formatProductName(
+													line.productName,
+													line.packagingName,
+												) || "-"}
+											</td>
 											<td>{line.unit || ""}</td>
-											<td><NumberInput value={line.quantity} onChange={v => setVoucherDraft(current => current ? { ...current, lines: current.lines.map((l, i) => i === index ? { ...l, quantity: v } : l) } : current)} min={0.0001} decimals={3} className="w-28"/></td>
-											<td className="text-right">{formatNumber(line.unitCost)}</td>
-											<td className="text-right font-semibold">{formatNumber(line.quantity * line.unitCost)}</td>
+											<td>
+												<NumberInput
+													value={line.quantity}
+													onChange={v =>
+														setVoucherDraft(current =>
+															current
+																? {
+																		...current,
+																		lines: current.lines.map((l, i) =>
+																			i === index ? { ...l, quantity: v } : l,
+																		),
+																	}
+																: current,
+														)
+													}
+													min={0.0001}
+													decimals={3}
+													className="w-28"
+												/>
+											</td>
+											<td className="text-right">
+												{formatNumber(line.unitCost)}
+											</td>
+											<td className="text-right font-semibold">
+												{formatNumber(line.quantity * line.unitCost)}
+											</td>
 										</tr>
 									))}
 								</tbody>
@@ -1111,68 +1373,77 @@ quantity: Number(Number(line.quantity || 0).toFixed(3)),
 				)}
 			</RightDrawer>
 
-<PrintPreview
-			open={!!printTarget}
-			title={printTarget ? `Xem trước in lệnh ${printTarget.code}` : "Xem trước in"}
-			fill={printTarget ? ((worksheet, company) => {
-				const isDisassembly =
-					String(printTarget.sourceModule || "").includes("DISASSEMBLY") ||
-					(!!printTarget.sources?.length && !printTarget.outputs?.length);
-				const outputRows = orderOutputs(printTarget)
-					.filter((output: any) => output?.sku || output?.packagingName)
-					.map((output: any, index: number) => ({
-						stt: index + 1,
-						type: isDisassembly ? "Nguồn" : "Thành phẩm",
-						sku: output.sku || "",
-						name: [output.productName, output.packagingName]
-							.filter(Boolean)
-							.join(" - "),
-						unit: output.unit || "",
-						quantity: Number(output.plannedQuantity || 0),
-						amount: Number(output.totalValue || 0),
-					}));
-				const componentRows = (printTarget.lines || []).map(
-					(line: any, index: number) => {
-						const quantity = Number(line.plannedQuantity || 0);
-						const unitCost = Number(line.unitCost || 0);
-						return {
-							stt: outputRows.length + index + 1,
-							type: isDisassembly ? "Thành phẩm" : "Linh kiện",
-							sku: line.componentSku || line.component?.sku || "",
-							name:
-								line.componentName ||
-								line.component?.name ||
-								line.componentProductName ||
-								line.component?.products?.name ||
-								"",
-							unit: line.componentUnit || line.component?.unit || "",
-							quantity,
-							amount: Number(line.totalValue ?? quantity * unitCost),
-						};
-					},
-				);
-				const total = componentRows.reduce(
-					(sum, row) => sum + Number(row.amount || 0),
-					0,
-				);
-				fillGenericDocument(
-					worksheet,
-					company as CompanyPrintProfile | null,
-					GENERIC_LAYOUTS.assembly,
-					{
-						code: printTarget.code,
-						documentDate: printTarget.orderDate,
-						title: isDisassembly ? "LỆNH THÁO DỠ" : "LỆNH LẮP RÁP",
-						partner: isDisassembly
-							? `${printTarget.sourceWarehouse?.name || printTarget.sourceWarehouseName || ""} → ${printTarget.recoveryWarehouse?.name || printTarget.recoveryWarehouseName || ""}`
-							: `${printTarget.componentWarehouse?.name || printTarget.componentWarehouseName || ""} → ${printTarget.outputWarehouse?.name || printTarget.outputWarehouseName || ""}`,
-						dienGiai: printTarget.note || "",
-						total,
-						rows: [...outputRows, ...componentRows],
-					},
-				);
-			}) : null}
-			onClose={() => setPrintTarget(null)}
+			<PrintPreview
+				open={!!printTarget}
+				title={
+					printTarget ? `Xem trước in lệnh ${printTarget.code}` : "Xem trước in"
+				}
+				fill={
+					printTarget
+						? (worksheet, company) => {
+								const isDisassembly =
+									String(printTarget.sourceModule || "").includes(
+										"DISASSEMBLY",
+									) ||
+									(!!printTarget.sources?.length &&
+										!printTarget.outputs?.length);
+								const outputRows = orderOutputs(printTarget)
+									.filter((output: any) => output?.sku || output?.packagingName)
+									.map((output: any, index: number) => ({
+										stt: index + 1,
+										type: isDisassembly ? "Nguồn" : "Thành phẩm",
+										sku: output.sku || "",
+										name: [output.productName, output.packagingName]
+											.filter(Boolean)
+											.join(" - "),
+										unit: output.unit || "",
+										quantity: Number(output.plannedQuantity || 0),
+										amount: Number(output.totalValue || 0),
+									}));
+								const componentRows = (printTarget.lines || []).map(
+									(line: any, index: number) => {
+										const quantity = Number(line.plannedQuantity || 0);
+										const unitCost = Number(line.unitCost || 0);
+										return {
+											stt: outputRows.length + index + 1,
+											type: isDisassembly ? "Thành phẩm" : "Linh kiện",
+											sku: line.componentSku || line.component?.sku || "",
+											name:
+												line.componentName ||
+												line.component?.name ||
+												line.componentProductName ||
+												line.component?.products?.name ||
+												"",
+											unit: line.componentUnit || line.component?.unit || "",
+											quantity,
+											amount: Number(line.totalValue ?? quantity * unitCost),
+										};
+									},
+								);
+								const total = componentRows.reduce(
+									(sum, row) => sum + Number(row.amount || 0),
+									0,
+								);
+								fillGenericDocument(
+									worksheet,
+									company as CompanyPrintProfile | null,
+									GENERIC_LAYOUTS.assembly,
+									{
+										code: printTarget.code,
+										documentDate: printTarget.orderDate,
+										title: isDisassembly ? "LỆNH THÁO DỠ" : "LỆNH LẮP RÁP",
+										partner: isDisassembly
+											? `${printTarget.sourceWarehouse?.name || printTarget.sourceWarehouseName || ""} → ${printTarget.recoveryWarehouse?.name || printTarget.recoveryWarehouseName || ""}`
+											: `${printTarget.componentWarehouse?.name || printTarget.componentWarehouseName || ""} → ${printTarget.outputWarehouse?.name || printTarget.outputWarehouseName || ""}`,
+										dienGiai: printTarget.note || "",
+										total,
+										rows: [...outputRows, ...componentRows],
+									},
+								);
+							}
+						: null
+				}
+				onClose={() => setPrintTarget(null)}
 			/>
 		</div>
 	);

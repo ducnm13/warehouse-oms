@@ -4,6 +4,9 @@ import { Edit, Lock, Plus, Search, ShieldCheck, Trash2, Users as UsersIcon, X } 
 import toast from "../components/ui/toast";
 import { confirm } from "../components/ui/confirm";
 import { apiV1 } from "../lib/apiV1";
+import ListToolbar from "../components/ListToolbar";
+import type { FilterField, FilterValues } from "../components/FilterDrawer";
+import { exportExcelFile } from "../lib/excelExport";
 
 interface Permission {
 	id: number;
@@ -55,6 +58,8 @@ export default function Roles() {
 	const [description, setDescription] = useState("");
 	const [selected, setSelected] = useState<string[]>([]);
 	const [permSearch, setPermSearch] = useState("");
+	const [search, setSearch] = useState("");
+	const [filters, setFilters] = useState<FilterValues>({});
 
 	const permissionsQuery = useQuery({
 		queryKey: ["iam-permissions"],
@@ -154,6 +159,54 @@ export default function Roles() {
 
 	const loading = permissionsQuery.isLoading || rolesQuery.isLoading;
 	const forbidden = (permissionsQuery.error as any)?.status === 403 || (rolesQuery.error as any)?.status === 403;
+	const filteredRoles = useMemo(() => {
+		const keyword = search.trim().toLowerCase();
+		return roles.filter(role => {
+			const matchSearch =
+				!keyword ||
+				role.name.toLowerCase().includes(keyword) ||
+				role.code.toLowerCase().includes(keyword);
+			const matchType =
+				!filters.type ||
+				(filters.type === "SYSTEM" ? role.isSystem : !role.isSystem);
+			return matchSearch && matchType;
+		});
+	}, [roles, search, filters.type]);
+	const filterFields: FilterField[] = [
+		{
+			type: "select",
+			key: "type",
+			label: "Loại vai trò",
+			options: [
+				{ value: "SYSTEM", label: "Hệ thống" },
+				{ value: "CUSTOM", label: "Tùy chỉnh" },
+			],
+		},
+	];
+	const exportRoles = () =>
+		exportExcelFile(
+			"vai-tro.xlsx",
+			"Vai tro",
+			[
+				{ header: "Mã", value: (role: Role) => role.code },
+				{ header: "Tên vai trò", value: (role: Role) => role.name, width: 28 },
+				{
+					header: "Loại",
+					value: (role: Role) => (role.isSystem ? "Hệ thống" : "Tùy chỉnh"),
+				},
+				{
+					header: "Số quyền",
+					value: (role: Role) => role.permissionCodes.length,
+				},
+				{ header: "Tài khoản", value: (role: Role) => role.userCount },
+				{
+					header: "Mô tả",
+					value: (role: Role) => role.description || "",
+					width: 36,
+				},
+			],
+			filteredRoles,
+		);
 
 	return (
 		<div className="erp-page">
@@ -192,6 +245,23 @@ export default function Roles() {
 			</div>
 
 			<div className="erp-card overflow-hidden">
+				<ListToolbar
+					fields={filterFields}
+					values={filters}
+					onChange={setFilters}
+					onExport={exportRoles}
+					exportDisabled={filteredRoles.length === 0}
+					search={
+						<div className="erp-search">
+							<Search size={16} />
+							<input
+								value={search}
+								onChange={event => setSearch(event.target.value)}
+								placeholder="Tìm mã hoặc tên vai trò..."
+							/>
+						</div>
+					}
+				/>
 				<div className="overflow-x-auto">
 					<table className="erp-table">
 						<thead>
@@ -211,12 +281,12 @@ export default function Roles() {
 								<tr>
 									<td colSpan={4} className="py-12 text-center text-slate-400">Bạn không có quyền quản lý vai trò</td>
 								</tr>
-							) : roles.length === 0 ? (
+							) : filteredRoles.length === 0 ? (
 								<tr>
 									<td colSpan={4} className="py-12 text-center text-slate-400">Chưa có vai trò nào</td>
 								</tr>
 							) : (
-								roles.map(role => (
+								filteredRoles.map(role => (
 									<tr key={role.id}>
 										<td>
 											<div className="flex items-center gap-2">

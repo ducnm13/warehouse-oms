@@ -96,7 +96,10 @@ async function mapOneProductionWithDocuments(db: any, row: any) {
 
 export const productionService = {
   async list(q: any) {
-    const where: any = { sourceModule: "PRODUCTION_V1", ...(q.status ? { status: q.status } : {}), ...(q.warehouseId ? { warehouseId: q.warehouseId } : {}), ...(q.month ? { order_date: { startsWith: q.month } } : {}), ...(q.search ? { OR: [{ code: { contains: q.search } }, { batch_number: { contains: q.search } }] } : {}) };
+    const dateFilter = q.from || q.to
+      ? { ...(q.from ? { gte: q.from } : {}), ...(q.to ? { lte: q.to } : {}) }
+      : q.month ? { startsWith: q.month } : null;
+    const where: any = { sourceModule: "PRODUCTION_V1", ...(q.status ? { status: q.status } : {}), ...(q.warehouseId ? { warehouseId: q.warehouseId } : {}), ...(dateFilter ? { order_date: dateFilter } : {}), ...(q.search ? { OR: [{ code: { contains: q.search } }, { batch_number: { contains: q.search } }] } : {}) };
     const [r, total] = await Promise.all([productionRepository.list(where, (q.page - 1) * q.limit, q.limit), productionRepository.count(where)]);
     return { data: await mapProductionWithDocuments(prisma, r), meta: { page: q.page, limit: q.limit, total, totalPages: Math.ceil(total / q.limit) } };
   },

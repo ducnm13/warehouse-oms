@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
 	Plus,
 	Copy,
@@ -26,6 +26,9 @@ import SearchableSelect from "../components/SearchableSelect";
 import TableActions from "../components/TableActions";
 import { formatNumber, formatDate, formatProductName } from "../lib/utils";
 import type { Product } from "../types";
+import ListToolbar from "../components/ListToolbar";
+import type { FilterField, FilterValues } from "../components/FilterDrawer";
+import { exportExcelFile } from "../lib/excelExport";
 
 interface OnlineProduct {
 	id: number;
@@ -72,6 +75,25 @@ const STATUS_META: Record<string, { label: string; css: string }> = {
 	Cancelled: { label: "Đã hủy", css: "bg-red-100 text-red-700" },
 };
 
+const ORDER_FILTER_FIELDS: FilterField[] = [
+	{
+		type: "select",
+		key: "status",
+		label: "Trạng thái",
+		options: Object.entries(STATUS_META).map(([value, meta]) => ({
+			value,
+			label: meta.label,
+		})),
+	},
+	{
+		type: "dateRange",
+		key: "orderDate",
+		label: "Ngày đặt",
+		fromKey: "dateFrom",
+		toKey: "dateTo",
+	},
+];
+
 const newOrderCode = () => `DH${Math.floor(100000 + Math.random() * 900000)}`;
 
 const OnlineOrders = () => {
@@ -117,7 +139,8 @@ const OnlineOrders = () => {
 
 	// Bộ lọc đơn
 	const [searchTerm, setSearchTerm] = useState("");
-	const [statusFilter, setStatusFilter] = useState("ALL");
+	const [filters, setFilters] = useState<FilterValues>({});
+	const statusFilter = filters.status || "ALL";
 	const [page, setPage] = useState(1);
 	const [totalPages, setTotalPages] = useState(1);
 
@@ -681,6 +704,60 @@ const OnlineOrders = () => {
 	const maxRevenue = revenueSeries.length
 		? Math.max(...revenueSeries.map(d => d.revenue), 1)
 		: 1;
+	const visibleOrders = useMemo(() => {
+		const from = filters.dateFrom || "";
+		const to = filters.dateTo || "";
+		return orders.filter(order => {
+			const date = (order.orderDate || "").slice(0, 10);
+			if (from && date < from) return false;
+			if (to && date > to) return false;
+			return true;
+		});
+	}, [orders, filters]);
+	const exportOrders = () =>
+		exportExcelFile(
+			"don-hang-online.xlsx",
+			"Don hang online",
+			[
+				{ header: "Mã đơn", value: (order: OnlineOrder) => order.orderCode },
+				{
+					header: "Ngày đặt",
+					value: (order: OnlineOrder) => String(order.orderDate).slice(0, 10),
+				},
+				{
+					header: "Người nhận",
+					value: (order: OnlineOrder) => order.recipientName,
+				},
+				{ header: "SĐT", value: (order: OnlineOrder) => order.phone || "" },
+				{
+					header: "Địa chỉ",
+					value: (order: OnlineOrder) => order.address || "",
+					width: 36,
+				},
+				{
+					header: "Sản phẩm",
+					value: (order: OnlineOrder) =>
+						(order.items || [])
+							.map(item => `${item.productName} x${item.quantity}`)
+							.join("; "),
+					width: 40,
+				},
+				{
+					header: "Tổng tiền",
+					value: (order: OnlineOrder) => Number(order.totalAmount || 0),
+				},
+				{
+					header: "Trạng thái",
+					value: (order: OnlineOrder) =>
+						STATUS_META[order.status]?.label || order.status,
+				},
+				{
+					header: "Vận đơn",
+					value: (order: OnlineOrder) => order.trackingNumber || "",
+				},
+			],
+			visibleOrders,
+		);
 
 	return (
 		<div className="erp-page">
@@ -999,41 +1076,39 @@ const OnlineOrders = () => {
 
 			{tab === "orders" && (
 				<div className="erp-card overflow-hidden">
-					<div className="erp-toolbar">
-						<div className="erp-search">
-							<Search size={16} />
-							<input
-								type="text"
-								placeholder="Tìm mã đơn, tên, SĐT, địa chỉ, mã vận đơn..."
-								value={searchTerm}
-								onChange={e => setSearchTerm(e.target.value)}
-							/>
-						</div>
-						<select
-							value={statusFilter}
-							onChange={e => {
-								setStatusFilter(e.target.value);
-								setPage(1);
-							}}
-							className="w-52 rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
-						>
-							<option value="ALL">Tất cả trạng thái</option>
-							{Object.entries(STATUS_META).map(([key, v]) => (
-								<option key={key} value={key}>
-									{v.label}
-								</option>
-							))}
-						</select>
-						<button
-							type="button"
-							onClick={handleSpxSync}
-							disabled={syncing}
-							className="erp-btn"
-							title="Hỏi SPX trạng thái mới nhất của các đơn đang giao"
-						>
-							<RefreshCw size={14} /> {syncing ? "Đang đồng bộ..." : "Đồng bộ SPX"}
-						</button>
-					</div>
+					<ListToolbar
+						className="flex-wrap"
+						fields={ORDER_FILTER_FIELDS}
+						values={filters}
+						onChange={next => {
+							setFilters(next);
+							setPage(1);
+						}}
+						onExport={exportOrders}
+						exportDisabled={visibleOrders.length === 0}
+						search={
+							<div className="erp-search">
+								<Search size={16} />
+								<input
+									type="text"
+									placeholder="Tìm mã đơn, tên, SĐT, địa chỉ, mã vận đơn..."
+									value={searchTerm}
+									onChange={e => setSearchTerm(e.target.value)}
+								/>
+							</div>
+						}
+						extra={
+							<button
+								type="button"
+								onClick={handleSpxSync}
+								disabled={syncing}
+								className="erp-btn"
+								title="Hỏi SPX trạng thái mới nhất của các đơn đang giao"
+							>
+								<RefreshCw size={14} /> {syncing ? "Đang đồng bộ..." : "Đồng bộ SPX"}
+							</button>
+						}
+					/>
 					<div className="overflow-x-auto">
 						<table className="erp-table">
 							<thead>
@@ -1056,7 +1131,7 @@ const OnlineOrders = () => {
 											Đang tải...
 										</td>
 									</tr>
-								) : orders.length === 0 ? (
+								) : visibleOrders.length === 0 ? (
 									<tr>
 										<td
 											colSpan={6}
@@ -1066,7 +1141,7 @@ const OnlineOrders = () => {
 										</td>
 									</tr>
 								) : (
-									orders.map(order => (
+									visibleOrders.map(order => (
 										<tr key={order.id}>
 											<td>
 												<b>{order.orderCode}</b>

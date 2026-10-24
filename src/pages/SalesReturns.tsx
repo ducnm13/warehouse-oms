@@ -26,6 +26,9 @@ import type { SalesOrder, SalesReturnV1, Warehouse } from "../types";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
 import TableActions from "../components/TableActions";
+import ListToolbar from "../components/ListToolbar";
+import type { FilterField, FilterValues } from "../components/FilterDrawer";
+import { exportExcelFile } from "../lib/excelExport";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const badge = {
@@ -38,6 +41,26 @@ const statusLabel: Record<string, string> = {
 	POSTED: "Đã lưu",
 	CANCELLED: "Đã hủy",
 };
+const SALES_RETURN_FILTER_FIELDS: FilterField[] = [
+	{
+		type: "select",
+		key: "status",
+		label: "Trạng thái",
+		options: [
+			{ value: "POSTED", label: "Đã lưu" },
+			{ value: "DRAFT", label: "Nháp" },
+			{ value: "CANCELLED", label: "Đã hủy" },
+		],
+	},
+	{
+		type: "dateRange",
+		key: "returnDate",
+		label: "Thời gian",
+		fromKey: "dateFrom",
+		toKey: "dateTo",
+	},
+];
+
 type ReturnLineInput = {
 	originalSalesOrderLineId: number;
 	quantity: number;
@@ -47,8 +70,9 @@ type ReturnLineInput = {
 export default function SalesReturns() {
 	const queryClient = useQueryClient();
 	const [page, setPage] = useState(1),
-		[search, setSearch] = useState(""),
-		[status, setStatus] = useState("");
+		[search, setSearch] = useState("");
+	const [filters, setFilters] = useState<FilterValues>({});
+	const status = filters.status || "";
 	const [open, setOpen] = useState(false),
 		[editing, setEditing] = useState<SalesReturnV1 | null>(null),
 		[selected, setSelected] = useState<SalesReturnV1 | null>(null);
@@ -281,6 +305,58 @@ export default function SalesReturns() {
 		);
 	const rows = documents.data?.data || [],
 		meta = documents.data?.meta as any;
+	const visibleRows = useMemo(() => {
+		const from = filters.dateFrom || "";
+		const to = filters.dateTo || "";
+		return rows.filter(document => {
+			const date = (document.returnDate || "").slice(0, 10);
+			if (from && date < from) return false;
+			if (to && date > to) return false;
+			return true;
+		});
+	}, [rows, filters]);
+
+	const exportSalesReturnList = () =>
+		exportExcelFile(
+			"danh-sach-tra-hang-ban.xlsx",
+			"Tra hang ban",
+			[
+				{ header: "Mã phiếu", value: (row: SalesReturnV1) => row.code },
+				{ header: "Ngày trả", value: (row: SalesReturnV1) => row.returnDate },
+				{
+					header: "Đơn gốc",
+					value: (row: SalesReturnV1) => row.originalSalesOrderCode || "",
+				},
+				{
+					header: "Khách hàng",
+					value: (row: SalesReturnV1) => row.customerName || "",
+					width: 28,
+				},
+				{
+					header: "Kho nhận",
+					value: (row: SalesReturnV1) => row.warehouseName || "",
+				},
+				{
+					header: "Lý do",
+					value: (row: SalesReturnV1) => row.reason || "",
+					width: 30,
+				},
+				{
+					header: "Giảm công nợ",
+					value: (row: SalesReturnV1) => Number(row.totalAmount || 0),
+				},
+				{
+					header: "Giá vốn nhập",
+					value: (row: SalesReturnV1) => Number(row.costAmount || 0),
+				},
+				{
+					header: "Trạng thái",
+					value: (row: SalesReturnV1) =>
+						statusLabel[row.status] || row.status,
+				},
+			],
+			visibleRows,
+		);
 
 	return (
 		<div className="erp-page">
@@ -298,35 +374,36 @@ export default function SalesReturns() {
 				</button>
 			</div>
 			<div className="erp-card overflow-hidden">
-				<div className="erp-toolbar">
-					<div className="erp-search">
-						<Search size={16} />
-						<input
-							value={search}
-							onChange={event => {
-								setSearch(event.target.value);
-								setPage(1);
-							}}
-							placeholder="Tìm phiếu trả, đơn gốc, khách hàng..."
-						/>
-					</div>
-					<select
-						value={status}
-						onChange={event => setStatus(event.target.value)}
-					>
-						<option value="">Mọi trạng thái</option>
-						<option value="DRAFT">Nháp</option>
-						<option value="POSTED">Đã lưu</option>
-						<option value="CANCELLED">Đã hủy</option>
-					</select>
-				</div>
+				<ListToolbar
+					fields={SALES_RETURN_FILTER_FIELDS}
+					values={filters}
+					onChange={next => {
+						setFilters(next);
+						setPage(1);
+					}}
+					onExport={exportSalesReturnList}
+					exportDisabled={visibleRows.length === 0}
+					search={
+						<div className="erp-search">
+							<Search size={16} />
+							<input
+								value={search}
+								onChange={event => {
+									setSearch(event.target.value);
+									setPage(1);
+								}}
+								placeholder="Tìm phiếu trả, đơn gốc, khách hàng..."
+							/>
+						</div>
+					}
+				/>
 				{documents.isLoading ? (
 					<div className="p-12 text-center">Đang tải...</div>
 				) : documents.isError ? (
 					<div className="p-12 text-center text-red-600">
 						{(documents.error as Error).message}
 					</div>
-				) : !rows.length ? (
+				 ) : !visibleRows.length ? (
 					<div className="erp-empty">
 						<PackagePlus size={48} />
 						<p>Chưa có phiếu trả hàng.</p>
@@ -347,7 +424,7 @@ export default function SalesReturns() {
 								</tr>
 							</thead>
 							<tbody>
-								{rows.map(document => (
+								{visibleRows.map(document => (
 									<tr key={document.id}>
 										<td>
 											<button

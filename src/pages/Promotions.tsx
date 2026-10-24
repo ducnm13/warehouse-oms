@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	CheckCircle2,
@@ -19,6 +19,9 @@ import { formatDate, formatNumber } from "../lib/utils";
 import type { Product, PromotionProgramV1, Warehouse } from "../types";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
+import ListToolbar from "../components/ListToolbar";
+import type { FilterField, FilterValues } from "../components/FilterDrawer";
+import { exportExcelFile } from "../lib/excelExport";
 type Form = {
 	code: string;
 	name: string;
@@ -63,9 +66,10 @@ const statusLabel: Record<string, string> = {
 export default function Promotions() {
 	const qc = useQueryClient(),
 		[page, setPage] = useState(1),
-		[search, setSearch] = useState(""),
-		[status, setStatus] = useState(""),
-		[open, setOpen] = useState(false),
+		[search, setSearch] = useState("");
+	const [filters, setFilters] = useState<FilterValues>({});
+	const status = filters.status || "";
+	const [open, setOpen] = useState(false),
 		[editing, setEditing] = useState<PromotionProgramV1 | null>(null),
 		[form, setForm] = useState<Form>(empty());
 
@@ -218,6 +222,88 @@ export default function Promotions() {
 		};
 	const rows = documents.data?.data || [],
 		meta = documents.data?.meta as any;
+	const filterFields: FilterField[] = [
+		{
+			type: "select",
+			key: "status",
+			label: "Trạng thái",
+			options: [
+				{ value: "DRAFT", label: "Nháp" },
+				{ value: "ACTIVE", label: "Đang áp dụng" },
+				{ value: "INACTIVE", label: "Ngừng áp dụng" },
+			],
+		},
+		{
+			type: "select",
+			key: "scope",
+			label: "Phạm vi",
+			options: [
+				{ value: "ALL", label: "Tất cả khách hàng" },
+				{ value: "GROUP", label: "Theo nhóm khách hàng" },
+			],
+		},
+		{
+			type: "dateRange",
+			key: "startDate",
+			label: "Ngày bắt đầu",
+			fromKey: "dateFrom",
+			toKey: "dateTo",
+		},
+	];
+	const visibleRows = useMemo(
+		() =>
+			rows.filter(row => {
+				const date = (row.startDate || "").slice(0, 10);
+				if (filters.dateFrom && date < filters.dateFrom) return false;
+				if (filters.dateTo && date > filters.dateTo) return false;
+				if (filters.scope && row.customerScope !== filters.scope) return false;
+				return true;
+			}),
+		[rows, filters],
+	);
+	const exportPromotions = () =>
+		exportExcelFile(
+			"khuyen-mai.xlsx",
+			"Khuyen mai",
+			[
+				{ header: "Mã", value: (row: PromotionProgramV1) => row.code },
+				{
+					header: "Tên chương trình",
+					value: (row: PromotionProgramV1) => row.name,
+					width: 32,
+				},
+				{
+					header: "Từ ngày",
+					value: (row: PromotionProgramV1) => row.startDate,
+				},
+				{ header: "Đến ngày", value: (row: PromotionProgramV1) => row.endDate },
+				{
+					header: "Phạm vi",
+					value: (row: PromotionProgramV1) =>
+						row.customerScope === "ALL"
+							? "Tất cả khách hàng"
+							: row.customerGroup || "Theo nhóm",
+				},
+				{
+					header: "Điều kiện",
+					value: (row: PromotionProgramV1) =>
+						`${row.condition?.productName || ""} ${row.condition?.packagingName || ""} x${row.condition?.minimumQuantity || 0}`,
+					width: 32,
+				},
+				{
+					header: "Hàng tặng",
+					value: (row: PromotionProgramV1) =>
+						`${row.reward?.productName || ""} ${row.reward?.packagingName || ""} x${row.reward?.rewardQuantity || 0}`,
+					width: 32,
+				},
+				{
+					header: "Trạng thái",
+					value: (row: PromotionProgramV1) =>
+						statusLabel[row.status] || row.status,
+				},
+			],
+			visibleRows,
+		);
 	return (
 		<div className="erp-page">
 			<div className="erp-page-header">
@@ -229,7 +315,7 @@ export default function Promotions() {
 					</p>
 				</div>
 				<button className="erp-btn erp-btn-primary" onClick={create}>
-					<Plus size={16} /> Thêm chương trình
+					<Plus size={16} /> Thêm
 				</button>
 			</div>
 			<div className="grid gap-4 md:grid-cols-3">
@@ -256,38 +342,36 @@ export default function Promotions() {
 				</div>
 			</div>
 			<div className="erp-card overflow-hidden">
-				<div className="erp-toolbar">
-					<div className="erp-search">
-						<Search size={16} />
-						<input
-							value={search}
-							onChange={e => {
-								setSearch(e.target.value);
-								setPage(1);
-							}}
-							placeholder="Tìm mã, tên chương trình..."
-						/>
-					</div>
-					<select
-						value={status}
-						onChange={e => {
-							setStatus(e.target.value);
-							setPage(1);
-						}}
-					>
-						<option value="">Mọi trạng thái</option>
-						<option value="DRAFT">Nháp</option>
-						<option value="ACTIVE">Đang áp dụng</option>
-						<option value="INACTIVE">Ngừng áp dụng</option>
-					</select>
-				</div>
+				<ListToolbar
+					fields={filterFields}
+					values={filters}
+					onChange={next => {
+						setFilters(next);
+						setPage(1);
+					}}
+					onExport={exportPromotions}
+					exportDisabled={visibleRows.length === 0}
+					search={
+						<div className="erp-search">
+							<Search size={16} />
+							<input
+								value={search}
+								onChange={e => {
+									setSearch(e.target.value);
+									setPage(1);
+								}}
+								placeholder="Tìm mã, tên chương trình..."
+							/>
+						</div>
+					}
+				/>
 				{documents.isLoading ? (
 					<div className="p-12 text-center">Đang tải...</div>
 				) : documents.isError ? (
 					<div className="p-12 text-center text-red-600">
 						{(documents.error as Error).message}
 					</div>
-				) : !rows.length ? (
+				) : !visibleRows.length ? (
 					<div className="erp-empty">
 						<PackagePlus size={48} />
 						<p>Chưa có chương trình khuyến mãi nào</p>
@@ -307,7 +391,7 @@ export default function Promotions() {
 								</tr>
 							</thead>
 							<tbody>
-								{rows.map(x => (
+								{visibleRows.map(x => (
 									<tr key={x.id}>
 										<td>
 											<b>{x.code}</b>
@@ -344,7 +428,12 @@ export default function Promotions() {
 											<div className="flex gap-1">
 												<button
 													className="erp-icon-btn"
-													disabled={x.status !== "DRAFT"}
+													disabled={!["DRAFT", "INACTIVE"].includes(x.status)}
+													title={
+														x.status === "ACTIVE"
+															? "Ngừng áp dụng trước khi sửa"
+															: "Sửa chương trình"
+													}
 													onClick={() => edit(x)}
 												>
 													<Edit size={15} />

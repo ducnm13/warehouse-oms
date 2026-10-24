@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useReactToPrint } from "react-to-print";
 import {
@@ -22,12 +22,7 @@ import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
 import NumberInput from "../components/NumberInput";
 import { ProductionOrderDocument } from "../components/ProductionOrderDocument";
-import {
-	formatDate,
-	formatNumber,
-	formatInteger,
-	formatProductName,
-} from "../lib/utils";
+import { formatDate, formatInteger, formatNumber } from "../lib/utils";
 import { buildCompanyPrintProfile } from "../lib/printTemplate";
 import {
 	finishedGoodsWarehouseId,
@@ -37,6 +32,9 @@ import type { Product, ProductionOrderV1, User, Warehouse } from "../types";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
 import TableActions from "../components/TableActions";
+import ListToolbar from "../components/ListToolbar";
+import type { FilterField, FilterValues } from "../components/FilterDrawer";
+import { exportExcelFile } from "../lib/excelExport";
 
 interface OrderLine {
 	packagingId: number;
@@ -100,6 +98,25 @@ type DocumentStatusKey = keyof typeof documentStatusMeta;
 const documentStatusOf = (order: ProductionOrderV1): DocumentStatusKey =>
 	order.status === "CANCELLED" ? "CANCELLED" : order.documentStatus || "DRAFT";
 
+const PRODUCTION_FILTER_FIELDS: FilterField[] = [
+	{
+		type: "select",
+		key: "status",
+		label: "Trạng thái",
+		options: Object.entries(documentStatusMeta).map(([value, meta]) => ({
+			value,
+			label: meta[0],
+		})),
+	},
+	{
+		type: "dateRange",
+		key: "orderDate",
+		label: "Ngày lệnh",
+		fromKey: "dateFrom",
+		toKey: "dateTo",
+	},
+];
+
 export default function Production({
 	user,
 	onNavigate,
@@ -113,9 +130,9 @@ export default function Production({
 		user.role === "P_MANAGER" ||
 		user.role === "W_MANAGER" ||
 		(user.permissions || []).includes("production.manage");
-	const [month, setMonth] = useState(today().slice(0, 7));
-	const [status, setStatus] = useState("");
 	const [search, setSearch] = useState("");
+	const [filters, setFilters] = useState<FilterValues>({});
+	const status = filters.status || "";
 	const [open, setOpen] = useState(false);
 	const [editing, setEditing] = useState<ProductionOrderV1 | null>(null);
 	const [selected, setSelected] = useState<ProductionOrderV1 | null>(null);
@@ -184,11 +201,16 @@ export default function Production({
 		},
 	});
 	const docs = useQuery({
-		queryKey: ["production-v1", month, search],
-		queryFn: () =>
-			apiV1<ProductionOrderV1[]>(
-				`/api/v1/production-orders?page=1&limit=100&month=${month}&search=${encodeURIComponent(search)}`,
-			),
+		queryKey: ["production-v1", filters.dateFrom, filters.dateTo, search],
+		queryFn: () => {
+			const params = new URLSearchParams({ page: "1", limit: "100" });
+			if (search) params.set("search", search);
+			if (filters.dateFrom) params.set("from", filters.dateFrom);
+			if (filters.dateTo) params.set("to", filters.dateTo);
+			return apiV1<ProductionOrderV1[]>(
+				`/api/v1/production-orders?${params.toString()}`,
+			);
+		},
 	});
 	const rows = useMemo(
 		() =>
@@ -197,6 +219,39 @@ export default function Production({
 			),
 		[docs.data, status],
 	);
+	const exportProductionList = () =>
+		exportExcelFile(
+			"lenh-san-xuat.xlsx",
+			"Lenh san xuat",
+			[
+				{ header: "Mã lệnh", value: (row: ProductionOrderV1) => row.code },
+				{ header: "Ngày", value: (row: ProductionOrderV1) => row.orderDate },
+				{
+					header: "Diễn giải",
+					value: (row: ProductionOrderV1) => row.note || "",
+					width: 36,
+				},
+				{
+					header: "Thành phẩm",
+					value: (row: ProductionOrderV1) =>
+						baseOutputs(row)
+							.map(output => output.packagingName || output.sku || "")
+							.join("; "),
+					width: 32,
+				},
+				{
+					header: "Số lô",
+					value: (row: ProductionOrderV1) => row.batchNumber || "",
+				},
+				{
+					header: "Trạng thái",
+					value: (row: ProductionOrderV1) =>
+						documentStatusMeta[documentStatusOf(row)]?.[0] ||
+						documentStatusOf(row),
+				},
+			],
+			rows,
+		);
 	const nextCode = useQuery({
 		queryKey: ["next-code-production"],
 		queryFn: async () => {
@@ -707,35 +762,29 @@ export default function Production({
 				</div>
 			</div>
 			<div className="erp-card overflow-hidden">
-				<div className="erp-toolbar">
-					<div className="erp-search">
-						<Search size={17} />
-						<input
-							value={search}
-							onChange={e => setSearch(e.target.value)}
-							placeholder="Tìm mã LSX, diễn giải..."
-						/>
-					</div>
-					<input
-						type="month"
-						value={month}
-						onChange={e => setMonth(e.target.value)}
-					/>
-					<select value={status} onChange={e => setStatus(e.target.value)}>
-						<option value="">Mọi trạng thái</option>
-						{Object.entries(documentStatusMeta).map(([k, v]) => (
-							<option key={k} value={k}>
-								{v[0]}
-							</option>
-						))}
-					</select>
-				</div>
+				<ListToolbar
+					fields={PRODUCTION_FILTER_FIELDS}
+					values={filters}
+					onChange={setFilters}
+					onExport={exportProductionList}
+					exportDisabled={rows.length === 0}
+					search={
+						<div className="erp-search">
+							<Search size={17} />
+							<input
+								value={search}
+								onChange={e => setSearch(e.target.value)}
+								placeholder="Tìm mã LSX, diễn giải..."
+							/>
+						</div>
+					}
+				/>
 				<div className="overflow-x-auto">
 					<table className="erp-table">
 						<thead>
 							<tr>
-								<th>Mã lệnh</th>
 								<th>Ngày</th>
+								<th>Mã lệnh</th>
 								<th>Diễn giải</th>
 								<th>Thành phẩm</th>
 								<th className="text-center">Đã lập đủ PN</th>
@@ -747,6 +796,7 @@ export default function Production({
 						<tbody>
 							{rows.map(d => (
 								<tr key={d.id}>
+									<td>{formatDate(d.orderDate)}</td>
 									<td>
 										<button
 											className="font-bold text-[#422afb] hover:underline"
@@ -756,7 +806,6 @@ export default function Production({
 										</button>
 										{/* <small>v{d.version}</small> */}
 									</td>
-									<td>{formatDate(d.orderDate)}</td>
 									<td className="max-w-[260px] whitespace-normal text-slate-600">
 										{d.note || "—"}
 									</td>
