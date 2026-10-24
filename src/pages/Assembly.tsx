@@ -28,6 +28,7 @@ import {
 	type CompanyPrintProfile,
 } from "../lib/printTemplate";
 import { DateInput } from "../components/DateRangeCalendar";
+import { finishedGoodsWarehouseId } from "../lib/warehouse-defaults";
 import type {
 	AssemblyOrderV1,
 	DisassemblyOrderV1,
@@ -58,11 +59,13 @@ const today = () => new Date().toISOString().slice(0, 10);
 const badge: Record<string, string> = {
 	DRAFT: "bg-slate-100 text-slate-700",
 	POSTED: "bg-emerald-100 text-emerald-700",
+	COMPLETED: "bg-emerald-100 text-emerald-700",
 	CANCELLED: "bg-red-100 text-red-700",
 };
 const statusLabel: Record<string, string> = {
 	DRAFT: "Nháp",
-	POSTED: "Đã lưu",
+	POSTED: "Hoàn thành",
+	COMPLETED: "Hoàn thành",
 	CANCELLED: "Đã hủy",
 };
 
@@ -73,7 +76,7 @@ const ASSEMBLY_FILTER_FIELDS: FilterField[] = [
 		label: "Trạng thái",
 		options: [
 			{ value: "DRAFT", label: "Nháp" },
-			{ value: "POSTED", label: "Đã lưu" },
+			{ value: "COMPLETED", label: "Hoàn thành" },
 			{ value: "CANCELLED", label: "Đã hủy" },
 		],
 	},
@@ -344,24 +347,6 @@ export default function Assembly({ user }: { user: User }) {
 		},
 	});
 
-	const postOrder = useMutation({
-		mutationFn: (row: AssemblyOrderV1 | DisassemblyOrderV1) => {
-			const base =
-				tab === "ASSEMBLY"
-					? "/api/v1/assembly/orders"
-					: "/api/v1/assembly/disassembly-orders";
-			return apiV1(`${base}/${row.id}/post`, {
-				method: "POST",
-				body: JSON.stringify({ version: row.version }),
-			});
-		},
-		onSuccess: (r: any) => {
-			toast.success(r.message);
-			void invalidate();
-		},
-		onError: (e: Error) => toast.error(e.message),
-	});
-
 	const create = () => {
 		setEditing(null);
 		setCode(nextCode.data || (tab === "ASSEMBLY" ? "LR00001" : "TD00001"));
@@ -413,6 +398,7 @@ export default function Assembly({ user }: { user: User }) {
 			order,
 			type,
 			warehouseId:
+				finishedGoodsWarehouseId(refs.data?.warehouses) ||
 				order.componentWarehouseId ||
 				order.sourceWarehouseId ||
 				order.outputWarehouseId ||
@@ -588,7 +574,11 @@ export default function Assembly({ user }: { user: User }) {
 	const allRows: any[] = orders.data?.data || [];
 	const keyword = search.trim().toLowerCase();
 	const visibleRows = allRows.filter(row => {
-		if (filters.status && row.status !== filters.status) return false;
+		if (filters.status) {
+			const completed = row.status === "COMPLETED" || row.status === "POSTED";
+			if (filters.status === "COMPLETED" ? !completed : row.status !== filters.status)
+				return false;
+		}
 		const date = String(row.orderDate || "").slice(0, 10);
 		if (filters.dateFrom && date < filters.dateFrom) return false;
 		if (filters.dateTo && date > filters.dateTo) return false;
@@ -608,6 +598,20 @@ export default function Assembly({ user }: { user: User }) {
 			.toLowerCase();
 		return haystack.includes(keyword);
 	});
+	const selectedIsAssembly =
+		!!selected?.componentWarehouseId || !!selected?.outputWarehouseId;
+	const selectedSourceWarehouse =
+		selected?.componentWarehouseName ||
+		selected?.sourceWarehouseName ||
+		selected?.componentWarehouse?.name ||
+		selected?.sourceWarehouse?.name ||
+		"-";
+	const selectedTargetWarehouse =
+		selected?.outputWarehouseName ||
+		selected?.recoveryWarehouseName ||
+		selected?.outputWarehouse?.name ||
+		selected?.recoveryWarehouse?.name ||
+		"-";
 	const exportAssemblyList = () =>
 		exportExcelFile(
 			tab === "ASSEMBLY" ? "lenh-lap-rap.xlsx" : "lenh-thao-do.xlsx",
@@ -1067,9 +1071,7 @@ export default function Assembly({ user }: { user: User }) {
 						<DocumentActions
 							status={selected?.status || "DRAFT"}
 							printing={false}
-							posting={postOrder.isPending}
 							unposting={unpostOrder.isPending}
-							onPost={() => selected && postOrder.mutate(selected)}
 							onUnpost={() => selected && unpostOrder.mutate(selected)}
 							onPrint={() => selected && setPrintTarget(selected)}
 							onEdit={() => selected && openEditor(selected)}
@@ -1150,55 +1152,79 @@ export default function Assembly({ user }: { user: User }) {
 			>
 				{selected && (
 					<div className="space-y-4">
-						<div className="grid gap-3 md:grid-cols-3">
-							<div className="rounded bg-slate-50 p-3">
-								<small>Tham chiếu</small>
-								<div className="mt-1 flex flex-wrap gap-1">
-									{(selected.links || []).length ? (
-										selected.links.map((link: any) => (
-											<button
-												key={link.id}
-												type="button"
-												title={`Mở phiếu kho ${link.linkedCode}`}
-												className="erp-badge bg-blue-100 text-blue-700 hover:bg-blue-200"
-												onClick={() => {
-													localStorage.setItem("activeTab", "transactions");
-													localStorage.setItem(
-														"inventory-deep-link-code",
-														link.linkedCode || "",
-													);
-													window.open("/", "_blank");
-												}}
-											>
-												{link.linkType === "INVENTORY_ISSUE"
-													? "Phiếu xuất"
-													: link.linkType === "INVENTORY_RECEIPT"
-														? "Phiếu nhập"
-														: link.linkType}
-												: {link.linkedCode} ↗
-											</button>
-										))
-									) : (
-										<span className="text-xs text-slate-400">
-											Chưa có phiếu liên kết
-										</span>
-									)}
+						<div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+							<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+								<div>
+									<small>Mã lệnh</small>
+									<b className="block font-mono">{selected.code}</b>
 								</div>
-							</div>
-							<div className="rounded bg-slate-50 p-3">
-								<small>Ngày</small>
-								<b className="block">{formatDate(selected.orderDate)}</b>
-							</div>
-							<div className="rounded bg-emerald-50 p-3">
-								<small>Tổng tiền</small>
-								<b className="block text-emerald-700">
-									{formatNumber(
-										(selected as any).outputTotalValue ||
-											(selected as any).sourceTotalValue ||
-											0,
-									)}{" "}
-									₫
-								</b>
+								<div>
+									<small>Ngày lệnh</small>
+									<b className="block">{formatDate(selected.orderDate)}</b>
+								</div>
+								<div>
+									<small>
+										{selectedIsAssembly ? "Kho linh kiện" : "Kho nguồn"}
+									</small>
+									<b className="block">{selectedSourceWarehouse}</b>
+								</div>
+								<div>
+									<small>
+										{selectedIsAssembly ? "Kho thành phẩm" : "Kho thu hồi"}
+									</small>
+									<b className="block">{selectedTargetWarehouse}</b>
+								</div>
+								<div className="md:col-span-2">
+									<small>Diễn giải</small>
+									<div className="mt-1 text-sm text-slate-700">
+										{selected.note || "-"}
+									</div>
+								</div>
+								<div>
+									<small>Tổng tiền</small>
+									<b className="block text-emerald-700">
+										{formatNumber(
+											(selected as any).outputTotalValue ||
+												(selected as any).sourceTotalValue ||
+												0,
+										)}{" "}
+										₫
+									</b>
+								</div>
+								<div>
+									<small>Tham chiếu</small>
+									<div className="mt-1 flex flex-wrap gap-1">
+										{(selected.links || []).length ? (
+											selected.links.map((link: any) => (
+												<button
+													key={link.id}
+													type="button"
+													title={`Mở phiếu kho ${link.linkedCode}`}
+													className="erp-badge bg-blue-100 text-blue-700 hover:bg-blue-200"
+													onClick={() => {
+														localStorage.setItem("activeTab", "transactions");
+														localStorage.setItem(
+															"inventory-deep-link-code",
+															link.linkedCode || "",
+														);
+														window.open("/", "_blank");
+													}}
+												>
+													{link.linkType === "INVENTORY_ISSUE"
+														? "Phiếu xuất"
+														: link.linkType === "INVENTORY_RECEIPT"
+															? "Phiếu nhập"
+															: link.linkType}
+													: {link.linkedCode} ↗
+												</button>
+											))
+										) : (
+											<span className="text-xs text-slate-400">
+												Chưa có phiếu liên kết
+											</span>
+										)}
+									</div>
+								</div>
 							</div>
 						</div>
 						<table className="erp-table">
@@ -1206,7 +1232,6 @@ export default function Assembly({ user }: { user: User }) {
 								<tr>
 									<th>Thành phẩm</th>
 									<th className="text-right">Kế hoạch</th>
-									<th className="text-right">Thực tế</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -1218,7 +1243,6 @@ export default function Assembly({ user }: { user: User }) {
 													(selected as any).output?.packagingName ||
 													(selected as any).source?.packagingName,
 												plannedQuantity: (selected as any).plannedQuantity,
-												actualQuantity: (selected as any).actualQuantity,
 											},
 										]
 								).map((row: any, index: number) => (
@@ -1226,9 +1250,6 @@ export default function Assembly({ user }: { user: User }) {
 										<td>{row.packagingName || row.sku}</td>
 										<td className="text-right">
 											{formatNumber(row.plannedQuantity || 0)}
-										</td>
-										<td className="text-right">
-											{formatNumber(row.actualQuantity || 0)}
 										</td>
 									</tr>
 								))}

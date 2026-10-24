@@ -424,7 +424,7 @@ export interface AssemblyOrderV1 {
 	assemblyCost: number;
 	outputUnitCost: number;
 	outputTotalValue: number;
-	status: "DRAFT" | "POSTED" | "CANCELLED";
+	status: "DRAFT" | "POSTED" | "COMPLETED" | "CANCELLED";
 	note?: string;
 	version: number;
 	postedAt?: string;
@@ -461,7 +461,7 @@ export interface DisassemblyOrderV1 {
 	sourceUnitCost: number;
 	sourceTotalValue: number;
 	lossValue: number;
-	status: "DRAFT" | "POSTED" | "CANCELLED";
+	status: "DRAFT" | "POSTED" | "COMPLETED" | "CANCELLED";
 	note?: string;
 	version: number;
 	postedAt?: string;

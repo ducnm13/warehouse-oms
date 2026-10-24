@@ -244,6 +244,20 @@ export const assemblyService = {
          ON DUPLICATE KEY UPDATE linkedId = VALUES(linkedId), linkedCode = VALUES(linkedCode)`,
         id, type, BigInt(input.linkedId), input.linkedCode || "",
       );
+      const linkTypes = await tx.$queryRawUnsafe(
+        `SELECT DISTINCT linkType FROM ${linkTable} WHERE orderId = ?`,
+        id,
+      ) as Array<{ linkType: string }>;
+      const allLinked = ["INVENTORY_ISSUE", "INVENTORY_RECEIPT"].every(linkType =>
+        linkTypes.some(row => row.linkType === linkType),
+      );
+      if (allLinked) {
+        const completedAt = new Date();
+        const data = { status: "COMPLETED", postedAt: completedAt, postedBy: userId, version: { increment: 1 }, updatedAt: completedAt };
+        if (kind === "ASSEMBLY") await tx.assembly_orders.update({ where: { id }, data });
+        else await tx.disassembly_orders.update({ where: { id }, data });
+        await audit(tx, "Hoàn thành lệnh lắp ráp/tháo dỡ", `${id} đã lập đủ phiếu xuất/nhập`, userId);
+      }
       await audit(tx, "Liên kết phiếu kho lệnh lắp ráp/tháo dỡ", `${id} -> ${input.linkedCode || input.linkedId}`, userId);
       return kind === "ASSEMBLY" ? this.getAssembly(id) : this.getDisassembly(id);
     });
