@@ -9,14 +9,36 @@ const normalize = (value: string) =>
 		.toLowerCase()
 		.trim();
 
+const isPackagingWarehouse = (warehouse: Warehouse) =>
+	normalize(warehouse.name).includes("bao bi");
+const byName = (list: Warehouse[], keyword: string) =>
+	list.find(
+		warehouse =>
+			!isPackagingWarehouse(warehouse) &&
+			normalize(warehouse.name).includes(keyword),
+	)?.id;
+
 /** Kho thành phẩm là mặc định cho mọi phiếu, trừ phiếu xuất của lệnh sản xuất. */
 export function finishedGoodsWarehouseId(
 	warehouses?: Warehouse[] | null,
 ): number {
 	const list = warehouses ?? [];
 	return (
-		list.find(warehouse => normalize(warehouse.name).includes("thanh pham"))
-			?.id ??
+		byName(list, "thanh pham") ??
+		list.find(warehouse => !isPackagingWarehouse(warehouse))?.id ??
+		list[0]?.id ??
+		0
+	);
+}
+
+/** Kho linh kiện/nguyên vật liệu, không bao giờ mặc định vào kho bao bì. */
+export function componentWarehouseId(warehouses?: Warehouse[] | null): number {
+	const list = warehouses ?? [];
+	return (
+		byName(list, "linh kien") ??
+		byName(list, "nguyen lieu") ??
+		byName(list, "vat tu") ??
+		list.find(warehouse => !isPackagingWarehouse(warehouse))?.id ??
 		list[0]?.id ??
 		0
 	);
@@ -25,8 +47,5 @@ export function finishedGoodsWarehouseId(
 /** Chỉ dùng cho phiếu xuất nguyên vật liệu của lệnh sản xuất. */
 export function materialWarehouseId(warehouses?: Warehouse[] | null): number {
 	const list = warehouses ?? [];
-	return (
-		list.find(warehouse => normalize(warehouse.name).includes("nguyen lieu"))
-			?.id ?? 0
-	);
+	return byName(list, "nguyen lieu") ?? 0;
 }

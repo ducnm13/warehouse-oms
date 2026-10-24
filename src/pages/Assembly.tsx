@@ -28,7 +28,10 @@ import {
 	type CompanyPrintProfile,
 } from "../lib/printTemplate";
 import { DateInput } from "../components/DateRangeCalendar";
-import { finishedGoodsWarehouseId } from "../lib/warehouse-defaults";
+import {
+	componentWarehouseId,
+	finishedGoodsWarehouseId,
+} from "../lib/warehouse-defaults";
 import type {
 	AssemblyOrderV1,
 	DisassemblyOrderV1,
@@ -247,7 +250,11 @@ export default function Assembly({ user }: { user: User }) {
 					"Nhập đủ mã thành phẩm, số lượng lớn hơn 0. Kho sẽ chọn khi lập phiếu xuất/nhập.",
 				);
 			}
-			const fallbackWarehouseId = refs.data?.warehouses[0]?.id || 1;
+			const componentWarehouse =
+				componentWarehouseId(refs.data?.warehouses) || 1;
+			const finishedWarehouse =
+				finishedGoodsWarehouseId(refs.data?.warehouses) ||
+				componentWarehouse;
 			const payload = {
 				code: code || undefined,
 				orderDate,
@@ -255,13 +262,13 @@ export default function Assembly({ user }: { user: User }) {
 				outputs: normalizedLines,
 				...(tab === "ASSEMBLY"
 					? {
-							componentWarehouseId: fallbackWarehouseId,
-							outputWarehouseId: fallbackWarehouseId,
+							componentWarehouseId: componentWarehouse,
+							outputWarehouseId: finishedWarehouse,
 							assemblyCost: 0,
 						}
 					: {
-							sourceWarehouseId: fallbackWarehouseId,
-							recoveryWarehouseId: fallbackWarehouseId,
+							sourceWarehouseId: finishedWarehouse,
+							recoveryWarehouseId: componentWarehouse,
 						}),
 			};
 			const base =
@@ -394,15 +401,26 @@ export default function Assembly({ user }: { user: User }) {
 			toast.error("Lệnh chưa có dòng hợp lệ để lập phiếu");
 			return;
 		}
+		const isAssemblyOrder =
+			!!order.componentWarehouseId || !!order.outputWarehouseId;
+		const orderWarehouseId =
+			type === "EXPORT"
+				? order.componentWarehouseId || order.sourceWarehouseId
+				: order.outputWarehouseId || order.recoveryWarehouseId;
+		const defaultWarehouseId =
+			type === "EXPORT"
+				? isAssemblyOrder
+					? componentWarehouseId(refs.data?.warehouses)
+					: finishedGoodsWarehouseId(refs.data?.warehouses)
+				: isAssemblyOrder
+					? finishedGoodsWarehouseId(refs.data?.warehouses)
+					: componentWarehouseId(refs.data?.warehouses);
 		setVoucherDraft({
 			order,
 			type,
 			warehouseId:
-				finishedGoodsWarehouseId(refs.data?.warehouses) ||
-				order.componentWarehouseId ||
-				order.sourceWarehouseId ||
-				order.outputWarehouseId ||
-				order.recoveryWarehouseId ||
+				orderWarehouseId ||
+				defaultWarehouseId ||
 				refs.data?.warehouses[0]?.id ||
 				0,
 			lines: enriched,
@@ -558,6 +576,7 @@ export default function Assembly({ user }: { user: User }) {
 				? order.sources.map((row: any) => ({
 						sku: row.sku,
 						packagingName: row.packagingName,
+						productName: row.productName,
 						unit: row.unit,
 						plannedQuantity: row.plannedQuantity,
 					}))
@@ -567,10 +586,22 @@ export default function Assembly({ user }: { user: User }) {
 							packagingName:
 								(order as any).output?.packagingName ||
 								(order as any).source?.packagingName,
+							productName:
+								(order as any).output?.productName ||
+								(order as any).source?.productName,
 							unit: (order as any).output?.unit,
 							plannedQuantity: (order as any).plannedQuantity,
 						},
 					];
+	const orderOutputLabel = (order: any) =>
+		orderOutputs(order)
+			.map((output: any) =>
+				[output.productName, output.packagingName]
+					.filter(Boolean)
+					.join(" - ") || output.sku || "",
+			)
+			.filter(Boolean)
+			.join("; ");
 	const allRows: any[] = orders.data?.data || [];
 	const keyword = search.trim().toLowerCase();
 	const visibleRows = allRows.filter(row => {
@@ -586,12 +617,40 @@ export default function Assembly({ user }: { user: User }) {
 		const haystack = [
 			row.code,
 			row.note,
+			row.orderDate,
+			formatDate(row.orderDate),
+			row.bomCode,
+			row.cancelReason,
+			statusLabel[row.status],
+			row.componentWarehouseName,
+			row.outputWarehouseName,
+			row.sourceWarehouseName,
+			row.recoveryWarehouseName,
 			row.output?.packagingName,
 			row.output?.productName,
 			row.output?.sku,
 			row.source?.packagingName,
 			row.source?.productName,
 			row.source?.sku,
+			...orderOutputs(row).flatMap((output: any) => [
+				output.sku,
+				output.productName,
+				output.packagingName,
+				output.unit,
+			]),
+			...(row.lines || []).flatMap((line: any) => [
+				line.sku,
+				line.productName,
+				line.packagingName,
+				line.unit,
+				line.note,
+				line.componentSku,
+				line.componentName,
+				line.componentProductName,
+				line.component?.sku,
+				line.component?.name,
+				line.component?.products?.name,
+			]),
 		]
 			.filter(Boolean)
 			.join(" ")
@@ -691,7 +750,7 @@ export default function Assembly({ user }: { user: User }) {
 							<input
 								value={search}
 								onChange={e => setSearch(e.target.value)}
-								placeholder="Tìm mã lệnh, diễn giải..."
+								placeholder="Tìm mã lệnh, sản phẩm, diễn giải..."
 							/>
 						</div>
 					}
@@ -730,18 +789,12 @@ export default function Assembly({ user }: { user: User }) {
 								</td>
 								<td>{formatDate(row.orderDate)}</td>
 								<td>
-									{
-										(
-											row.outputs || [
-												{
-													packagingName:
-														row.output?.packagingName ||
-														row.source?.packagingName,
-												},
-											]
-										).length
-									}{" "}
-									mã
+									<div
+										className="max-w-[360px] truncate"
+										title={orderOutputLabel(row)}
+									>
+										{orderOutputLabel(row) || "-"}
+									</div>
 								</td>
 								<td className="text-right font-semibold">
 									{formatNumber(
@@ -1202,12 +1255,16 @@ export default function Assembly({ user }: { user: User }) {
 													title={`Mở phiếu kho ${link.linkedCode}`}
 													className="erp-badge bg-blue-100 text-blue-700 hover:bg-blue-200"
 													onClick={() => {
-														localStorage.setItem("activeTab", "transactions");
-														localStorage.setItem(
-															"inventory-deep-link-code",
-															link.linkedCode || "",
+														const path =
+															link.linkType === "INVENTORY_ISSUE"
+																? "inventory-export"
+																: link.linkType === "INVENTORY_RECEIPT"
+																	? "inventory-import"
+																	: "transactions";
+														window.open(
+															`/${path}?code=${encodeURIComponent(link.linkedCode || "")}`,
+															"_blank",
 														);
-														window.open("/", "_blank");
 													}}
 												>
 													{link.linkType === "INVENTORY_ISSUE"
@@ -1230,26 +1287,19 @@ export default function Assembly({ user }: { user: User }) {
 						<table className="erp-table">
 							<thead>
 								<tr>
-									<th>Thành phẩm</th>
-									<th className="text-right">Kế hoạch</th>
+									<th>Mã thành phẩm</th>
+									<th>Tên thành phẩm</th>
+									<th className="text-right">Số lượng</th>
 								</tr>
 							</thead>
 							<tbody>
-								{((selected as any).outputs?.length
-									? (selected as any).outputs
-									: [
-											{
-												packagingName:
-													(selected as any).output?.packagingName ||
-													(selected as any).source?.packagingName,
-												plannedQuantity: (selected as any).plannedQuantity,
-											},
-										]
-								).map((row: any, index: number) => (
+								{orderOutputs(selected).map((row: any, index: number) => (
 									<tr key={index}>
-										<td>{row.packagingName || row.sku}</td>
+										<td className="font-mono">{row.sku || "-"}</td>
+										<td>{row.productName || row.packagingName || "-"}</td>
 										<td className="text-right">
-											{formatNumber(row.plannedQuantity || 0)}
+											{formatNumber(row.plannedQuantity || 0)}{" "}
+											{row.unit || ""}
 										</td>
 									</tr>
 								))}
