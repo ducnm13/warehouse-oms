@@ -384,6 +384,26 @@ export default function CatalogProducts({
 						: undefined,
 		})),
 	);
+	const comboComponentOptions = materialRows
+		.filter(
+			prod =>
+				String(prod.category || "PRODUCT").toUpperCase() === "PRODUCT" &&
+				prod.id !== editingProduct?.id,
+		)
+		.flatMap(prod =>
+			(prod.productpackagings || []).map((pk: PackagingV1) => ({
+				value: pk.id,
+				label: prod.name,
+				subLabel:
+					pk.name !== prod.name
+						? `${pk.name}${pk.sku ? ` | SKU: ${pk.sku}` : ""}`
+						: pk.sku
+							? `SKU: ${pk.sku}`
+							: undefined,
+			})),
+		);
+	const bomMaterialOptions =
+		productForm.category === "SERVICE" ? comboComponentOptions : materialOptions;
 	const findMaterial = (packagingId: number) =>
 		materialRows
 			.flatMap(prod =>
@@ -1763,7 +1783,9 @@ export default function CatalogProducts({
 										<div className="mt-4">
 											<div className="mb-2 flex items-center justify-between">
 												<p className="text-xs font-bold uppercase tracking-wider text-slate-400">
-													Định mức lắp ráp:
+													{productForm.category === "SERVICE"
+														? "Thành phần combo:"
+														: "Định mức lắp ráp:"}
 												</p>
 												<button
 													type="button"
@@ -1773,18 +1795,35 @@ export default function CatalogProducts({
 															...productForm,
 															bomLines: [
 																...productForm.bomLines,
-																{ packagingId: 0, quantity: 20, unit: "g" },
+																{
+																	packagingId: 0,
+																	quantity:
+																		productForm.category === "SERVICE" ? 1 : 20,
+																	unit:
+																		productForm.category === "SERVICE"
+																			? "Cái"
+																			: "g",
+																},
 															],
 														})
 													}
 												>
-													+ Thêm nguyên liệu
+													{productForm.category === "SERVICE"
+														? "+ Thêm thành phẩm"
+														: "+ Thêm nguyên liệu"}
 												</button>
 											</div>
+											{productForm.category === "SERVICE" && (
+												<p className="mb-2 rounded border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-700">
+													Khi bán hàng hoặc xuất kho, chọn combo này sẽ tự động
+													điền các thành phẩm bên dưới.
+												</p>
+											)}
 											{!productForm.bomLines.length ? (
 												<p className="rounded border border-dashed border-slate-300 bg-white px-3 py-2 text-xs text-slate-400">
-													Chưa có định mức. Thêm từng mã nguyên liệu cấu thành
-													mã này.
+													{productForm.category === "SERVICE"
+														? "Chưa có thành phần combo. Thêm 2-3 thành phẩm cấu thành combo."
+														: "Chưa có định mức. Thêm từng mã nguyên liệu cấu thành mã này."}
 												</p>
 											) : (
 												<div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
@@ -1795,10 +1834,14 @@ export default function CatalogProducts({
 																	STT
 																</th>
 																<th className="w-[200px] px-3 py-2 font-semibold">
-																	Mã nguyên liệu
+																	{productForm.category === "SERVICE"
+																		? "Mã thành phẩm"
+																		: "Mã nguyên liệu"}
 																</th>
 																<th className="px-3 py-2 font-semibold">
-																	Tên nguyên liệu
+																	{productForm.category === "SERVICE"
+																		? "Tên thành phẩm"
+																		: "Tên nguyên liệu"}
 																</th>
 																<th className="w-[110px] px-3 py-2 font-semibold">
 																	Đơn vị tính
@@ -1832,9 +1875,13 @@ export default function CatalogProducts({
 																		<td className="px-3 py-2">
 																			<SearchableSelect
 																				value={line.packagingId}
-																				options={materialOptions}
+																				options={bomMaterialOptions}
 																				autoAdvance
-																				placeholder="Tìm mã hoặc tên nguyên liệu"
+																				placeholder={
+																					productForm.category === "SERVICE"
+																						? "Tìm mã hoặc tên thành phẩm"
+																						: "Tìm mã hoặc tên nguyên liệu"
+																				}
 																				onChange={packagingId => {
 																					const material =
 																						findMaterial(packagingId);

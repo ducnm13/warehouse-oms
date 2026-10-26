@@ -24,6 +24,7 @@ import { formatDate, formatProductName, quantityAllowsDecimal } from "../lib/uti
 import { InventoryDocument } from "../components/InventoryDocument";
 import NumberInput from "../components/NumberInput";
 import TableActions from "../components/TableActions";
+import DetailOptionsMenu from "../components/DetailOptionsMenu";
 
 // Hàm chuẩn hóa Date sang chuỗi YYYY-MM để lọc dữ liệu tháng
 const formatToYYYYMM = (date: Date | null) => {
@@ -1069,12 +1070,22 @@ const MaterialTransactions = () => {
               </table>
 
               <div className="flex justify-end gap-4 mt-8 no-print">
-                <button
-                  onClick={() => openPreview(viewTransaction)}
-                  className="erp-btn uppercase tracking-widest text-[10px]"
-                >
-                  <Printer size={18} /> XEM TRƯỚC VÀ IN
-                </button>
+                <DetailOptionsMenu
+                  actions={[
+                    {
+                      key: "print",
+                      label: "Xem trước và in",
+                      icon: <Printer size={15} />,
+                      onClick: () => openPreview(viewTransaction),
+                    },
+                    {
+                      key: "duplicate",
+                      label: "Nhân bản",
+                      icon: <Copy size={15} />,
+                      onClick: () => duplicateTransaction(viewTransaction),
+                    },
+                  ]}
+                />
                 <button
                   onClick={() => {
                     setIsDetailModalOpen(false);

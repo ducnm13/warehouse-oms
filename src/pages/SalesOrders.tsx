@@ -35,9 +35,15 @@ import type {
 import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
 import TableActions from "../components/TableActions";
+import DetailOptionsMenu from "../components/DetailOptionsMenu";
 import ListToolbar from "../components/ListToolbar";
 import type { FilterField, FilterValues } from "../components/FilterDrawer";
 import { exportExcelFile } from "../lib/excelExport";
+import {
+	comboBoms,
+	comboOptionLabel,
+	isComboPackaging,
+} from "../lib/combo";
 import { SalesOrderDocument } from "../components/SalesOrderDocument";
 import Button from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -78,6 +84,7 @@ type Line = Pick<
 	promotionProgramId?: number;
 	promotionCode?: string;
 	promotionName?: string;
+	comboGroupId?: string;
 };
 type GiftPreview = {
 	packagingId: number;
@@ -332,7 +339,7 @@ export default function SalesOrders() {
 			] = await Promise.all([
 				legacyApi<Customer[]>("/api/customers"),
 				legacyApi<Warehouse[]>("/api/warehouses"),
-				legacyApi<Product[]>("/api/products?category=PRODUCT"),
+				legacyApi<Product[]>("/api/products"),
 				apiV1<Array<{ packagingId: number; priceType: string; price: number }>>(
 					"/api/v1/catalog/packaging-retail-prices",
 				)
@@ -439,30 +446,41 @@ export default function SalesOrders() {
 	}, [references.data]);
 	const packagingOptions = useMemo(
 		() =>
-			(references.data?.products || [])
-				.filter(
-					(product: any) => !product.category || product.category === "PRODUCT",
-				)
-				.flatMap(product =>
-					(product.packagings || []).map(packaging => ({
+			(references.data?.products || []).flatMap(product => {
+				const category = String(product.category || "PRODUCT").toUpperCase();
+				return (product.packagings || [])
+					.filter(
+						packaging =>
+							category === "PRODUCT" ||
+							isComboPackaging(category, packaging.boms),
+					)
+					.map(packaging => ({
 						...packaging,
 						productName: product.name,
-					})),
-				),
+						productCategory: category,
+						isCombo: isComboPackaging(category, packaging.boms),
+					}));
+			}),
 		[references.data],
 	);
 	const productSearchOptions = useMemo(
 		() =>
-			packagingOptions.map(item => ({
-				value: item.id,
-				label: item.productName,
-				subLabel:
-					item.name !== item.productName
-						? `${item.name}${item.sku ? ` | SKU: ${item.sku}` : ""}`
-						: item.sku
-							? `SKU: ${item.sku}`
-							: undefined,
-			})),
+			packagingOptions.map(item => {
+				const comboCount = item.isCombo ? comboBoms(item.boms).length : 0;
+				return {
+					value: item.id,
+					label: item.isCombo
+						? comboOptionLabel(item.productName)
+						: item.productName,
+					subLabel: item.isCombo
+						? `Combo gồm ${comboCount} thành phẩm${item.sku ? ` | SKU: ${item.sku}` : ""}`
+						: item.name !== item.productName
+							? `${item.name}${item.sku ? ` | SKU: ${item.sku}` : ""}`
+							: item.sku
+								? `SKU: ${item.sku}`
+								: undefined,
+				};
+			}),
 		[packagingOptions],
 	);
 	const customerSearchOptions = useMemo(() => {
@@ -913,7 +931,8 @@ export default function SalesOrders() {
 					Number(item.unitPrice || 0) === Number(row.unitPrice || 0) &&
 					Number(item.discountRate || 0) === Number(row.discountRate || 0) &&
 					(item.lineType || "SALE") === (row.lineType || "SALE") &&
-					(item.promotionProgramId || 0) === (row.promotionProgramId || 0),
+					(item.promotionProgramId || 0) === (row.promotionProgramId || 0) &&
+					(item.comboGroupId || "") === (row.comboGroupId || ""),
 			);
 			if (existingIndex >= 0) {
 				const existing = merged[existingIndex];
@@ -931,59 +950,154 @@ export default function SalesOrders() {
 	};
 	const updateLine = (index: number, patch: Partial<Line>) =>
 		setLines(current => {
-			const next = current.map((line, position) =>
-				position === index ? { ...line, ...patch } : line,
-			);
+			const previous = current[index];
+			const factor =
+				patch.quantity !== undefined &&
+				previous?.comboGroupId &&
+				Number(previous.quantity || 0) > 0
+					? Number(patch.quantity || 0) / Number(previous.quantity || 0)
+					: 1;
+			const next = current.map((line, position) => {
+				if (position === index) return { ...line, ...patch };
+				if (
+					factor !== 1 &&
+					line.comboGroupId &&
+					line.comboGroupId === previous?.comboGroupId
+				)
+					return {
+						...line,
+						quantity: Number(
+							(Number(line.quantity || 0) * factor).toFixed(4),
+						),
+					};
+				return line;
+			});
 			const merged = mergeDuplicatePackagingLines(next);
 			if (merged.merged)
 				toast("Đã gộp các dòng trùng mã và cộng dồn số lượng.", { icon: "ℹ️" });
 			return merged.rows;
 		});
-	const applyPackagingPrice = async (index: number, packagingId: number) => {
+	const fetchPackagingSalePrice = async (packagingId: number) => {
 		const priceBookId = form.watch("priceBookId");
-		updateLine(index, { packagingId });
-		if (!packagingId) return;
-		try {
-			if (priceBookId) {
-				// 1. Ưu tiên giá trong bảng giá của nhóm KH
-				try {
-					const response = await apiV1<{
-						packagingId: number;
-						costPrice: number;
-						salePrice: number;
-						currency: string;
-					}>(`/api/v1/catalog/price-books/${priceBookId}/items/${packagingId}`);
-					const item = response.data;
-					if (item && Number(item.salePrice || 0) > 0) {
-						updateLine(index, {
-							packagingId,
-							unitPrice: Number(item.salePrice || 0),
-						});
-						return;
-					}
-				} catch {
-					// Mặt hàng chưa có trong bảng giá → rơi xuống giá bán chuẩn
+		if (priceBookId) {
+			// 1. Ưu tiên giá trong bảng giá của nhóm KH
+			try {
+				const response = await apiV1<{
+					packagingId: number;
+					costPrice: number;
+					salePrice: number;
+					currency: string;
+				}>(`/api/v1/catalog/price-books/${priceBookId}/items/${packagingId}`);
+				const item = response.data;
+				if (item && Number(item.salePrice || 0) > 0) {
+					return Number(item.salePrice || 0);
 				}
+			} catch {
+				// Mặt hàng chưa có trong bảng giá → rơi xuống giá bán chuẩn
 			}
-			// 2. Giá bán chuẩn (SALE_3 → SALE_* → COST)
-			const customerId = form.watch("customerId");
-			const fallbackUrl = customerId
-				? `/api/v1/sales-documents/packaging-prices?ids=${packagingId}&customerId=${customerId}`
-				: `/api/v1/sales-documents/packaging-prices?ids=${packagingId}`;
-			const fallbackResponse =
-				await apiV1<
-					Array<{ packagingId: number; priceType: string; price: number }>
-				>(fallbackUrl);
-			const prices = fallbackResponse.data || [];
-			const salePrice =
-				prices.find(item => item.priceType === "SALE_3") ||
-				prices.find(item => item.priceType.startsWith("SALE")) ||
-				prices.find(item => item.priceType === "COST");
-			if (salePrice)
-				updateLine(index, {
-					packagingId,
-					unitPrice: Number(salePrice.price || 0),
-				});
+		}
+		// 2. Giá bán chuẩn (SALE_3 → SALE_* → COST)
+		const customerId = form.watch("customerId");
+		const fallbackUrl = customerId
+			? `/api/v1/sales-documents/packaging-prices?ids=${packagingId}&customerId=${customerId}`
+			: `/api/v1/sales-documents/packaging-prices?ids=${packagingId}`;
+		const fallbackResponse =
+			await apiV1<
+				Array<{ packagingId: number; priceType: string; price: number }>
+			>(fallbackUrl);
+		const prices = fallbackResponse.data || [];
+		const salePrice =
+			prices.find(item => item.priceType === "SALE_3") ||
+			prices.find(item => item.priceType.startsWith("SALE")) ||
+			prices.find(item => item.priceType === "COST");
+		return Number(salePrice?.price || 0);
+	};
+
+	const expandComboLine = async (
+		index: number,
+		combo: (typeof packagingOptions)[number],
+	) => {
+		const components = comboBoms(combo.boms).flatMap(bom => {
+			const option = packagingOptions.find(
+				item => item.id === bom.materialPackagingId,
+			);
+			return option ? [{ bom, option }] : [];
+		});
+		if (!components.length) return false;
+
+		const [comboPrice, ...componentPrices] = await Promise.all([
+			fetchPackagingSalePrice(combo.id),
+			...components.map(item => fetchPackagingSalePrice(item.option.id)),
+		]);
+		const weighted = components.map((item, position) => {
+			const basePrice = Number(componentPrices[position] || 0);
+			const quantity = Number(item.bom.quantity || 0);
+			return {
+				...item,
+				basePrice,
+				quantity,
+				weight: basePrice * quantity,
+			};
+		});
+		const totalBaseValue = weighted.reduce(
+			(sum, item) => sum + item.weight,
+			0,
+		);
+		const targetValue = comboPrice > 0 ? comboPrice : totalBaseValue;
+		const comboGroupId = `combo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+		setLines(current => {
+			const currentLine = current[index];
+			if (!currentLine) return current;
+			const comboQuantity =
+				Number(currentLine.quantity || 0) > 0
+					? Number(currentLine.quantity)
+					: 1;
+			const expanded: Line[] = weighted.map(item => {
+				const lineValue =
+					totalBaseValue > 0
+						? (targetValue * item.weight) / totalBaseValue
+						: targetValue / weighted.length;
+				const unitPrice =
+					item.quantity > 0
+						? Math.round((lineValue / item.quantity) * 100) / 100
+						: 0;
+				return {
+					packagingId: item.option.id,
+					quantity: item.quantity * comboQuantity,
+					unitPrice,
+					discountRate: 0,
+					note: `Thu\u1ed9c combo ${combo.productName}`,
+					lineType: "SALE",
+					comboGroupId,
+				};
+			});
+			const next = [
+				...current.slice(0, index),
+				...expanded,
+				...current.slice(index + 1),
+			];
+			const merged = mergeDuplicatePackagingLines(next);
+			return merged.rows;
+		});
+		toast.success(
+			`\u0110\u00e3 \u0111i\u1ec1n ${weighted.length} th\u00e0nh ph\u1ea9m t\u1eeb combo ${combo.productName}.`,
+		);
+		return true;
+	};
+
+	const applyPackagingPrice = async (index: number, packagingId: number) => {
+		if (!packagingId) {
+			updateLine(index, { packagingId });
+			return;
+		}
+		const selected = packagingOptions.find(item => item.id === packagingId);
+		if (selected?.isCombo && (await expandComboLine(index, selected))) return;
+
+		updateLine(index, { packagingId });
+		try {
+			const price = await fetchPackagingSalePrice(packagingId);
+			if (price > 0) updateLine(index, { packagingId, unitPrice: price });
 		} catch {
 			// Giữ đơn giá hiện tại nếu không lấy được bảng giá.
 		}
@@ -2342,13 +2456,25 @@ export default function SalesOrders() {
 								)}
 						</div>
 						<div className="erp-modal-footer">
-							<button
-								type="button"
-								className="erp-btn"
-								onClick={() => setReportOrder(selected)}
-							>
-								<Printer size={15} /> In đơn hàng
-							</button>
+							<DetailOptionsMenu
+								actions={[
+									{
+										key: "print",
+										label: "In đơn hàng",
+										icon: <Printer size={15} />,
+										onClick: () => setReportOrder(selected),
+									},
+									{
+										key: "duplicate",
+										label: "Nhân bản",
+										icon: <Copy size={15} />,
+										onClick: () => {
+											setSelected(null);
+											duplicate(selected);
+										},
+									},
+								]}
+							/>
 							{selected.status === "POSTED" && (
 								<button
 									type="button"

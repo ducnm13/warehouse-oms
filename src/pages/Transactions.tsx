@@ -25,6 +25,11 @@ import { InventoryDocument } from "../components/InventoryDocument";
 import { buildCompanyPrintProfile } from "../lib/printTemplate";
 import { finishedGoodsWarehouseId } from "../lib/warehouse-defaults";
 import {
+	comboBoms,
+	comboOptionLabel,
+	isComboPackaging,
+} from "../lib/combo";
+import {
 	formatDate,
 	formatNumber,
 	formatProductName,
@@ -49,6 +54,7 @@ type Line = {
 	quantity: number;
 	unitCost: number;
 	note: string;
+	comboGroupId?: string;
 };
 type FormState = {
 	type: "IMPORT" | "EXPORT";
@@ -359,27 +365,40 @@ export default function Transactions({
 	});
 	const packagingOptions = useMemo(
 		() =>
-			(references.data?.products || []).flatMap(product =>
-				(product.packagings || []).map(packaging => ({
+			(references.data?.products || []).flatMap(product => {
+				const category = String(product.category || "PRODUCT").toUpperCase();
+				return (product.packagings || []).map(packaging => ({
 					...packaging,
 					productName: product.name,
-				})),
-			),
+					productCategory: category,
+					isCombo: isComboPackaging(category, packaging.boms),
+				}));
+			}),
 		[references.data],
 	);
 	const productSearchOptions = useMemo(
 		() =>
-			packagingOptions.map(item => ({
-				value: item.id,
-				label: item.productName,
-				subLabel:
-					item.name !== item.productName
-						? `${item.name}${item.sku ? ` | SKU: ${item.sku}` : ""}`
-						: item.sku
-							? `SKU: ${item.sku}`
-							: undefined,
-			})),
-		[packagingOptions],
+			packagingOptions
+				.filter(item => form.type !== "IMPORT" || !item.isCombo)
+				.map(item => {
+					const comboCount = item.isCombo
+						? comboBoms(item.boms).length
+						: 0;
+					return {
+						value: item.id,
+						label: item.isCombo
+							? comboOptionLabel(item.productName)
+							: item.productName,
+						subLabel: item.isCombo
+							? `Combo gồm ${comboCount} thành phẩm${item.sku ? ` | SKU: ${item.sku}` : ""}`
+							: item.name !== item.productName
+								? `${item.name}${item.sku ? ` | SKU: ${item.sku}` : ""}`
+								: item.sku
+									? `SKU: ${item.sku}`
+									: undefined,
+					};
+				}),
+		[packagingOptions, form.type],
 	);
 	// Đơn vị của dòng để quyết định cho nhập thập phân (kg) hay bắt buộc số nguyên
 	const unitOf = (packagingId: number) =>
@@ -584,12 +603,92 @@ export default function Transactions({
 		setOpen(true);
 	};
 	const updateLine = (index: number, patch: Partial<Line>) =>
-		setLines(current =>
-			current.map((line, position) =>
-				position === index ? { ...line, ...patch } : line,
-			),
-		);
+		setLines(current => {
+			const previous = current[index];
+			const factor =
+				patch.quantity !== undefined &&
+				previous?.comboGroupId &&
+				Number(previous.quantity || 0) > 0
+					? Number(patch.quantity || 0) / Number(previous.quantity || 0)
+					: 1;
+			return current.map((line, position) => {
+				if (position === index) return { ...line, ...patch };
+				if (
+					factor !== 1 &&
+					line.comboGroupId &&
+					line.comboGroupId === previous?.comboGroupId
+				)
+					return {
+						...line,
+						quantity: Number(
+							(Number(line.quantity || 0) * factor).toFixed(4),
+						),
+					};
+				return line;
+			});
+		});
 	const applyPackagingCost = (index: number, packagingId: number) => {
+		const selected = packagingOptions.find(item => item.id === packagingId);
+		if (form.type === "EXPORT" && selected?.isCombo) {
+			const components = comboBoms(selected.boms).flatMap(bom => {
+				const option = packagingOptions.find(
+					item => item.id === bom.materialPackagingId,
+				);
+				return option ? [{ bom, option }] : [];
+			});
+			if (components.length) {
+				const comboGroupId = `combo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+				setLines(current => {
+					const currentLine = current[index];
+					if (!currentLine) return current;
+					const comboQuantity =
+						Number(currentLine.quantity || 0) > 0
+							? Number(currentLine.quantity)
+							: 1;
+					const expanded: Line[] = components.map(item => ({
+						packagingId: item.option.id,
+						quantity: Number(item.bom.quantity || 0) * comboQuantity,
+						unitCost:
+							references.data?.costPriceMap?.get(item.option.id) || 0,
+						note: `Thu\u1ed9c combo ${selected.productName}`,
+						comboGroupId,
+					}));
+					const next = [
+						...current.slice(0, index),
+						...expanded,
+						...current.slice(index + 1),
+					];
+					const merged: Line[] = [];
+					for (const line of next) {
+						if (!line.packagingId) {
+							merged.push(line);
+							continue;
+						}
+						const existing = merged.findIndex(
+							item => item.packagingId === line.packagingId,
+						);
+						if (existing >= 0) {
+							merged[existing] = {
+								...merged[existing],
+								quantity:
+									Number(merged[existing].quantity || 0) +
+									Number(line.quantity || 0),
+								note: [merged[existing].note, line.note]
+									.filter(Boolean)
+									.join("\n"),
+							};
+						} else {
+							merged.push(line);
+						}
+					}
+					return merged.length ? merged : [emptyLine()];
+				});
+				toast.success(
+					`\u0110\u00e3 \u0111i\u1ec1n ${components.length} th\u00e0nh ph\u1ea9m t\u1eeb combo ${selected.productName}.`,
+				);
+				return;
+			}
+		}
 		const cost = references.data?.costPriceMap?.get(packagingId) || 0;
 		updateLine(index, {
 			packagingId,
@@ -1544,6 +1643,10 @@ export default function Transactions({
 								onEdit={() => {
 									setSelected(null);
 									openEdit(selected);
+								}}
+								onDuplicate={() => {
+									setSelected(null);
+									duplicate(selected);
 								}}
 							/>
 							{(selected.documentStatus === "DRAFT" ||

@@ -21,6 +21,7 @@ import { apiV1 } from "../lib/apiV1";
 import { formatDate, formatNumber, formatProductName } from "../lib/utils";
 import PrintPreview from "../components/PrintPreview";
 import TableActions from "../components/TableActions";
+import DetailOptionsMenu from "../components/DetailOptionsMenu";
 import {
 	fillGenericDocument,
 	GENERIC_LAYOUTS,
@@ -936,12 +937,22 @@ export default function Debt() {
 								</div>
 							)}
 							<div className="flex justify-end gap-2">
-								<button
-									className="erp-btn"
-									onClick={() => setPrintTarget(selected)}
-								>
-									<Printer size={16} /> In
-								</button>
+								<DetailOptionsMenu
+									actions={[
+										{
+											key: "print",
+											label: "In",
+											icon: <Printer size={15} />,
+											onClick: () => setPrintTarget(selected),
+										},
+										{
+											key: "duplicate",
+											label: "Nhân bản",
+											icon: <Copy size={15} />,
+											onClick: () => duplicate(selected),
+										},
+									]}
+								/>
 								{(selected.kind === "RECEIPT" ? canReceive : canPay) && (
 									<button
 										className="erp-btn"

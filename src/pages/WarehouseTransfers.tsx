@@ -34,6 +34,7 @@ import type {
 	WarehouseTransferV1,
 } from "../types";
 import ListToolbar from "../components/ListToolbar";
+import DetailOptionsMenu from "../components/DetailOptionsMenu";
 import type { FilterField, FilterValues } from "../components/FilterDrawer";
 import { exportExcelFile } from "../lib/excelExport";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
@@ -972,12 +973,25 @@ export default function WarehouseTransfers() {
 								</div>
 							)}
 							<div className="flex justify-end gap-2">
-								<button
-									className="erp-btn"
-									onClick={() => setPrintTarget(selected)}
-								>
-									<Printer size={16} /> In phiếu
-								</button>
+								<DetailOptionsMenu
+									actions={[
+										{
+											key: "print",
+											label: "In phiếu",
+											icon: <Printer size={15} />,
+											onClick: () => setPrintTarget(selected),
+										},
+										{
+											key: "duplicate",
+											label: "Nhân bản",
+											icon: <Copy size={15} />,
+											onClick: () => {
+												setSelected(null);
+												duplicate(selected);
+											},
+										},
+									]}
+								/>
 								<button
 									className="erp-btn erp-btn-primary"
 									disabled={selected.status !== "DRAFT"}

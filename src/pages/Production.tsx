@@ -32,6 +32,7 @@ import type { Product, ProductionOrderV1, User, Warehouse } from "../types";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
 import TableActions from "../components/TableActions";
+import DetailOptionsMenu from "../components/DetailOptionsMenu";
 import ListToolbar from "../components/ListToolbar";
 import type { FilterField, FilterValues } from "../components/FilterDrawer";
 import { exportExcelFile } from "../lib/excelExport";
@@ -1402,13 +1403,25 @@ export default function Production({
 										<Undo2 size={15} /> Hủy lưu
 									</button>
 								)}
-							<button
-								type="button"
-								className="erp-btn"
-								onClick={() => setReportOrder(selected)}
-							>
-								<Printer size={15} /> In
-							</button>
+							<DetailOptionsMenu
+								actions={[
+									{
+										key: "print",
+										label: "In lệnh",
+										icon: <Printer size={15} />,
+										onClick: () => setReportOrder(selected),
+									},
+									{
+										key: "duplicate",
+										label: "Nhân bản",
+										icon: <Copy size={15} />,
+										onClick: () => {
+											setSelected(null);
+											duplicate(selected);
+										},
+									},
+								]}
+							/>
 							<button
 								type="button"
 								className="erp-btn"

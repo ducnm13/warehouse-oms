@@ -19,6 +19,7 @@ import ExcelImportWizard, { type ExcelImportField } from "../components/ExcelImp
 import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
 import TableActions from "../components/TableActions";
+import DetailOptionsMenu from "../components/DetailOptionsMenu";
 import { formatDate, formatNumber, formatProductName } from "../lib/utils";
 import PrintPreview from "../components/PrintPreview";
 import {
@@ -883,12 +884,24 @@ export default function OpeningInventory() {
 								<button className="erp-btn" onClick={() => setViewDoc(null)}>
 									Đóng
 								</button>
-								<button
-									className="erp-btn"
-									onClick={() => viewDocDetail && void openPrint(viewDocDetail)}
-								>
-									<Printer size={15} /> In biên bản
-								</button>
+								<DetailOptionsMenu
+									actions={[
+										{
+											key: "print",
+											label: "In biên bản",
+											icon: <Printer size={15} />,
+											onClick: () =>
+												viewDocDetail && void openPrint(viewDocDetail),
+										},
+										{
+											key: "duplicate",
+											label: "Nhân bản",
+											icon: <Copy size={15} />,
+											onClick: () =>
+												viewDocDetail && void duplicate(viewDocDetail),
+										},
+									]}
+								/>
 								<button
 									className="erp-btn"
 									disabled={viewDocDetail.status !== "DRAFT"}

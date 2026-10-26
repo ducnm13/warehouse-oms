@@ -26,6 +26,7 @@ export interface Product {
 	id: number;
 	sku: string;
 	name: string;
+	category?: string;
 	netWeight: number;
 	shelfLifeMonths: number;
 	isActive: number;
@@ -46,7 +47,7 @@ export interface ProductPackaging {
 	min_stock?: number;
 	stock?: number;
 	price?: number;
-	boms?: { materialPackagingId: number; quantity: number }[];
+	boms?: { materialPackagingId: number; quantity: number; unit?: string }[];
 }
 
 export interface Warehouse {

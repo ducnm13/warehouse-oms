@@ -1140,6 +1140,12 @@ export default function Assembly({ user }: { user: User }) {
 							onUnpost={() => selected && unpostOrder.mutate(selected)}
 							onPrint={() => selected && setPrintTarget(selected)}
 							onEdit={() => selected && openEditor(selected)}
+							onDuplicate={() => {
+								if (!selected) return;
+								const order = selected;
+								setSelected(null);
+								void duplicateOrder(order);
+							}}
 						/>
 						{selected &&
 							["DRAFT"].includes(selected.status) &&

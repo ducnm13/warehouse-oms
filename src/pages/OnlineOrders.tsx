@@ -24,6 +24,7 @@ import { confirm } from "../components/ui/confirm";
 import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
 import TableActions from "../components/TableActions";
+import DetailOptionsMenu from "../components/DetailOptionsMenu";
 import { formatNumber, formatDate, formatProductName } from "../lib/utils";
 import type { Product } from "../types";
 import ListToolbar from "../components/ListToolbar";
@@ -1698,9 +1699,16 @@ const OnlineOrders = () => {
 							</div>
 						</div>
 						<div className="erp-modal-footer">
-							<button type="button" className="erp-btn" onClick={() => duplicateOrder(detailOrder)}>
-								Nhân bản
-							</button>
+							<DetailOptionsMenu
+								actions={[
+									{
+										key: "duplicate",
+										label: "Nhân bản",
+										icon: <Copy size={15} />,
+										onClick: () => duplicateOrder(detailOrder),
+									},
+								]}
+							/>
 							<button type="button" className="erp-btn text-red-600" onClick={() => handleDeleteOrder(detailOrder)}>
 								Xóa đơn
 							</button>

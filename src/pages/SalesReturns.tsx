@@ -26,6 +26,7 @@ import type { SalesOrder, SalesReturnV1, Warehouse } from "../types";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
 import TableActions from "../components/TableActions";
+import DetailOptionsMenu from "../components/DetailOptionsMenu";
 import ListToolbar from "../components/ListToolbar";
 import type { FilterField, FilterValues } from "../components/FilterDrawer";
 import { exportExcelFile } from "../lib/excelExport";
@@ -836,12 +837,25 @@ export default function SalesReturns() {
 							>
 								<Edit size={16} /> Sửa
 							</button>
-							<button
-								className="erp-btn"
-								onClick={() => setPrintTarget(selected)}
-							>
-								<Printer size={16} /> In phiếu trả
-							</button>
+							<DetailOptionsMenu
+								actions={[
+									{
+										key: "print",
+										label: "In phiếu trả",
+										icon: <Printer size={15} />,
+										onClick: () => setPrintTarget(selected),
+									},
+									{
+										key: "duplicate",
+										label: "Nhân bản",
+										icon: <Copy size={15} />,
+										onClick: () => {
+											setSelected(null);
+											duplicate(selected);
+										},
+									},
+								]}
+							/>
 							{selected.status === "DRAFT" && (
 								<button
 									className="erp-btn erp-btn-post"
