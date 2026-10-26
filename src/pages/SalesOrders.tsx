@@ -1697,6 +1697,7 @@ export default function SalesOrders() {
 									<table className="erp-table">
 										<thead>
 											<tr>
+												<th className="w-12 text-center">STT</th>
 												<th>Hàng hóa / Quy cách</th>
 												<th>SL</th>
 												<th>Đơn giá</th>
@@ -1709,6 +1710,7 @@ export default function SalesOrders() {
 										<tbody>
 											{lines.map((line, index) => (
 												<tr key={index}>
+													<td className="text-center">{index + 1}</td>
 													<td className="min-w-64">
 														<SearchableSelect
 															value={line.packagingId}
@@ -2101,6 +2103,7 @@ export default function SalesOrders() {
 							<table className="erp-table">
 								<thead>
 									<tr>
+										<th className="w-12 text-center">STT</th>
 										<th>Hàng hóa</th>
 										<th>Số lượng</th>
 										<th className="text-right">Đơn giá</th>
@@ -2109,13 +2112,14 @@ export default function SalesOrders() {
 									</tr>
 								</thead>
 								<tbody>
-									{selected.details.map(line => (
+									{selected.details.map((line, index) => (
 										<tr
 											key={line.id}
 											className={
 												line.lineType === "PROMOTION" ? "bg-emerald-50" : ""
 											}
 										>
+											<td className="text-center">{index + 1}</td>
 											<td>
 												{line.productName}
 												<small>
@@ -2165,6 +2169,7 @@ export default function SalesOrders() {
 												<table className="erp-table mt-2">
 													<thead>
 														<tr>
+															<th className="w-12 text-center">STT</th>
 															<th>Hàng hóa</th>
 															<th className="text-right">Số lượng</th>
 															<th className="text-right">Đơn giá vốn</th>
@@ -2174,6 +2179,7 @@ export default function SalesOrders() {
 														{(issue.details || []).map(
 															(line: any, lineIndex: number) => (
 																<tr key={line.id || lineIndex}>
+																	<td className="text-center">{lineIndex + 1}</td>
 																	<td>
 																		<b>{line.productName}</b>
 																		<small>{line.sku}</small>
@@ -2461,6 +2467,7 @@ export default function SalesOrders() {
 									<table className="erp-table">
 										<thead>
 											<tr>
+												<th className="w-12 text-center">STT</th>
 												<th>Hàng hóa</th>
 												<th className="text-right">Số lượng</th>
 												<th className="text-right">Đơn giá vốn</th>
@@ -2474,6 +2481,7 @@ export default function SalesOrders() {
 												[]
 											).map((line: any, index: number) => (
 												<tr key={line.id || index}>
+													<td className="text-center">{index + 1}</td>
 													<td>
 														<b>
 															{line.productName || line.products?.name || "-"} -{" "}
@@ -2543,14 +2551,16 @@ export default function SalesOrders() {
 									<table className="erp-table">
 										<thead>
 											<tr>
+												<th className="w-12 text-center">STT</th>
 												<th>Chứng từ phân bổ</th>
 												<th className="text-right">Số tiền</th>
 											</tr>
 										</thead>
 										<tbody>
 											{(relatedDetail.data?.allocations || []).map(
-												(row: any) => (
+												(row: any, index: number) => (
 													<tr key={row.id || row.documentId}>
+														<td className="text-center">{index + 1}</td>
 														<td>
 															<b>{row.documentCode}</b>
 															<small>

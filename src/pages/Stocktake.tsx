@@ -721,6 +721,7 @@ export default function Stocktake() {
 									<table className="erp-table">
 										<thead>
 											<tr>
+												<th className="w-12 text-center">STT</th>
 												<th>SKU</th>
 												<th>Hàng hóa / Quy cách</th>
 												<th>Đơn vị</th>
@@ -733,7 +734,7 @@ export default function Stocktake() {
 											{lines.length === 0 ? (
 												<tr>
 													<td
-														colSpan={6}
+														colSpan={7}
 														className="text-center text-slate-400"
 													>
 														Kho chưa có số dư
@@ -745,6 +746,7 @@ export default function Stocktake() {
 														line.actualQuantity - line.expectedQuantity;
 													return (
 														<tr key={line.packagingId}>
+															<td className="text-center">{index + 1}</td>
 															<td>{line.sku || "-"}</td>
 															<td>
 																<b>{line.productName}</b>
@@ -831,17 +833,19 @@ export default function Stocktake() {
 							</span>
 							<table className="erp-table">
 								<thead>
-									<tr>
-										<th>Hàng hóa</th>
-										<th className="text-right">Tồn sổ</th>
-										<th className="text-right">Thực tế</th>
-										<th className="text-right">Chênh lệch</th>
-									</tr>
-								</thead>
-								<tbody>
-									{selected.details.map(line => (
-										<tr key={line.id}>
-											<td>
+								<tr>
+									<th className="w-12 text-center">STT</th>
+									<th>Hàng hóa</th>
+									<th className="text-right">Tồn sổ</th>
+									<th className="text-right">Thực tế</th>
+									<th className="text-right">Chênh lệch</th>
+								</tr>
+							</thead>
+							<tbody>
+								{selected.details.map((line, index) => (
+									<tr key={line.id}>
+										<td className="text-center">{index + 1}</td>
+										<td>
 												{formatProductName(
 													line.productName,
 													line.packagingName,

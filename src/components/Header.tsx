@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
 	Menu,
@@ -30,6 +30,10 @@ interface AuditLog {
 	createdAt: string;
 }
 
+const LAST_SEEN_LOG_KEY = "notifications-last-seen-id";
+const latestLogId = (rows: AuditLog[]) =>
+	rows.reduce((max, row) => Math.max(max, Number(row.id) || 0), 0);
+
 const Header = ({
 	sidebarOpen,
 	setSidebarOpen,
@@ -39,29 +43,66 @@ const Header = ({
 	const navigate = useNavigate();
 	const [showNotifications, setShowNotifications] = useState(false);
 	const [logs, setLogs] = useState<AuditLog[]>([]);
+	const [lastSeenLogId, setLastSeenLogId] = useState(() =>
+		Number(localStorage.getItem(LAST_SEEN_LOG_KEY) || 0),
+	);
 	const isAdmin = user?.role === "ADMIN";
+	const newestLogId = latestLogId(logs);
+	const hasUnreadNotifications = newestLogId > lastSeenLogId;
 
-	useEffect(() => {
-		if (showNotifications && isAdmin) {
-			fetchLogs();
-		}
-	}, [showNotifications, isAdmin]);
-
-	const fetchLogs = async () => {
+	const fetchLogs = useCallback(async () => {
 		try {
 			const res = await fetch("/api/audit-logs?limit=10", {
 				headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
 			});
 			if (res.ok) {
 				const body = await res.json();
-				setLogs(Array.isArray(body) ? body : body.data || []);
+				const rows: AuditLog[] = Array.isArray(body) ? body : body.data || [];
+				setLogs(rows);
+				return rows;
 			}
 		} catch (err) {
 			console.error("Lỗi khi tải lịch sử thao tác", err);
 		}
+		return [];
+	}, []);
+
+	const markNotificationsRead = useCallback((rows: AuditLog[] = logs) => {
+		const newest = latestLogId(rows);
+		if (!newest) return;
+		localStorage.setItem(LAST_SEEN_LOG_KEY, String(newest));
+		setLastSeenLogId(current => Math.max(current, newest));
+	}, [logs]);
+
+	useEffect(() => {
+		if (!isAdmin) return;
+		void fetchLogs();
+		const interval = window.setInterval(() => void fetchLogs(), 60_000);
+		const onVisible = () => {
+			if (document.visibilityState === "visible") void fetchLogs();
+		};
+		document.addEventListener("visibilitychange", onVisible);
+		return () => {
+			window.clearInterval(interval);
+			document.removeEventListener("visibilitychange", onVisible);
+		};
+	}, [isAdmin, fetchLogs]);
+
+	useEffect(() => {
+		if (showNotifications) markNotificationsRead();
+	}, [showNotifications, newestLogId, markNotificationsRead]);
+
+	const handleToggleNotifications = async () => {
+		const next = !showNotifications;
+		setShowNotifications(next);
+		if (next) {
+			const rows = await fetchLogs();
+			markNotificationsRead(rows);
+		}
 	};
 
 	const handleSeeAllLogs = () => {
+		markNotificationsRead();
 		navigate("/audit-logs");
 		setShowNotifications(false);
 	};
@@ -145,11 +186,13 @@ const Header = ({
 							<li className="relative">
 								<button
 									data-tour="notifications"
-									onClick={() => setShowNotifications(!showNotifications)}
+									onClick={() => void handleToggleNotifications()}
 									className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-transparent bg-[#f4f7fe] text-[#707eae] hover:bg-[#e9e3ff] hover:text-primary transition-all active:scale-95"
 								>
 									<Bell size={20} />
-									<span className="absolute top-2 right-2 h-2.5 w-2.5 rounded-full bg-red-500 border-2 border-white shadow-sm"></span>
+									{hasUnreadNotifications && (
+										<span className="absolute top-2 right-2 h-2.5 w-2.5 rounded-full bg-red-500 border-2 border-white shadow-sm"></span>
+									)}
 								</button>
 
 								{showNotifications && (

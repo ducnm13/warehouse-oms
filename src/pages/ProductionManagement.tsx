@@ -1289,6 +1289,7 @@ export default function ProductionManagement({
 										<table className="erp-table">
 											<thead>
 												<tr>
+													<th className="w-12 text-center">STT</th>
 													<th>SKU phân bổ</th>
 													<th className="text-right">SL hộp/túi</th>
 													<th className="text-right">Thực tế (gói)</th>
@@ -1297,7 +1298,7 @@ export default function ProductionManagement({
 												</tr>
 											</thead>
 											<tbody>
-												{(selected.outputs || []).map(d => {
+												{(selected.outputs || []).map((d, index) => {
 													const editOut = editForm.outputs.find(
 														o => o.detailId === d.id,
 													) || {
@@ -1311,6 +1312,7 @@ export default function ProductionManagement({
 													);
 													return (
 														<tr key={d.id}>
+															<td className="text-center">{index + 1}</td>
 															<td>
 																<b>{d.packagingName}</b>
 																<small>
@@ -1594,6 +1596,7 @@ export default function ProductionManagement({
 								<table className="erp-table">
 									<thead>
 										<tr>
+											<th className="w-12 text-center">STT</th>
 											<th>Thành phẩm</th>
 											<th>Kế hoạch</th>
 											<th>Phân bổ %</th>
@@ -1603,8 +1606,9 @@ export default function ProductionManagement({
 										</tr>
 									</thead>
 									<tbody>
-										{(selected.outputs || []).map(d => (
+										{(selected.outputs || []).map((d, index) => (
 											<tr key={d.id}>
+												<td className="text-center">{index + 1}</td>
 												<td>
 													<b>{d.packagingName}</b>
 													<small>{d.sku}</small>

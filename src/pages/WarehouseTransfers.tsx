@@ -786,6 +786,7 @@ export default function WarehouseTransfers() {
 									<table className="erp-table">
 										<thead>
 											<tr>
+												<th className="w-12 text-center">STT</th>
 												<th>Hàng hóa / Quy cách</th>
 												<th>Số lượng</th>
 												<th>Ghi chú</th>
@@ -795,6 +796,7 @@ export default function WarehouseTransfers() {
 										<tbody>
 											{lines.map((line, index) => (
 												<tr key={index}>
+													<td className="text-center">{index + 1}</td>
 													<td className="min-w-64">
 														<SearchableSelect
 															required
@@ -913,17 +915,19 @@ export default function WarehouseTransfers() {
 							</span>
 							<table className="erp-table">
 								<thead>
-									<tr>
-										<th>Hàng hóa</th>
-										<th className="text-right">Số lượng</th>
-										<th className="text-right">Giá vốn</th>
-										<th className="text-right">Giá trị</th>
-									</tr>
-								</thead>
-								<tbody>
-									{selected.details.map(line => (
-										<tr key={line.id}>
-											<td>
+								<tr>
+									<th className="w-12 text-center">STT</th>
+									<th>Hàng hóa</th>
+									<th className="text-right">Số lượng</th>
+									<th className="text-right">Giá vốn</th>
+									<th className="text-right">Giá trị</th>
+								</tr>
+							</thead>
+							<tbody>
+								{selected.details.map((line, index) => (
+									<tr key={line.id}>
+										<td className="text-center">{index + 1}</td>
+										<td>
 												<b>
 													{formatProductName(
 														line.productName,

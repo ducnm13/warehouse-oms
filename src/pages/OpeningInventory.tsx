@@ -828,7 +828,7 @@ export default function OpeningInventory() {
 										<table className="erp-table">
 											<thead>
 												<tr>
-													<th>#</th>
+													<th className="w-12 text-center">STT</th>
 													<th>Hàng hóa</th>
 													<th className="text-right">Số lượng</th>
 													<th className="text-right">Đơn giá vốn</th>
@@ -1076,7 +1076,7 @@ export default function OpeningInventory() {
 										<table className="erp-table">
 											<thead>
 												<tr>
-													<th>#</th>
+													<th className="w-12 text-center">STT</th>
 													<th className="min-w-[220px]">Hàng hóa</th>
 													<th className="text-right min-w-[100px]">Số lượng</th>
 													<th className="text-right min-w-[130px]">

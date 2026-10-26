@@ -1791,6 +1791,9 @@ export default function CatalogProducts({
 													<table className="w-full min-w-[820px] table-fixed border-collapse text-[13px]">
 														<thead>
 															<tr className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+																<th className="w-[56px] px-3 py-2 text-center font-semibold">
+																	STT
+																</th>
 																<th className="w-[200px] px-3 py-2 font-semibold">
 																	Mã nguyên liệu
 																</th>
@@ -1823,6 +1826,9 @@ export default function CatalogProducts({
 																		: "");
 																return (
 																	<tr key={index}>
+																		<td className="px-3 py-2 text-center">
+																			{index + 1}
+																		</td>
 																		<td className="px-3 py-2">
 																			<SearchableSelect
 																				value={line.packagingId}

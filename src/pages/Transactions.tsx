@@ -1312,6 +1312,7 @@ export default function Transactions({
 									<table className="erp-table">
 										<thead>
 											<tr>
+												<th className="w-12 text-center">STT</th>
 												<th>Hàng hóa / Quy cách</th>
 												<th>Số lượng</th>
 												<th>Đơn giá vốn</th>
@@ -1323,6 +1324,7 @@ export default function Transactions({
 										<tbody>
 											{lines.map((line, index) => (
 												<tr key={index}>
+													<td className="text-center">{index + 1}</td>
 													<td className="min-w-64">
 														<SearchableSelect
 															required
@@ -1471,17 +1473,19 @@ export default function Transactions({
 							</div>
 							<table className="erp-table">
 								<thead>
-									<tr>
-										<th>Hàng hóa</th>
-										<th className="text-right">Số lượng</th>
-										<th className="text-right">Đơn giá</th>
-										<th className="text-right">Thành tiền</th>
-									</tr>
-								</thead>
-								<tbody>
-									{selected.details.map(line => (
-										<tr key={line.id}>
-											<td>
+								<tr>
+									<th className="w-12 text-center">STT</th>
+									<th>Hàng hóa</th>
+									<th className="text-right">Số lượng</th>
+									<th className="text-right">Đơn giá</th>
+									<th className="text-right">Thành tiền</th>
+								</tr>
+							</thead>
+							<tbody>
+								{selected.details.map((line, index) => (
+									<tr key={line.id}>
+										<td className="text-center">{index + 1}</td>
+										<td>
 												{formatProductName(
 													line.productName,
 													line.packagingName,

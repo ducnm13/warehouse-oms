@@ -645,6 +645,7 @@ export default function SalesReturns() {
 										<table className="erp-table">
 											<thead>
 												<tr>
+													<th className="w-12 text-center">STT</th>
 													<th>Hàng hóa</th>
 													<th>Loại</th>
 													<th>Đã bán</th>
@@ -663,7 +664,7 @@ export default function SalesReturns() {
 															row => row.originalSalesOrderLineId === line.id,
 														),
 													)
-													.map(line => {
+													.map((line, index) => {
 													const input = lines.find(
 														row => row.originalSalesOrderLineId === line.id,
 													);
@@ -675,6 +676,7 @@ export default function SalesReturns() {
 													);
 													return (
 														<tr key={line.id}>
+															<td className="text-center">{index + 1}</td>
 															<td>
 																{formatProductName(
 																	line.productName,
@@ -777,17 +779,19 @@ export default function SalesReturns() {
 							</span>
 							<table className="erp-table">
 								<thead>
-									<tr>
-										<th>Hàng hóa</th>
-										<th>SL trả</th>
-										<th>Giảm doanh thu + thuế</th>
-										<th>Giá vốn nhập lại</th>
-									</tr>
-								</thead>
-								<tbody>
-									{selected.lines.map(line => (
-										<tr key={line.id}>
-											<td>
+								<tr>
+									<th className="w-12 text-center">STT</th>
+									<th>Hàng hóa</th>
+									<th>SL trả</th>
+									<th>Giảm doanh thu + thuế</th>
+									<th>Giá vốn nhập lại</th>
+								</tr>
+							</thead>
+							<tbody>
+								{selected.lines.map((line, index) => (
+									<tr key={line.id}>
+										<td className="text-center">{index + 1}</td>
+										<td>
 												{formatProductName(
 													line.productName,
 													line.packagingName,

@@ -970,6 +970,7 @@ export default function Purchases() {
 									<table className="erp-table">
 										<thead>
 											<tr>
+												<th className="w-12 text-center">STT</th>
 												<th>Hàng hóa / Quy cách</th>
 												{type === "DOMESTIC_INVENTORY" && <th>Kho</th>}
 												<th>SL</th>
@@ -982,6 +983,7 @@ export default function Purchases() {
 										<tbody>
 											{lines.map((line, index) => (
 												<tr key={index}>
+													<td className="text-center">{index + 1}</td>
 													<td className="min-w-64">
 														<SearchableSelect
 															value={line.packagingId}
@@ -1184,6 +1186,7 @@ export default function Purchases() {
 							<table className="erp-table">
 								<thead>
 									<tr>
+										<th className="w-12 text-center">STT</th>
 										<th>Hàng hóa</th>
 										<th>Kho</th>
 										<th>SL</th>
@@ -1192,8 +1195,9 @@ export default function Purchases() {
 									</tr>
 								</thead>
 								<tbody>
-									{selected.details.map(line => (
+									{selected.details.map((line, index) => (
 										<tr key={line.id}>
+											<td className="text-center">{index + 1}</td>
 											<td>
 												{line.productName}
 												<small>{line.sku}</small>

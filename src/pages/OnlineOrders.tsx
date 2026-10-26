@@ -1671,6 +1671,7 @@ const OnlineOrders = () => {
 							<table className="erp-table">
 								<thead>
 									<tr>
+										<th className="w-12 text-center">STT</th>
 										<th>Sản phẩm</th>
 										<th className="text-right">SL</th>
 										<th className="text-right">Đơn giá</th>
@@ -1680,6 +1681,7 @@ const OnlineOrders = () => {
 								<tbody>
 									{(detailOrder.items || []).map((item, i) => (
 										<tr key={i}>
+											<td className="text-center">{i + 1}</td>
 											<td><b>{item.productName}</b><small>{item.unit || ""}</small></td>
 											<td className="text-right">{formatNumber(item.quantity)}</td>
 											<td className="text-right">{formatNumber(item.price)} ₫</td>

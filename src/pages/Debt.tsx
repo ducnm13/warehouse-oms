@@ -792,6 +792,7 @@ export default function Debt() {
 									<table className="erp-table">
 										<thead>
 											<tr>
+												<th className="w-12 text-center">STT</th>
 												<th></th>
 												<th>Chứng từ</th>
 												<th>Hạn</th>
@@ -800,12 +801,13 @@ export default function Debt() {
 											</tr>
 										</thead>
 										<tbody>
-											{openDocuments.map(document => {
+											{openDocuments.map((document, index) => {
 												const allocation = allocations.find(
 													row => row.documentId === document.documentId,
 												);
 												return (
 													<tr key={document.documentId}>
+														<td className="text-center">{index + 1}</td>
 														<td>
 															<input
 																type="checkbox"
@@ -903,19 +905,21 @@ export default function Debt() {
 							</span>
 							<table className="erp-table">
 								<thead>
-									<tr>
-										<th>Chứng từ</th>
-										<th className="text-right">Phân bổ</th>
-									</tr>
-								</thead>
-								<tbody>
-									{selected.allocations.map(row => (
-										<tr
-											key={row.id}
-											className="cursor-pointer hover:bg-slate-50"
-											onClick={() => setAllocationDocId(row.documentId)}
-										>
-											<td className="flex items-center gap-2">
+								<tr>
+									<th className="w-12 text-center">STT</th>
+									<th>Chứng từ</th>
+									<th className="text-right">Phân bổ</th>
+								</tr>
+							</thead>
+							<tbody>
+								{selected.allocations.map((row, index) => (
+									<tr
+										key={row.id}
+										className="cursor-pointer hover:bg-slate-50"
+										onClick={() => setAllocationDocId(row.documentId)}
+									>
+										<td className="text-center">{index + 1}</td>
+										<td className="flex items-center gap-2">
 												<Eye size={14} className="text-slate-400" />
 												{row.documentCode}
 											</td>
@@ -1057,6 +1061,7 @@ export default function Debt() {
 										<table className="erp-table">
 											<thead>
 												<tr>
+													<th className="w-12 text-center">STT</th>
 													<th>Hàng hóa / Quy cách</th>
 													<th className="text-right">Số lượng</th>
 													<th className="text-right">Đơn giá</th>
@@ -1066,6 +1071,7 @@ export default function Debt() {
 											<tbody>
 												{allocationDoc.details.map((line: any, idx: number) => (
 													<tr key={idx}>
+														<td className="text-center">{idx + 1}</td>
 														<td>
 															{formatProductName(
 																line.productName,

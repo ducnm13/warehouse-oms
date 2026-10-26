@@ -1014,6 +1014,7 @@ export default function Production({
 											style={{ tableLayout: "fixed", width: "100%" }}
 										>
 											<colgroup>
+												<col style={{ width: "48px" }} />
 												<col style={{ width: "170px" }} />
 												<col style={{ width: "280px" }} />
 												<col style={{ width: "70px" }} />
@@ -1022,6 +1023,7 @@ export default function Production({
 											</colgroup>
 											<thead>
 												<tr>
+													<th className="text-center">STT</th>
 													<th>Mã thành phẩm</th>
 													<th>Tên thành phẩm</th>
 													<th>ĐVT</th>
@@ -1036,6 +1038,7 @@ export default function Production({
 													);
 													return (
 														<tr key={index}>
+															<td className="text-center">{index + 1}</td>
 															<td>
 																<SearchableSelect
 																	value={line.packagingId}
@@ -1113,6 +1116,7 @@ export default function Production({
 													style={{ tableLayout: "fixed", width: "100%" }}
 												>
 													<colgroup>
+														<col style={{ width: "48px" }} />
 														<col style={{ width: "120px" }} />
 														<col style={{ minWidth: "200px" }} />
 														<col style={{ width: "120px" }} />
@@ -1121,6 +1125,7 @@ export default function Production({
 													</colgroup>
 													<thead>
 														<tr>
+															<th className="text-center">STT</th>
 															<th className="bom-code-cell">Mã</th>
 															<th className="bom-name-cell">Tên nguyên liệu</th>
 															<th className="text-right">Số lượng</th>
@@ -1129,8 +1134,9 @@ export default function Production({
 														</tr>
 													</thead>
 													<tbody>
-														{bomPreview.map(row => (
+														{bomPreview.map((row, index) => (
 															<tr key={`${row.packagingId}-${row.unit}`}>
+																<td className="text-center">{index + 1}</td>
 																<td className="bom-code-cell font-mono font-semibold">
 																	{row.sku || `PKG-${row.packagingId}`}
 																</td>
@@ -1232,9 +1238,17 @@ export default function Production({
 							</div>
 							<h3>Thành phẩm</h3>
 							<table className="erp-table">
+								<thead>
+									<tr>
+										<th className="w-12 text-center">STT</th>
+										<th>Thành phẩm</th>
+										<th className="text-right">Số lượng</th>
+									</tr>
+								</thead>
 								<tbody>
-									{baseOutputs(selected).map(x => (
+									{baseOutputs(selected).map((x, index) => (
 										<tr key={x.id} className="font-semibold text-xl">
+											<td className="text-center">{index + 1}</td>
 											<td>
 												{x.sku} - {x.packagingName}
 											</td>
@@ -1250,6 +1264,7 @@ export default function Production({
 							<table className="erp-table">
 								<thead>
 									<tr>
+										<th className="w-12 text-center">STT</th>
 										<th>Nguyên liệu</th>
 										<th>ĐVT</th>
 										<th className="text-right">Số lượng</th>
@@ -1258,7 +1273,7 @@ export default function Production({
 									</tr>
 								</thead>
 								<tbody>
-									{selected.materials.map(x => {
+									{selected.materials.map((x, index) => {
 										const pkg = packagingOptions.find(
 											p => p.id === x.packagingId,
 										);
@@ -1300,6 +1315,7 @@ export default function Production({
 											convertToBaseUnit(1, bomUnit, pkgUnit);
 										return (
 											<tr key={x.id}>
+												<td className="text-center">{index + 1}</td>
 												<td>
 													{/* {x.sku} - {x.productName} - {x.packagingName} */}
 													{x.sku} - {x.productName}

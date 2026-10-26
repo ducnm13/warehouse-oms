@@ -1,14 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-	Copy,
-	Eye,
-	Plus,
-	Printer,
-	Search,
-	Trash2,
-	Undo2,
-} from "lucide-react";
+import { Copy, Eye, Plus, Printer, Search, Trash2, Undo2 } from "lucide-react";
 import toast from "../components/ui/toast";
 import { confirm, prompt } from "../components/ui/confirm";
 import { apiV1, legacyApi } from "../lib/apiV1";
@@ -253,8 +245,7 @@ export default function Assembly({ user }: { user: User }) {
 			const componentWarehouse =
 				componentWarehouseId(refs.data?.warehouses) || 1;
 			const finishedWarehouse =
-				finishedGoodsWarehouseId(refs.data?.warehouses) ||
-				componentWarehouse;
+				finishedGoodsWarehouseId(refs.data?.warehouses) || componentWarehouse;
 			const payload = {
 				code: code || undefined,
 				orderDate,
@@ -595,19 +586,43 @@ export default function Assembly({ user }: { user: User }) {
 					];
 	const orderOutputLabel = (order: any) =>
 		orderOutputs(order)
-			.map((output: any) =>
-				[output.productName, output.packagingName]
-					.filter(Boolean)
-					.join(" - ") || output.sku || "",
+			.map(
+				(output: any) =>
+					[output.productName, output.packagingName]
+						.filter(Boolean)
+						.join(" - ") ||
+					output.sku ||
+					"",
 			)
 			.filter(Boolean)
 			.join("; ");
+	const outputAmount = (output: any) => {
+		const stored = Number(output.totalValue || 0);
+		if (stored) return stored;
+		const quantity =
+			Number(output.actualQuantity || 0) || Number(output.plannedQuantity || 0);
+		const unitCost =
+			Number(output.unitCost || 0) ||
+			refs.data?.costMap.get(Number(output.packagingId)) ||
+			0;
+		return quantity * unitCost;
+	};
+	const orderAmount = (order: any) =>
+		Number(order.outputTotalValue || order.sourceTotalValue || 0) ||
+		orderOutputs(order).reduce(
+			(sum: number, output: any) => sum + outputAmount(output),
+			0,
+		);
 	const allRows: any[] = orders.data?.data || [];
 	const keyword = search.trim().toLowerCase();
 	const visibleRows = allRows.filter(row => {
 		if (filters.status) {
 			const completed = row.status === "COMPLETED" || row.status === "POSTED";
-			if (filters.status === "COMPLETED" ? !completed : row.status !== filters.status)
+			if (
+				filters.status === "COMPLETED"
+					? !completed
+					: row.status !== filters.status
+			)
 				return false;
 		}
 		const date = String(row.orderDate || "").slice(0, 10);
@@ -688,8 +703,7 @@ export default function Assembly({ user }: { user: User }) {
 				},
 				{
 					header: "Tổng tiền",
-					value: (row: any) =>
-						Number(row.outputTotalValue || row.sourceTotalValue || 0),
+					value: (row: any) => orderAmount(row),
 				},
 				{
 					header: "Trạng thái",
@@ -797,9 +811,7 @@ export default function Assembly({ user }: { user: User }) {
 									</div>
 								</td>
 								<td className="text-right font-semibold">
-									{formatNumber(
-										row.outputTotalValue || row.sourceTotalValue || 0,
-									)}
+									{formatNumber(orderAmount(row))}
 								</td>
 								<td>
 									<span className={`erp-badge ${badge[row.status]}`}>
@@ -860,7 +872,7 @@ export default function Assembly({ user }: { user: User }) {
 						? `Sửa lệnh ${editing.code}`
 						: `Tạo lệnh ${tab === "ASSEMBLY" ? "lắp ráp" : "tháo dỡ"} mới`
 				}
-				subtitle={`Mã tự tăng ${tab === "ASSEMBLY" ? "LR00001" : "TD00001"}, nhập tay khi cần`}
+				subtitle={`Tạo lệnh ${tab === "ASSEMBLY" ? "lắp ráp hộp/túi từ bán thành phẩm" : "tháo dỡ từ thành phẩm ra bán thành phẩm"}`}
 				widthClass="max-w-[76rem]"
 				onClose={() => setOpen(false)}
 				footer={
@@ -1209,7 +1221,7 @@ export default function Assembly({ user }: { user: User }) {
 							<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
 								<div>
 									<small>Mã lệnh</small>
-									<b className="block font-mono">{selected.code}</b>
+									<b className="block">{selected.code}</b>
 								</div>
 								<div>
 									<small>Ngày lệnh</small>
@@ -1219,13 +1231,13 @@ export default function Assembly({ user }: { user: User }) {
 									<small>
 										{selectedIsAssembly ? "Kho linh kiện" : "Kho nguồn"}
 									</small>
-									<b className="block">{selectedSourceWarehouse}</b>
+									<b className="block">Kho thành phẩm</b>
 								</div>
 								<div>
 									<small>
 										{selectedIsAssembly ? "Kho thành phẩm" : "Kho thu hồi"}
 									</small>
-									<b className="block">{selectedTargetWarehouse}</b>
+									<b className="block">Kho thành phẩm</b>
 								</div>
 								<div className="md:col-span-2">
 									<small>Diễn giải</small>
@@ -1236,12 +1248,7 @@ export default function Assembly({ user }: { user: User }) {
 								<div>
 									<small>Tổng tiền</small>
 									<b className="block text-emerald-700">
-										{formatNumber(
-											(selected as any).outputTotalValue ||
-												(selected as any).sourceTotalValue ||
-												0,
-										)}{" "}
-										₫
+										{formatNumber(orderAmount(selected))} đ
 									</b>
 								</div>
 								<div>
@@ -1287,19 +1294,24 @@ export default function Assembly({ user }: { user: User }) {
 						<table className="erp-table">
 							<thead>
 								<tr>
+									<th className="w-12 text-center">STT</th>
 									<th>Mã thành phẩm</th>
 									<th>Tên thành phẩm</th>
 									<th className="text-right">Số lượng</th>
+									<th className="text-right">Thành tiền</th>
 								</tr>
 							</thead>
 							<tbody>
 								{orderOutputs(selected).map((row: any, index: number) => (
 									<tr key={index}>
+										<td className="text-center">{index + 1}</td>
 										<td className="font-mono">{row.sku || "-"}</td>
 										<td>{row.productName || row.packagingName || "-"}</td>
 										<td className="text-right">
-											{formatNumber(row.plannedQuantity || 0)}{" "}
-											{row.unit || ""}
+											{formatNumber(row.plannedQuantity || 0)} {row.unit || ""}
+										</td>
+										<td className="text-right font-semibold">
+											{formatNumber(outputAmount(row))}
 										</td>
 									</tr>
 								))}
