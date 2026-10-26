@@ -519,7 +519,13 @@ export default function Stocktake() {
 									return (
 										<tr key={document.id}>
 											<td>
-												<b>{document.code}</b>
+												<button
+													type="button"
+													className="font-bold text-[#422afb]"
+													onClick={() => setSelected(document)}
+												>
+													{document.code}
+												</button>
 												<small>{document.note || "-"}</small>
 											</td>
 											<td>{formatDate(document.date)}</td>

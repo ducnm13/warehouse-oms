@@ -335,9 +335,10 @@ export const salesService = {
         return { line, quantity, unitCost, costAmount: quantity * unitCost };
       });
       await tx.inventorytransactiondetails.createMany({
-        data: costByLine.map(({ line, quantity }) => ({
+        data: costByLine.map(({ line, quantity, unitCost, costAmount }) => ({
           transactionId: inventoryTransaction.id, packagingId: line.packagingId,
-          quantity, note: document.code, createdAt: now, updatedAt: now,
+          quantity, unitCost: decimal(unitCost), totalValue: money(costAmount),
+          note: document.code, createdAt: now, updatedAt: now,
         })),
       });
       for (const [packagingId, quantity] of requiredByPackaging) {

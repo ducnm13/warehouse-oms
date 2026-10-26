@@ -556,7 +556,8 @@ export default function WarehouseTransfers() {
 										<tr key={document.id}>
 											<td>
 												<button
-													className="font-bold text-emerald-700"
+													type="button"
+													className="font-bold text-[#422afb]"
 													onClick={() => setSelected(document)}
 												>
 													{document.code}

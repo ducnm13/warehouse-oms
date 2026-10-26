@@ -61,6 +61,50 @@ async function averageCost(tx: any, packagingId: number, warehouseId: number) {
   return quantity > 0 && value > 0 ? value / quantity : 0;
 }
 
+async function fillMissingSaleCosts(rows: any[]) {
+  const pending = rows.filter(row =>
+    row.sourceModule === "SALE_V1" &&
+    (row.inventorytransactiondetails || []).some((line: any) => Number(line.unitCost || 0) === 0),
+  );
+  if (!pending.length) return rows;
+
+  const orderCodes = [...new Set(
+    pending
+      .map(row => String(row.code || "").replace(/^PX-/, ""))
+      .filter(Boolean),
+  )];
+  if (!orderCodes.length) return rows;
+
+  const orders = await prisma.sales_orders.findMany({
+    where: { code: { in: orderCodes } },
+    select: {
+      code: true,
+      sales_order_details: { select: { packagingId: true, unitCost: true } },
+    },
+  });
+  const costByOrderPackaging = new Map<string, number>();
+  for (const order of orders) {
+    for (const line of order.sales_order_details) {
+      costByOrderPackaging.set(
+        `${order.code}:${line.packagingId}`,
+        Number(line.unitCost || 0),
+      );
+    }
+  }
+
+  for (const row of pending) {
+    const orderCode = String(row.code || "").replace(/^PX-/, "");
+    for (const line of row.inventorytransactiondetails || []) {
+      if (Number(line.unitCost || 0) !== 0) continue;
+      const unitCost = costByOrderPackaging.get(`${orderCode}:${line.packagingId}`) || 0;
+      if (unitCost === 0) continue;
+      line.unitCost = unitCost;
+      line.totalValue = Number(line.quantity || 0) * unitCost;
+    }
+  }
+  return rows;
+}
+
 const detailData = (line: InventoryDraftInput["details"][number], now: string) => ({
   packagingId: line.packagingId, quantity: line.quantity, unitCost: money(line.unitCost),
   totalValue: money(line.quantity * line.unitCost), note: line.note || "", createdAt: now, updatedAt: now,
@@ -77,15 +121,18 @@ export const inventoryService = {
       ...(query.search ? { OR: [{ code: { contains: query.search } }, { note: { contains: query.search } }, { recipient: { contains: query.search } }] } : {}),
     };
     const [rows, total] = await Promise.all([inventoryRepository.list(where, (query.page - 1) * query.limit, query.limit), inventoryRepository.count(where)]);
+    await fillMissingSaleCosts(rows);
     return { data: rows.map(mapInventoryDocument), meta: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) } };
   },
   async get(id: number) {
     const row = await inventoryRepository.findById(id);
     if (!row) throw new HttpError(404, "INVENTORY_NOT_FOUND", "Không tìm thấy chứng từ kho");
+    await fillMissingSaleCosts([row]);
     return mapInventoryDocument(row);
   },
   async getByCodes(codes: string[]) {
     const rows = await inventoryRepository.findByCodes(codes.filter(Boolean));
+    await fillMissingSaleCosts(rows);
     return rows.map(mapInventoryDocument);
   },
   async create(input: InventoryDraftInput, userId: number) {

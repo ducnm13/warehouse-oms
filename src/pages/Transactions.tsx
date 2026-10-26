@@ -1017,7 +1017,13 @@ export default function Transactions({
 										rows.map(document => (
 											<tr key={document.id}>
 												<td>
-													<b>{document.code}</b>
+													<button
+														type="button"
+														className="font-bold text-[#422afb]"
+														onClick={() => setSelected(document)}
+													>
+														{document.code}
+													</button>
 													<small>
 														{document.recipient || document.reason || "-"}
 													</small>
