@@ -7,9 +7,11 @@ import toast from "../ui/toast";
 import { legacyApi } from "../../lib/apiV1";
 import { formatNumber } from "../../lib/utils";
 
-export const money = (value: unknown) => `${formatNumber(Number(value || 0))} ₫`;
+export const money = (value: unknown) =>
+	`${formatNumber(Number(value || 0))} ₫`;
 export const qty = (value: unknown) => formatNumber(Number(value || 0));
-export const percent = (value: unknown) => `${formatNumber(Number(value || 0))}%`;
+export const percent = (value: unknown) =>
+	`${formatNumber(Number(value || 0))}%`;
 
 export type ExportColumn<T> = {
 	header: string;
@@ -36,11 +38,16 @@ export function useReportExport() {
 				key: column.header,
 				width: column.width || 20,
 			}));
-			for (const row of rows) sheet.addRow(columns.map(column => column.value(row)));
+			for (const row of rows)
+				sheet.addRow(columns.map(column => column.value(row)));
 			const head = sheet.getRow(1);
 			head.font = { bold: true };
 			head.eachCell(cell => {
-				cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEAECF0" } };
+				cell.fill = {
+					type: "pattern",
+					pattern: "solid",
+					fgColor: { argb: "FFEAECF0" },
+				};
 			});
 			const buffer = await workbook.xlsx.writeBuffer();
 			saveAs(new Blob([buffer]), filename);
@@ -76,7 +83,9 @@ export function ReportShell({
 					<h1>{title}</h1>
 					{description ? <p>{description}</p> : null}
 				</div>
-				{actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+				{actions ? (
+					<div className="flex flex-wrap items-center gap-2">{actions}</div>
+				) : null}
 			</div>
 			{children}
 		</div>
@@ -102,7 +111,9 @@ export function ReportCard({
 				<div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
 					<div>
 						<h2 className="text-[14.5px] font-bold text-slate-800">{title}</h2>
-						{description ? <p className="text-[12px] text-slate-500">{description}</p> : null}
+						{description ? (
+							<p className="text-[12px] text-slate-500">{description}</p>
+						) : null}
 					</div>
 					{action}
 				</div>
@@ -141,7 +152,9 @@ export function StatCard({
 			<div className="min-w-0">
 				<span>{label}</span>
 				<strong className={color}>{value}</strong>
-				{hint ? <span className="mt-0.5 text-[11px] text-slate-400">{hint}</span> : null}
+				{hint ? (
+					<span className="mt-0.5 text-[11px] text-slate-400">{hint}</span>
+				) : null}
 			</div>
 		</div>
 	);
@@ -255,7 +268,10 @@ export function WarehouseSelect({
 	return (
 		<label>
 			Kho
-			<select value={value} onChange={event => onChange(Number(event.target.value))}>
+			<select
+				value={value}
+				onChange={event => onChange(Number(event.target.value))}
+			>
 				<option value={0}>{placeholder}</option>
 				{warehouses.map(warehouse => (
 					<option key={warehouse.id} value={warehouse.id}>
