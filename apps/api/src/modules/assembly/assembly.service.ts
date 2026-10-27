@@ -103,6 +103,29 @@ async function audit(tx: any, action: string, details: string, userId: number) {
 	});
 }
 
+async function reconcileLinkedOrderStatus(
+	kind: "ASSEMBLY" | "DISASSEMBLY",
+) {
+	const now = new Date();
+	const where = {
+		status: "DRAFT",
+		sourceModule: kind === "ASSEMBLY" ? "ASSEMBLY_V1" : "DISASSEMBLY_V1",
+		AND: [
+			{ links: { some: { linkType: "INVENTORY_ISSUE" } } },
+			{ links: { some: { linkType: "INVENTORY_RECEIPT" } } },
+		],
+	} as any;
+	const data = {
+		status: "COMPLETED",
+		postedAt: now,
+		updatedAt: now,
+		version: { increment: 1 },
+	};
+	if (kind === "ASSEMBLY")
+		await prisma.assembly_orders.updateMany({ where, data });
+	else await prisma.disassembly_orders.updateMany({ where, data });
+}
+
 export const assemblyService = {
 	async listBoms(query: any) {
 		const rows = await assemblyRepository.listBoms({
@@ -236,6 +259,7 @@ export const assemblyService = {
 		return mapAssemblyBom(row);
 	},
 	async listAssembly(query: any) {
+		await reconcileLinkedOrderStatus("ASSEMBLY");
 		const where: any = {
 			sourceModule: "ASSEMBLY_V1",
 			...(query.status ? { status: query.status } : {}),
@@ -281,6 +305,7 @@ export const assemblyService = {
 		};
 	},
 	async getAssembly(id: number) {
+		await reconcileLinkedOrderStatus("ASSEMBLY");
 		const row = await assemblyRepository.findAssembly(id);
 		if (!row || row.sourceModule !== "ASSEMBLY_V1")
 			throw new HttpError(
@@ -633,6 +658,7 @@ export const assemblyService = {
 		return this.getAssembly(id);
 	},
 	async listDisassembly(query: any) {
+		await reconcileLinkedOrderStatus("DISASSEMBLY");
 		const where: any = {
 			sourceModule: "DISASSEMBLY_V1",
 			...(query.status ? { status: query.status } : {}),
@@ -678,6 +704,7 @@ export const assemblyService = {
 		};
 	},
 	async getDisassembly(id: number) {
+		await reconcileLinkedOrderStatus("DISASSEMBLY");
 		const row = await assemblyRepository.findDisassembly(id);
 		if (!row || row.sourceModule !== "DISASSEMBLY_V1")
 			throw new HttpError(
@@ -1131,10 +1158,10 @@ export const assemblyService = {
 				`${id} -> ${input.linkedCode || input.linkedId}`,
 				userId,
 			);
-			return kind === "ASSEMBLY"
-				? this.getAssembly(id)
-				: this.getDisassembly(id);
 		});
+		return kind === "ASSEMBLY"
+			? this.getAssembly(id)
+			: this.getDisassembly(id);
 	},
 	async cancel(
 		kind: "ASSEMBLY" | "DISASSEMBLY",

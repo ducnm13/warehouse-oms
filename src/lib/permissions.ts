@@ -43,10 +43,10 @@ export const getModuleAccess = (
 		reports: has("report.view"),
 		users: has("iam.manage"),
 		roles: has("iam.manage"),
-		auditLogs: has("system.admin"),
+		auditLogs: has("audit.view"),
 		company: has("company.manage"),
-		devTools: has("system.admin"),
-		chat: true,
+		devTools: has("devtools.use"),
+		chat: has("chat.use"),
 	} as const;
 };
 

@@ -83,6 +83,26 @@ const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           setToken(storedToken);
           setUser(JSON.parse(storedUser));
         }
+        fetch('/api/v1/auth/me', {
+          headers: { Authorization: `Bearer ${storedToken}` },
+        })
+          .then(res => (res.ok ? res.json() : null))
+          .then(body => {
+            const auth = body?.data;
+            if (!mounted || !auth) return;
+            setUser(prev => {
+              if (!prev) return prev;
+              const next = {
+                ...prev,
+                role: auth.legacyRole || prev.role,
+                roles: Array.isArray(auth.roles) ? auth.roles : prev.roles,
+                permissions: Array.isArray(auth.permissions) ? auth.permissions : prev.permissions,
+              };
+              localStorage.setItem('user', JSON.stringify(next));
+              return next;
+            });
+          })
+          .catch(() => undefined);
       }
     } catch (e) {
       console.error('Auth init error:', e);

@@ -11,12 +11,13 @@ import TableActions from "../components/TableActions";
 import ListToolbar from "../components/ListToolbar";
 import type { FilterField, FilterValues } from "../components/FilterDrawer";
 import { exportExcelFile } from "../lib/excelExport";
-import PrintPreview from "../components/PrintPreview";
+import PrintDocumentPreview from "../components/PrintDocumentPreview";
+import { AssemblyDocument } from "../components/AssemblyDocument";
 import NumberInput from "../components/NumberInput";
 import { formatDate, formatNumber, formatProductName } from "../lib/utils";
+import { hasPermission } from "../lib/permissions";
 import {
-	fillGenericDocument,
-	GENERIC_LAYOUTS,
+	buildCompanyPrintProfile,
 	type CompanyPrintProfile,
 } from "../lib/printTemplate";
 import { DateInput } from "../components/DateRangeCalendar";
@@ -86,10 +87,7 @@ const ASSEMBLY_FILTER_FIELDS: FilterField[] = [
 
 export default function Assembly({ user }: { user: User }) {
 	const qc = useQueryClient();
-	const manage =
-		user.role === "ADMIN" ||
-		user.role === "P_MANAGER" ||
-		user.role === "W_MANAGER";
+	const manage = hasPermission(user.role, user.permissions, "assembly.manage");
 	const [tab, setTab] = useState<Tab>("ASSEMBLY");
 	const [search, setSearch] = useState("");
 	const [filters, setFilters] = useState<FilterValues>({});
@@ -125,6 +123,17 @@ export default function Assembly({ user }: { user: User }) {
 			}>)
 				costMap.set(row.packagingId, Number(row.price || 0));
 			return { warehouses, products, costMap };
+		},
+	});
+	const companyQuery = useQuery({
+		queryKey: ["company-profile"],
+		queryFn: async () => {
+			try {
+				const response = await apiV1<any>("/api/v1/company");
+				return buildCompanyPrintProfile(response.data);
+			} catch {
+				return null as CompanyPrintProfile | null;
+			}
 		},
 	});
 	const orders = useQuery({
@@ -560,6 +569,10 @@ export default function Assembly({ user }: { user: User }) {
 	};
 
 	const [printTarget, setPrintTarget] = useState<any | null>(null);
+	const printIsDisassembly =
+		!!printTarget &&
+		(String(printTarget.sourceModule || "").includes("DISASSEMBLY") ||
+			(!!printTarget.sources?.length && !printTarget.outputs?.length));
 	const orderOutputs = (order: any) =>
 		order.outputs?.length
 			? order.outputs
@@ -1462,78 +1475,29 @@ export default function Assembly({ user }: { user: User }) {
 				)}
 			</RightDrawer>
 
-			<PrintPreview
+			<PrintDocumentPreview
 				open={!!printTarget}
-				title={
-					printTarget ? `Xem trước in lệnh ${printTarget.code}` : "Xem trước in"
-				}
-				fill={
+				title={printIsDisassembly ? "Lệnh tháo dỡ" : "Lệnh lắp ráp"}
+				code={printTarget?.code}
+				documentTitle={
 					printTarget
-						? (worksheet, company) => {
-								const isDisassembly =
-									String(printTarget.sourceModule || "").includes(
-										"DISASSEMBLY",
-									) ||
-									(!!printTarget.sources?.length &&
-										!printTarget.outputs?.length);
-								const outputRows = orderOutputs(printTarget)
-									.filter((output: any) => output?.sku || output?.packagingName)
-									.map((output: any, index: number) => ({
-										stt: index + 1,
-										type: isDisassembly ? "Nguồn" : "Thành phẩm",
-										sku: output.sku || "",
-										name: [output.productName, output.packagingName]
-											.filter(Boolean)
-											.join(" - "),
-										unit: output.unit || "",
-										quantity: Number(output.plannedQuantity || 0),
-										amount: Number(output.totalValue || 0),
-									}));
-								const componentRows = (printTarget.lines || []).map(
-									(line: any, index: number) => {
-										const quantity = Number(line.plannedQuantity || 0);
-										const unitCost = Number(line.unitCost || 0);
-										return {
-											stt: outputRows.length + index + 1,
-											type: isDisassembly ? "Thành phẩm" : "Linh kiện",
-											sku: line.componentSku || line.component?.sku || "",
-											name:
-												line.componentName ||
-												line.component?.name ||
-												line.componentProductName ||
-												line.component?.products?.name ||
-												"",
-											unit: line.componentUnit || line.component?.unit || "",
-											quantity,
-											amount: Number(line.totalValue ?? quantity * unitCost),
-										};
-									},
-								);
-								const total = componentRows.reduce(
-									(sum, row) => sum + Number(row.amount || 0),
-									0,
-								);
-								fillGenericDocument(
-									worksheet,
-									company as CompanyPrintProfile | null,
-									GENERIC_LAYOUTS.assembly,
-									{
-										code: printTarget.code,
-										documentDate: printTarget.orderDate,
-										title: isDisassembly ? "LỆNH THÁO DỠ" : "LỆNH LẮP RÁP",
-										partner: isDisassembly
-											? `${printTarget.sourceWarehouse?.name || printTarget.sourceWarehouseName || ""} → ${printTarget.recoveryWarehouse?.name || printTarget.recoveryWarehouseName || ""}`
-											: `${printTarget.componentWarehouse?.name || printTarget.componentWarehouseName || ""} → ${printTarget.outputWarehouse?.name || printTarget.outputWarehouseName || ""}`,
-										dienGiai: printTarget.note || "",
-										total,
-										rows: [...outputRows, ...componentRows],
-									},
-								);
-							}
-						: null
+						? `Lenh-${printIsDisassembly ? "thao-do" : "lap-rap"}-${printTarget.code}`
+						: "Lenh-lap-rap"
 				}
 				onClose={() => setPrintTarget(null)}
-			/>
+			>
+				{ref => {
+					if (!printTarget) return null;
+					return (
+						<AssemblyDocument
+							ref={ref}
+							order={printTarget}
+							isDisassembly={printIsDisassembly}
+							company={companyQuery.data}
+						/>
+					);
+				}}
+			</PrintDocumentPreview>
 		</div>
 	);
 }

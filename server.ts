@@ -1206,6 +1206,18 @@ async function startServer() {
 				[decoded.id],
 			);
 			if (!user) return res.status(401).json({ error: "User not found" });
+			try {
+				const permRows: any[] = await db.all(
+					`SELECT DISTINCT p.code FROM user_roles ur
+					 JOIN role_permissions rp ON rp.roleId = ur.roleId
+					 JOIN permissions p ON p.id = rp.permissionId
+					 WHERE ur.userId = ?`,
+					[user.id],
+				);
+				user.permissions = permRows.map(row => String(row.code));
+			} catch {
+				user.permissions = [];
+			}
 			req.user = user;
 			const forwarded = req.headers["x-forwarded-for"];
 			user.ipAddress = String(
@@ -1222,8 +1234,14 @@ async function startServer() {
 		}
 	};
 
+	const userCan = (user: any, permission: string) => {
+		const permissions: string[] = user?.permissions || [];
+		return permissions.includes("system.admin") || permissions.includes(permission);
+	};
+
 	// Customers API
-	app.get("/api/customers", authenticate, async (req, res) => {
+	app.get("/api/customers", authenticate, async (req: any, res) => {
+		if (!userCan(req.user, "customer.view")) return res.status(403).json({ error: "Bạn không có quyền xem khách hàng" });
 		const customers = await db.all(`
       SELECT c.*, c.groupId, c.teamId,
         COALESCE(SUM(CASE WHEN so.status = 'FULFILLED' THEN GREATEST(so.totalAmount - so.paidAmount, 0) ELSE 0 END), 0) debt,
@@ -1271,6 +1289,7 @@ async function startServer() {
 	});
 
 	app.post("/api/customers", authenticate, async (req: any, res) => {
+		if (!userCan(req.user, "customer.manage")) return res.status(403).json({ error: "Bạn không có quyền quản lý khách hàng" });
 		const {
 			code,
 			name,
@@ -1404,6 +1423,7 @@ async function startServer() {
 	});
 
 	app.put("/api/customers/:id", authenticate, async (req: any, res) => {
+		if (!userCan(req.user, "customer.manage")) return res.status(403).json({ error: "Bạn không có quyền quản lý khách hàng" });
 		const {
 			code,
 			name,
@@ -1460,6 +1480,7 @@ async function startServer() {
 	});
 
 	app.delete("/api/customers/:id", authenticate, async (req: any, res) => {
+		if (!userCan(req.user, "customer.manage")) return res.status(403).json({ error: "Bạn không có quyền quản lý khách hàng" });
 		try {
 			const cust = await db.get("SELECT name FROM customers WHERE id = ?", [
 				req.params.id,
@@ -1481,9 +1502,8 @@ async function startServer() {
 	});
 
 	// Suppliers and purchasing API
-	const purchaseRoles = ["ADMIN", "W_MANAGER", "QD"];
 	const ensurePurchaseRole = (req: any, res: any) => {
-		if (!purchaseRoles.includes(req.user.role)) {
+		if (!userCan(req.user, "purchase.view")) {
 			res
 				.status(403)
 				.json({ error: "Bạn không có quyền truy cập phân hệ mua hàng" });
@@ -2022,8 +2042,8 @@ async function startServer() {
 
 	// Audit Logs API — nhật ký hoạt động chi tiết: ai thao tác, thao tác gì, IP/thiết bị
 	app.get("/api/audit-logs/filters", authenticate, async (req: any, res) => {
-		if (req.user.role !== "ADMIN") {
-			return res.status(403).json({ error: "Quyền truy cập bị từ chối" });
+		if (!userCan(req.user, "audit.view")) {
+			return res.status(403).json({ error: "Quy��?n truy c��-p b��< t��� ch��`i" });
 		}
 		const actions: any[] = await db.all(
 			"SELECT DISTINCT action FROM audit_logs WHERE action IS NOT NULL AND action <> '' ORDER BY action ASC",
@@ -2036,8 +2056,8 @@ async function startServer() {
 	});
 
 	app.get("/api/audit-logs", authenticate, async (req: any, res) => {
-		if (req.user.role !== "ADMIN") {
-			return res.status(403).json({ error: "Quyền truy cập bị từ chối" });
+		if (!userCan(req.user, "audit.view")) {
+			return res.status(403).json({ error: "Quy��?n truy c��-p b��< t��� ch��`i" });
 		}
 		const page = Math.max(1, Number(req.query.page) || 1);
 		const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
@@ -2102,7 +2122,8 @@ async function startServer() {
 	});
 
 	// Products API
-	app.get("/api/products", authenticate, async (req, res) => {
+	app.get("/api/products", authenticate, async (req: any, res) => {
+		if (!userCan(req.user, "catalog.view")) return res.status(403).json({ error: "Bạn không có quyền xem danh mục" });
 		const { category } = req.query;
 		let sql = "SELECT * FROM products";
 		const params = [];
@@ -2156,6 +2177,7 @@ async function startServer() {
 	});
 
 	app.post("/api/products", authenticate, async (req: any, res) => {
+		if (!userCan(req.user, "catalog.manage")) return res.status(403).json({ error: "Bạn không có quyền quản lý danh mục" });
 		const { name, sku, netWeight, shelfLifeMonths, packagings, category } =
 			req.body;
 		const now = new Date().toISOString();
@@ -2221,6 +2243,7 @@ async function startServer() {
 	});
 
 	app.put("/api/products/:id", authenticate, async (req: any, res) => {
+		if (!userCan(req.user, "catalog.manage")) return res.status(403).json({ error: "Bạn không có quyền quản lý danh mục" });
 		const { name, sku, netWeight, shelfLifeMonths, packagings, category } =
 			req.body;
 		const now = new Date().toISOString();
@@ -2325,7 +2348,8 @@ async function startServer() {
 		}
 	});
 
-	app.patch("/api/products/:id", authenticate, async (req, res) => {
+	app.patch("/api/products/:id", authenticate, async (req: any, res) => {
+		if (!userCan(req.user, "catalog.manage")) return res.status(403).json({ error: "Bạn không có quyền quản lý danh mục" });
 		const {
 			name,
 			sku,
@@ -2363,7 +2387,8 @@ async function startServer() {
 		res.json({ success: true });
 	});
 
-	app.delete("/api/products/:id", authenticate, async (req, res) => {
+	app.delete("/api/products/:id", authenticate, async (req: any, res) => {
+		if (!userCan(req.user, "catalog.manage")) return res.status(403).json({ error: "Bạn không có quyền quản lý danh mục" });
 		try {
 			const packagings = await db.all(
 				"SELECT id FROM productpackagings WHERE productId = ?",
@@ -2395,7 +2420,8 @@ async function startServer() {
 	});
 
 	// Transactions API
-	app.get("/api/transactions", authenticate, async (req, res) => {
+	app.get("/api/transactions", authenticate, async (req: any, res) => {
+		if (!userCan(req.user, "inventory.view")) return res.status(403).json({ error: "Bạn không có quyền xem kho" });
 		const txs = await db.all(`
       SELECT it.*, u.fullName as creatorName, w.name as warehouseName, c.name as customerName
       FROM inventorytransactions it
@@ -2420,10 +2446,10 @@ async function startServer() {
 	});
 
 	app.delete("/api/transactions/:id", authenticate, async (req: any, res) => {
-		if (req.user.role !== "ADMIN") {
+		if (!userCan(req.user, "inventory.manage")) {
 			return res
 				.status(403)
-				.json({ error: "Chỉ quản trị viên mới có quyền xóa phiếu" });
+				.json({ error: "B���n khA'ng cA3 quy��?n xA3a phi���u kho" });
 		}
 
 		try {
@@ -2475,6 +2501,7 @@ async function startServer() {
 	});
 
 	app.post("/api/transactions", authenticate, async (req: any, res) => {
+		if (!userCan(req.user, "inventory.manage")) return res.status(403).json({ error: "Bạn không có quyền quản lý kho" });
 		const {
 			type,
 			transaction_date,
@@ -2568,6 +2595,7 @@ async function startServer() {
 
 	// API Sửa phiếu nhập xuất
 	app.put("/api/transactions/:id", authenticate, async (req: any, res) => {
+		if (!userCan(req.user, "inventory.manage")) return res.status(403).json({ error: "Bạn không có quyền quản lý kho" });
 		const {
 			type,
 			transaction_date,
@@ -2689,7 +2717,8 @@ async function startServer() {
 	});
 
 	// Production API
-	app.get("/api/production-orders", authenticate, async (req, res) => {
+	app.get("/api/production-orders", authenticate, async (req: any, res) => {
+		if (!userCan(req.user, "production.view")) return res.status(403).json({ error: "Bạn không có quyền xem sản xuất" });
 		const orders = await db.all(`
       SELECT po.*, p.name as productName
       FROM productionorders po
@@ -2711,6 +2740,7 @@ async function startServer() {
 	});
 
 	app.post("/api/production-orders", authenticate, async (req: any, res) => {
+		if (!userCan(req.user, "production.manage")) return res.status(403).json({ error: "Bạn không có quyền quản lý sản xuất" });
 		const {
 			code,
 			batch_number,
@@ -2779,6 +2809,7 @@ async function startServer() {
 
 	// API sửa lệnh sản xuất
 	app.put("/api/production-orders/:id", authenticate, async (req: any, res) => {
+		if (!userCan(req.user, "production.manage")) return res.status(403).json({ error: "Bạn không có quyền quản lý sản xuất" });
 		const {
 			code,
 			batch_number,
@@ -2865,6 +2896,7 @@ async function startServer() {
 		"/api/production-orders/:id",
 		authenticate,
 		async (req: any, res) => {
+			if (!userCan(req.user, "production.manage")) return res.status(403).json({ error: "Bạn không có quyền quản lý sản xuất" });
 			// Đã loại bỏ biến consumedMaterials ra khỏi Hướng 2 BOM
 			const { status, details } = req.body;
 			const now = new Date().toISOString();
@@ -3069,10 +3101,10 @@ async function startServer() {
 		"/api/production-orders/:id",
 		authenticate,
 		async (req: any, res) => {
-			if (req.user.role !== "ADMIN") {
+			if (!userCan(req.user, "production.manage")) {
 				return res
 					.status(403)
-					.json({ error: "Chỉ quản trị viên mới có quyền xóa lệnh sản xuất" });
+					.json({ error: "B���n khA'ng cA3 quy��?n xA3a l���nh s���n xu���t" });
 			}
 			try {
 				const order = await db.get(
@@ -3137,6 +3169,7 @@ async function startServer() {
 
 	// Danh bạ chat: mọi tài khoản đã đăng nhập đều xem được để bắt đầu trò chuyện
 	app.get("/api/chat/users", authenticate, async (req: any, res) => {
+		if (!userCan(req.user, "chat.use")) return res.status(403).json({ error: "Bạn không có quyền sử dụng tin nhắn" });
 		const users: any[] = await db.all(
 			`SELECT u.id, u.username, u.fullName, u.avatarUrl
 			 FROM users u ORDER BY u.fullName ASC`,
@@ -3145,7 +3178,7 @@ async function startServer() {
 	});
 
 	app.get("/api/users", authenticate, async (req: any, res) => {
-		if (req.user.role !== "ADMIN")
+		if (!userCan(req.user, "iam.manage"))
 			return res.status(403).json({ error: "Access denied" });
 		const users: any[] = await db.all(
 			`SELECT u.id, u.username, u.role, u.fullName,
@@ -3156,7 +3189,7 @@ async function startServer() {
 	});
 
 	app.post("/api/users", authenticate, async (req: any, res) => {
-		if (req.user.role !== "ADMIN")
+		if (!userCan(req.user, "iam.manage"))
 			return res.status(403).json({ error: "Access denied" });
 		const { fullName, role, username, password, roleIds } = req.body;
 		const resolved = await resolveRoleCodes(roleIds, role);
@@ -3189,7 +3222,7 @@ async function startServer() {
 	});
 
 	app.patch("/api/users/:id", authenticate, async (req: any, res) => {
-		if (req.user.role !== "ADMIN")
+		if (!userCan(req.user, "iam.manage"))
 			return res.status(403).json({ error: "Access denied" });
 		const { fullName, role, username, password, roleIds } = req.body;
 		const resolved = await resolveRoleCodes(roleIds, role);
@@ -3234,7 +3267,7 @@ async function startServer() {
 	});
 
 	app.delete("/api/users/:id", authenticate, async (req: any, res) => {
-		if (req.user.role !== "ADMIN")
+		if (!userCan(req.user, "iam.manage"))
 			return res.status(403).json({ error: "Access denied" });
 		const id = Number(req.params.id);
 		if (id === req.user.id)
@@ -3292,7 +3325,6 @@ async function startServer() {
 	});
 
 	// Sales orders, sales fulfillment and warehouse transfers
-	const salesRoles = ["ADMIN", "S_SALES"];
 	const loadSalesOrder = async (id: string | number) => {
 		const order = await db.get(
 			`
@@ -3322,7 +3354,7 @@ async function startServer() {
 	};
 
 	app.get("/api/sales-orders/template", authenticate, async (req: any, res) => {
-		if (!salesRoles.includes(req.user.role) && req.user.role !== "W_MANAGER")
+		if (!userCan(req.user, "sales.view"))
 			return res
 				.status(403)
 				.json({ error: "Bạn không có quyền tải mẫu đơn hàng" });
@@ -3335,7 +3367,7 @@ async function startServer() {
 	});
 
 	app.get("/api/sales-orders", authenticate, async (req: any, res) => {
-		if (!salesRoles.includes(req.user.role) && req.user.role !== "W_MANAGER")
+		if (!userCan(req.user, "sales.view"))
 			return res.status(403).json({ error: "Bạn không có quyền xem đơn hàng" });
 		const rows = await db.all(
 			`SELECT id FROM sales_orders ORDER BY createdAt DESC`,
@@ -3344,7 +3376,7 @@ async function startServer() {
 	});
 
 	app.post("/api/sales-orders", authenticate, async (req: any, res) => {
-		if (!salesRoles.includes(req.user.role))
+		if (!userCan(req.user, "sales.create"))
 			return res
 				.status(403)
 				.json({ error: "Chỉ bộ phận bán hàng được tạo đơn" });
@@ -3463,8 +3495,8 @@ async function startServer() {
 		"/api/sales-orders/:id/status",
 		authenticate,
 		async (req: any, res) => {
-			if (!salesRoles.includes(req.user.role))
-				return res.status(403).json({ error: "Bạn không có quyền duyệt đơn" });
+			if (!userCan(req.user, "sales.post"))
+				return res.status(403).json({ error: "B���n khA'ng cA3 quy��?n duy���t �`��n" });
 			const order = await loadSalesOrder(req.params.id);
 			if (!order)
 				return res.status(404).json({ error: "Không tìm thấy đơn hàng" });
@@ -3509,7 +3541,7 @@ async function startServer() {
 		"/api/sales-orders/:id/fulfill",
 		authenticate,
 		async (req: any, res) => {
-			if (!salesRoles.includes(req.user.role) && req.user.role !== "W_MANAGER")
+			if (!userCan(req.user, "sales.post"))
 				return res
 					.status(403)
 					.json({ error: "Bạn không có quyền ghi nhận bán hàng" });
@@ -3602,7 +3634,7 @@ async function startServer() {
 		"/api/sales-orders/:id/payments",
 		authenticate,
 		async (req: any, res) => {
-			if (!salesRoles.includes(req.user.role))
+			if (!userCan(req.user, "debt.receive"))
 				return res
 					.status(403)
 					.json({ error: "Bạn không có quyền ghi nhận thanh toán" });
@@ -3666,7 +3698,8 @@ async function startServer() {
 		},
 	);
 
-	app.get("/api/dashboard/financial", authenticate, async (_req, res) => {
+	app.get("/api/dashboard/financial", authenticate, async (req: any, res) => {
+		if (!userCan(req.user, "dashboard.view")) return res.status(403).json({ error: "Bạn không có quyền xem tổng quan" });
 		try {
 			const sales = await db.get(`SELECT COALESCE(SUM(totalAmount),0) revenue,
         COALESCE(SUM(GREATEST(totalAmount-paidAmount,0)),0) receivables
@@ -3729,7 +3762,9 @@ async function startServer() {
 		}
 	});
 
-	app.get("/api/warehouse-transfers", authenticate, async (_req, res) => {
+	app.get("/api/warehouse-transfers", authenticate, async (req: any, res) => {
+		if (!userCan(req.user, "transfer.view"))
+			return res.status(403).json({ error: "B���n khA'ng cA3 quy��?n xem chuy���n kho" });
 		const transfers = await db.all(`
       SELECT wt.*, fw.name fromWarehouseName, tw.name toWarehouseName, u.fullName creatorName
       FROM warehouse_transfers wt JOIN warehouses fw ON fw.id = wt.fromWarehouseId
@@ -3748,7 +3783,7 @@ async function startServer() {
 	});
 
 	app.post("/api/warehouse-transfers", authenticate, async (req: any, res) => {
-		if (!["ADMIN", "W_MANAGER"].includes(req.user.role))
+		if (!userCan(req.user, "transfer.create"))
 			return res.status(403).json({ error: "Chỉ thủ kho được chuyển kho" });
 		const { transferDate, fromWarehouseId, toWarehouseId, note, details } =
 			req.body;
@@ -3867,7 +3902,8 @@ async function startServer() {
 	});
 
 	// Report API
-	app.get("/api/report/stock-detail", authenticate, async (req, res) => {
+	app.get("/api/report/stock-detail", authenticate, async (req: any, res) => {
+		if (!userCan(req.user, "report.view")) return res.status(403).json({ error: "Bạn không có quyền xem báo cáo" });
 		// 1. Nhận thêm tham số category từ giao diện
 		const { startDate, endDate, category } = req.query;
 		const start = startDate
@@ -3953,7 +3989,8 @@ async function startServer() {
 		}
 	});
 	// API Lấy danh sách kiểm kê
-	app.get("/api/stocktakes", authenticate, async (req, res) => {
+	app.get("/api/stocktakes", authenticate, async (req: any, res) => {
+		if (!userCan(req.user, "inventory.stocktake")) return res.status(403).json({ error: "Bạn không có quyền xem kiểm kê" });
 		const list = await db.all(
 			"SELECT * FROM stocktakes ORDER BY createdAt DESC",
 		);
@@ -3965,7 +4002,7 @@ async function startServer() {
 		"/api/stocktakes/:id/complete",
 		authenticate,
 		async (req: any, res) => {
-			if (req.user.role !== "ADMIN")
+			if (!userCan(req.user, "inventory.stocktake"))
 				return res
 					.status(403)
 					.json({ error: "Chỉ Admin mới được chốt kiểm kê" });
@@ -4001,6 +4038,7 @@ async function startServer() {
 	);
 	// API LƯU PHIẾU KIỂM KÊ
 	app.post("/api/stocktakes", authenticate, async (req: any, res) => {
+		if (!userCan(req.user, "inventory.stocktake")) return res.status(403).json({ error: "Bạn không có quyền lập kiểm kê" });
 		const { date, details } = req.body;
 		const now = new Date().toISOString();
 		const result = await db.run(
@@ -4028,7 +4066,7 @@ async function startServer() {
 		"/api/stocktakes/:id/complete",
 		authenticate,
 		async (req: any, res) => {
-			if (req.user.role !== "ADMIN")
+			if (!userCan(req.user, "inventory.stocktake"))
 				return res.status(403).json({ error: "Chỉ Admin mới được chốt" });
 			const details = await db.all(
 				"SELECT * FROM stocktake_details WHERE stocktakeId = ?",
@@ -4056,6 +4094,7 @@ async function startServer() {
 	);
 
 	app.get("/api/export-report", authenticate, async (req: any, res: any) => {
+		if (!userCan(req.user, "report.export")) return res.status(403).json({ error: "Bạn không có quyền xuất báo cáo" });
 		const month = req.query.month as string;
 		if (!month) return res.status(400).json({ error: "Vui lòng chọn tháng" });
 
@@ -4486,6 +4525,7 @@ async function startServer() {
 		"/api/export-production-report",
 		authenticate,
 		async (req: any, res: any) => {
+			if (!userCan(req.user, "report.export")) return res.status(403).json({ error: "Bạn không có quyền xuất báo cáo" });
 			const month = req.query.month as string;
 			if (!month)
 				return res
@@ -4786,6 +4826,7 @@ async function startServer() {
 		"/api/export-production-report",
 		authenticate,
 		async (req: any, res: any) => {
+			if (!userCan(req.user, "report.export")) return res.status(403).json({ error: "Bạn không có quyền xuất báo cáo" });
 			const month = req.query.month as string;
 			if (!month)
 				return res
@@ -5108,6 +5149,7 @@ async function startServer() {
 		"/api/report/packaging-history/:id",
 		authenticate,
 		async (req: any, res) => {
+			if (!userCan(req.user, "report.view")) return res.status(403).json({ error: "Bạn không có quyền xem báo cáo" });
 			const { startDate, endDate } = req.query;
 			try {
 				const history = await db.all(

@@ -15,6 +15,7 @@ const ROLE_META: Record<string, { label: string; css: string }> = {
   S_SALES: { label: "Kinh doanh", css: "bg-emerald-100 text-emerald-700" },
   O_SALES: { label: "Bán hàng online", css: "bg-cyan-100 text-cyan-700" },
   QD: { label: "Quản lý", css: "bg-slate-100 text-slate-600" },
+  FULL_ACCESS: { label: "Toàn quyền nghiệp vụ", css: "bg-indigo-100 text-indigo-700" },
 };
 
 interface RoleOption {

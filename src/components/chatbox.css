@@ -651,7 +651,7 @@
 .u078-widget {
 	position: fixed;
 	right: 16px;
-	bottom: 40px;
+	bottom: 60px;
 	z-index: 500;
 	display: flex;
 	flex-direction: column;

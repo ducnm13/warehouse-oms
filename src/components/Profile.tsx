@@ -21,6 +21,8 @@ const ROLE_LABELS: Record<string, string> = {
 	P_MANAGER: "Quản lý sản xuất",
 	S_SALES: "Nhân viên kinh doanh",
 	QD: "Kế toán",
+	O_SALES: "Bán hàng online",
+	FULL_ACCESS: "Toàn quyền nghiệp vụ",
 };
 
 export default function Profile() {

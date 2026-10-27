@@ -9,12 +9,12 @@ import {
   numericIdParamsSchema,
 } from "@challenge/contracts";
 import { asyncHandler } from "../../common/async-handler";
-import { authenticateV1 } from "../../common/authenticate";
+import { authenticateV1, requirePermission } from "../../common/authenticate";
 import { validateBody, validateParams, validateQuery } from "../../common/validate";
 import { chatController } from "./chat.controller";
 
 export const chatRouter = Router();
-chatRouter.use(authenticateV1);
+chatRouter.use(authenticateV1, requirePermission("chat.use"));
 
 chatRouter.get("/conversations", asyncHandler(chatController.listConversations));
 chatRouter.post("/conversations", validateBody(chatConversationCreateSchema), asyncHandler(chatController.createConversation));

@@ -10,7 +10,7 @@ inventoryRouter.use(authenticateV1);
 inventoryRouter.get("/balances", requirePermission("inventory.view"), validateQuery(inventoryBalanceQuerySchema), asyncHandler(inventoryController.balances));
 inventoryRouter.get("/reconciliation", requirePermission("inventory.view"), validateQuery(inventoryBalanceQuerySchema), asyncHandler(inventoryController.reconciliation));
 inventoryRouter.get("/documents", requirePermission("inventory.view"), validateQuery(inventoryListQuerySchema), asyncHandler(inventoryController.list));
-inventoryRouter.get("/documents/by-codes", asyncHandler(inventoryController.getByCodes));
+inventoryRouter.get("/documents/by-codes", requirePermission("inventory.view"), asyncHandler(inventoryController.getByCodes));
 inventoryRouter.get("/documents/:id", requirePermission("inventory.view"), validateParams(numericIdParamsSchema), asyncHandler(inventoryController.get));
 inventoryRouter.post("/documents", requirePermission("inventory.manage"), validateBody(inventoryDraftSchema), asyncHandler(inventoryController.create));
 inventoryRouter.put("/documents/:id", requirePermission("inventory.manage"), validateParams(numericIdParamsSchema), validateBody(inventoryUpdateSchema), asyncHandler(inventoryController.update));

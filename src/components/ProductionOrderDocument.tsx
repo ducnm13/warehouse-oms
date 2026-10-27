@@ -1,8 +1,12 @@
 import React from "react";
 import { ProductionOrderV1 } from "../types";
 import { formatNumber, formatDate } from "../lib/utils";
-import type { CompanyPrintProfile } from "../lib/printTemplate";
+import {
+	resolvePrintSigners,
+	type CompanyPrintProfile,
+} from "../lib/printTemplate";
 import PrintAppFooter from "./PrintAppFooter";
+import { DocumentSignatures } from "./DocumentPrintShell";
 
 interface ProductionOrderDocumentProps {
 	order: ProductionOrderV1;
@@ -25,6 +29,16 @@ export const ProductionOrderDocument = React.forwardRef<
 	);
 	const dateOrDots = (v?: string) =>
 		v ? formatDate(v) : "....................";
+	const signers = resolvePrintSigners(company, [
+		{ code: "PREPARER", fallbackTitle: "Người lập" },
+		{ code: "QC_QA", fallbackTitle: "QC/QA" },
+		{ code: "PRODUCTION_MANAGER", fallbackTitle: "Bộ phận sản xuất" },
+		{
+			code: "WORKSHOP_MANAGER",
+			fallbackTitle: "Quản đốc",
+			note: "(Ký, đóng dấu)",
+		},
+	]);
 
 	return (
 		<div
@@ -191,26 +205,7 @@ export const ProductionOrderDocument = React.forwardRef<
 				</table>
 			</div>
 
-			{/* Footer: Signatures */}
-
-			<div className="flex justify-around text-sm mt-4 italic">
-				<div className="text-center">
-					<p className="font-semibold not-italic">Người lập</p>
-					<p className="text-xs">(ký, họ tên)</p>
-				</div>
-				<div className="text-center">
-					<p className="font-semibold not-italic">QC/QA</p>
-					<p className="text-xs">(ký, họ tên)</p>
-				</div>
-				<div className="text-center">
-					<p className="font-semibold not-italic">Bộ phận sản xuất</p>
-					<p className="text-xs">(ký, họ tên)</p>
-				</div>
-				<div className="text-center">
-					<p className="font-semibold not-italic">Quản đốc</p>
-					<p className="text-xs">(ký, họ tên)</p>
-				</div>
-			</div>
+			<DocumentSignatures signers={signers} />
 
 			<PrintAppFooter />
 		</div>

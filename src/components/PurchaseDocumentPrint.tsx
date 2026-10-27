@@ -3,9 +3,11 @@ import { PurchaseDocument } from "../types";
 import { formatDate, formatNumber } from "../lib/utils";
 import {
 	numberToVietnameseWords,
+	resolvePrintSigners,
 	type CompanyPrintProfile,
 } from "../lib/printTemplate";
 import PrintAppFooter from "./PrintAppFooter";
+import { DocumentSignatures } from "./DocumentPrintShell";
 
 interface PurchaseDocumentPrintProps {
 	document: PurchaseDocument;
@@ -41,6 +43,19 @@ export const PurchaseDocumentPrint = React.forwardRef<
 	const day = String(date.getDate()).padStart(2, "0");
 	const month = String(date.getMonth() + 1).padStart(2, "0");
 	const year = date.getFullYear();
+	const signers = resolvePrintSigners(company, [
+		{
+			code: "PREPARER",
+			fallbackTitle: "Người lập phiếu",
+			name: document.creatorName,
+		},
+		{ code: "DELIVERER", fallbackTitle: "Người giao hàng" },
+		{
+			code: "WORKSHOP_MANAGER",
+			fallbackTitle: "Quản đốc",
+			note: "(Ký, đóng dấu)",
+		},
+	]);
 	return (
 		<div
 			ref={ref}
@@ -251,26 +266,7 @@ export const PurchaseDocumentPrint = React.forwardRef<
 				</span>
 			</div>
 
-			{/* Footer Section - Signatures */}
-			<div className="grid grid-cols-3 gap-4 text-center text-sm font-medium mt-12 pb-12">
-				<div className="space-y-16">
-					<div>
-						<p className="font-bold">Người lập phiếu</p>
-						<p className="italic text-[11px]">(Ký, họ tên)</p>
-					</div>
-					<p className="font-bold uppercase text-[12px]">
-						{document.creatorName || ""}
-					</p>
-				</div>
-				<div>
-					<p className="font-bold">Người giao hàng</p>
-					<p className="italic text-[11px]">(Ký, họ tên)</p>
-				</div>
-				<div>
-					<p className="font-bold">Quản đốc</p>
-					<p className="italic text-[11px]">(Ký, họ tên)</p>
-				</div>
-			</div>
+			<DocumentSignatures signers={signers} />
 
 			<PrintAppFooter />
 

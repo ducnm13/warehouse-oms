@@ -47,7 +47,7 @@ catalogRouter.get("/product-boms/:id", requirePermission("catalog.view"), valida
 catalogRouter.post("/product-boms/replace", requirePermission("catalog.manage"), validateBody(catalogBomReplaceSchema), asyncHandler(catalogController.replaceBom));
 
 // Products
-catalogRouter.post("/products/import", requirePermission("catalog.manage"), validateBody(catalogImportSchema), asyncHandler(catalogController.importProducts));
+catalogRouter.post("/products/import", requirePermission("catalog.import"), validateBody(catalogImportSchema), asyncHandler(catalogController.importProducts));
 catalogRouter.get ("/products",     requirePermission("catalog.view"),   validateQuery(catalogListQuerySchema),       asyncHandler(catalogController.listProducts));
 catalogRouter.get ("/products/:id", requirePermission("catalog.view"),   validateParams(numericIdParamsSchema),       asyncHandler(catalogController.getProduct));
 catalogRouter.post("/products",     requirePermission("catalog.manage"), validateBody(catalogProductCreateSchema),    asyncHandler(catalogController.createProduct));

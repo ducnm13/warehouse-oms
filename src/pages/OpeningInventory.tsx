@@ -21,10 +21,10 @@ import SearchableSelect from "../components/SearchableSelect";
 import TableActions from "../components/TableActions";
 import DetailOptionsMenu from "../components/DetailOptionsMenu";
 import { formatDate, formatNumber, formatProductName } from "../lib/utils";
-import PrintPreview from "../components/PrintPreview";
+import PrintDocumentPreview from "../components/PrintDocumentPreview";
+import { OpeningInventoryDocument } from "../components/OpeningInventoryDocument";
 import {
-	fillGenericDocument,
-	GENERIC_LAYOUTS,
+	buildCompanyPrintProfile,
 	type CompanyPrintProfile,
 } from "../lib/printTemplate";
 import type { Warehouse } from "../types";
@@ -181,6 +181,17 @@ export default function OpeningInventory() {
 	const warehouses = useQuery({
 		queryKey: ["warehouses-ref"],
 		queryFn: () => legacyApi<Warehouse[]>("/api/warehouses"),
+	});
+	const companyQuery = useQuery({
+		queryKey: ["company-profile"],
+		queryFn: async () => {
+			try {
+				const response = await apiV1<any>("/api/v1/company");
+				return buildCompanyPrintProfile(response.data);
+			} catch {
+				return null as CompanyPrintProfile | null;
+			}
+		},
 	});
 	const packagings = useQuery({
 		queryKey: ["packagings-all"],
@@ -1250,44 +1261,27 @@ export default function OpeningInventory() {
 				</div>
 			)}
 
-<PrintPreview
-			open={!!printTarget}
-			title={printTarget ? `Xem trước biên bản ${printTarget.code}` : "Xem trước in"}
-			fill={printTarget ? ((worksheet: any, company: any) => {
-				const lines = printTarget.lines || [];
-				fillGenericDocument(
-					worksheet,
-					company as CompanyPrintProfile | null,
-					GENERIC_LAYOUTS.opening,
-					{
-						code: printTarget.code,
-						documentDate: printTarget.documentDate,
-						partner: printTarget.warehouse?.name || "",
-						dienGiai: printTarget.note || "",
-						total: lines.reduce(
-							(sum, l) =>
-								sum + Number(l.totalValue ?? l.quantity * l.unitCost),
-							0,
-						),
-						rows: lines.map(
-							(l, index) => ({
-								stt: index + 1,
-								sku: l.sku || l.packaging?.sku || "",
-								name: formatProductName(
-									l.packagingName ?? l.packaging?.name,
-									l.productName ?? l.packaging?.products?.name,
-								),
-								unit: l.unit || l.packaging?.unit || "",
-								quantity: Number(l.quantity || 0),
-								unitPrice: Number(l.unitCost || 0),
-								amount: Number(l.totalValue ?? l.quantity * l.unitCost),
-							}),
-						),
-					},
-				);
-			}) : null}
-			onClose={() => setPrintTarget(null)}
-			/>
+			<PrintDocumentPreview
+				open={!!printTarget}
+				title="Biên bản tồn đầu kỳ"
+				code={printTarget?.code}
+				documentTitle={
+					printTarget
+						? `Bien-ban-ton-dau-ky-${printTarget.code}`
+						: "Bien-ban-ton-dau-ky"
+				}
+				onClose={() => setPrintTarget(null)}
+			>
+				{ref =>
+					printTarget && (
+						<OpeningInventoryDocument
+							ref={ref}
+							document={printTarget}
+							company={companyQuery.data}
+						/>
+					)
+				}
+			</PrintDocumentPreview>
 		</div>
 	);
 }

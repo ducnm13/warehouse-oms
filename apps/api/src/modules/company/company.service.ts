@@ -4,6 +4,7 @@ import { companyRepository } from "./company.repository";
 
 export const companyService = {
   async getAll() {
+    await companyRepository.ensureDefaultSignatures();
     const [profile, signatures, printSettings] = await Promise.all([
       companyRepository.getProfile(),
       companyRepository.getSignatures(),

@@ -20,11 +20,11 @@ import toast from "../components/ui/toast";
 import { confirm, prompt } from "../components/ui/confirm";
 import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
-import PrintPreview from "../components/PrintPreview";
+import PrintDocumentPreview from "../components/PrintDocumentPreview";
+import { WarehouseTransferDocument } from "../components/WarehouseTransferDocument";
 import { formatDate, formatNumber, formatProductName } from "../lib/utils";
 import {
-	fillGenericDocument,
-	GENERIC_LAYOUTS,
+	buildCompanyPrintProfile,
 	type CompanyPrintProfile,
 } from "../lib/printTemplate";
 import type {
@@ -126,6 +126,17 @@ export default function WarehouseTransfers() {
 				legacyApi<Product[]>("/api/products"),
 			]);
 			return { warehouses, products };
+		},
+	});
+	const companyQuery = useQuery({
+		queryKey: ["company-profile"],
+		queryFn: async () => {
+			try {
+				const response = await apiV1<any>("/api/v1/company");
+				return buildCompanyPrintProfile(response.data);
+			} catch {
+				return null as CompanyPrintProfile | null;
+			}
 		},
 	});
 	const documents = useQuery({
@@ -1064,61 +1075,27 @@ export default function WarehouseTransfers() {
 					</div>
 				</div>
 			)}
-			<PrintPreview
+			<PrintDocumentPreview
 				open={!!printTarget}
-				title={
+				title="Phiếu xuất chuyển kho"
+				code={printTarget?.code}
+				documentTitle={
 					printTarget
-						? `Xem trước phiếu chuyển kho ${printTarget.code}`
-						: "Xem trước in"
-				}
-				fill={
-					printTarget
-						? (worksheet, company) => {
-								const details = printTarget.details || [];
-								const total = details.reduce(
-									(sum, line) =>
-										sum +
-										Number(
-											line.totalValue ??
-												Number(line.quantity || 0) * Number(line.unitCost || 0),
-										),
-									0,
-								);
-								fillGenericDocument(
-									worksheet,
-									company as CompanyPrintProfile | null,
-									GENERIC_LAYOUTS.transfer,
-									{
-										code: printTarget.code,
-										documentDate: printTarget.transferDate,
-										title: "PHIẾU XUẤT CHUYỂN KHO",
-										partner: `${printTarget.fromWarehouseName || ""} → ${printTarget.toWarehouseName || ""}`,
-										dienGiai:
-											printTarget.note ||
-											`Chuyển hàng từ ${printTarget.fromWarehouseName || ""} sang ${printTarget.toWarehouseName || ""}`,
-										total,
-										rows: details.map((line, index) => ({
-											stt: index + 1,
-											sku: line.sku || "",
-											name: [line.productName, line.packagingName]
-												.filter(Boolean)
-												.join(" - "),
-											unit: line.unit || "",
-											quantity: Number(line.quantity || 0),
-											unitPrice: Number(line.unitCost || 0),
-											amount: Number(
-												line.totalValue ??
-													Number(line.quantity || 0) *
-														Number(line.unitCost || 0),
-											),
-										})),
-									},
-								);
-							}
-						: null
+						? `Phieu-chuyen-kho-${printTarget.code}`
+						: "Phieu-chuyen-kho"
 				}
 				onClose={() => setPrintTarget(null)}
-			/>
+			>
+				{ref =>
+					printTarget && (
+						<WarehouseTransferDocument
+							ref={ref}
+							transfer={printTarget}
+							company={companyQuery.data}
+						/>
+					)
+				}
+			</PrintDocumentPreview>
 		</div>
 	);
 }

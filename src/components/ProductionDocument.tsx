@@ -1,8 +1,12 @@
 import React from "react";
 import { ProductionOrderV1 } from "../types";
 import { formatNumber, formatDate } from "../lib/utils";
-import type { CompanyPrintProfile } from "../lib/printTemplate";
+import {
+	resolvePrintSigners,
+	type CompanyPrintProfile,
+} from "../lib/printTemplate";
 import PrintAppFooter from "./PrintAppFooter";
+import { DocumentSignatures } from "./DocumentPrintShell";
 
 interface ProductionDocumentProps {
 	order: ProductionOrderV1;
@@ -40,6 +44,10 @@ export const ProductionDocument = React.forwardRef<
 	const mainOutput = outputs[0];
 	const dateOrDots = (v?: string) =>
 		v ? formatDate(v) : "....................";
+	const signers = resolvePrintSigners(company, [
+		{ code: "PRODUCTION_MANAGER", fallbackTitle: "Phụ trách sản xuất" },
+		{ code: "PRODUCTION_STAFF", fallbackTitle: "Người thực hiện" },
+	]);
 
 	return (
 		<div
@@ -239,21 +247,7 @@ export const ProductionDocument = React.forwardRef<
 				</div>
 			</div>
 
-			<div className="flex justify-around text-sm mt-12 mb-8 italic">
-				<div className="text-center">
-					<p className="font-bold uppercase not-italic">Phụ trách sản xuất</p>
-					<p className="text-xs">(ký, họ tên)</p>
-					<div className="mt-10">
-						<p className="font-bold uppercase text-[12px]">NGUYỄN LÝ NGÂN</p>
-					</div>
-				</div>
-			<div className="text-center">
-				<p className="font-bold uppercase not-italic tracking-tight">
-					Người thực hiện
-				</p>
-				<p className="text-xs">(ký, họ tên)</p>
-			</div>
-		</div>
+			<DocumentSignatures signers={signers} />
 
 		<PrintAppFooter />
 	</div>

@@ -19,6 +19,7 @@ import toast from "../components/ui/toast";
 import { confirm } from "../components/ui/confirm";
 import { apiV1 } from "../lib/apiV1";
 import { formatDate, formatNumber, formatProductName } from "../lib/utils";
+import { hasPermission } from "../lib/permissions";
 import PrintPreview from "../components/PrintPreview";
 import TableActions from "../components/TableActions";
 import DetailOptionsMenu from "../components/DetailOptionsMenu";
@@ -99,11 +100,12 @@ const AGING_FILTER_FIELDS: FilterField[] = [
 
 export default function Debt() {
 	const queryClient = useQueryClient();
-	const role = JSON.parse(localStorage.getItem("user") || "{}").role as
-		| string
-		| undefined;
-	const canReceive = role === "ADMIN" || role === "S_SALES";
-	const canPay = role === "ADMIN" || role === "W_MANAGER";
+	const currentUser = JSON.parse(localStorage.getItem("user") || "{}") as {
+		role?: string;
+		permissions?: string[];
+	};
+	const canReceive = hasPermission(currentUser.role, currentUser.permissions, "debt.receive");
+	const canPay = hasPermission(currentUser.role, currentUser.permissions, "debt.pay");
 	const [view, setView] = useState<View>("receivables"),
 		[search, setSearch] = useState("");
 	const [filters, setFilters] = useState<FilterValues>({});

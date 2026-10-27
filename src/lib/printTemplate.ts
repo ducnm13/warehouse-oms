@@ -329,8 +329,19 @@ export const fillGenericDocument = (
 		dataStart,
 		totalRow: baseTotalRow,
 		wordsRow: baseWordsRow,
+		signerLabelRow,
 		signerNameRow,
 	} = GENERIC_LAYOUT_ROWS;
+	layout.signers.forEach((signer, index) => {
+		const signature = company?.signatures?.find(item => item.code === signer.code);
+		if (!signature) return;
+		const start = GENERIC_SIGNER_GROUP_STARTS[index] || 1;
+		const rawActive = signature.isActive as unknown;
+		const active = !(rawActive === false || rawActive === 0);
+		worksheet.getCell(signerLabelRow, start).value = active
+			? signature.signerTitle || signer.label
+			: "";
+	});
 	const count = data.rows.length;
 	const extra = expandDataRows(
 		worksheet,
@@ -737,6 +748,59 @@ export interface SignerSpec {
 	col: number;
 	code: string;
 }
+
+export interface PrintSignerConfig {
+	code: string;
+	fallbackTitle: string;
+	name?: string | null;
+	note?: string;
+}
+
+export interface ResolvedPrintSigner {
+	code: string;
+	title: string;
+	name: string;
+	note: string;
+}
+
+/** Lấy tiêu đề/tên người ký từ cấu hình doanh nghiệp, có phương án dự phòng. */
+export const resolvePrintSigners = (
+	company: CompanyPrintProfile | null | undefined,
+	specs: PrintSignerConfig[],
+): ResolvedPrintSigner[] => {
+	const settings = company?.printSettings;
+	const byCode = new Map(
+		(company?.signatures || []).map(signature => [signature.code, signature]),
+	);
+	return specs.flatMap(spec => {
+		const signature = byCode.get(spec.code);
+		const rawActive = signature?.isActive as unknown;
+		if (signature && (rawActive === false || rawActive === 0)) return [];
+		const title =
+			(signature?.signerTitle || signature?.positionTitle || spec.fallbackTitle || "").trim() ||
+			spec.fallbackTitle;
+		let name = "";
+		if (settings?.printSignerNames) {
+			name = (signature?.signerName || "").trim();
+			if (!name) name = (spec.name || "").trim();
+			if (
+				!name &&
+				spec.code === "PREPARER" &&
+				settings.preparerFromLoggedInUser !== false
+			) {
+				name = currentUserName();
+			}
+		}
+		return [
+			{
+				code: spec.code,
+				title,
+				name,
+				note: spec.note || "(Ký, họ tên)",
+			},
+		];
+	});
+};
 
 const CURRENT_USER_KEY = "user";
 

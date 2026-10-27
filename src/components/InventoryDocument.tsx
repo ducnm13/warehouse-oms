@@ -1,8 +1,12 @@
 import React from "react";
 import { Transaction, InventoryDocumentV1 } from "../types";
 import { formatDate, formatNumber } from "../lib/utils";
-import type { CompanyPrintProfile } from "../lib/printTemplate";
+import {
+	resolvePrintSigners,
+	type CompanyPrintProfile,
+} from "../lib/printTemplate";
 import PrintAppFooter from "./PrintAppFooter";
+import { DocumentSignatures } from "./DocumentPrintShell";
 
 interface InventoryDocumentProps {
 	transaction: Transaction | InventoryDocumentV1;
@@ -29,6 +33,19 @@ export const InventoryDocument = React.forwardRef<
 		0,
 	);
 	const dateOrEmpty = (v?: string) => (v ? formatDate(v) : "");
+	const signers = resolvePrintSigners(company, [
+		{
+			code: "PREPARER",
+			fallbackTitle: "Người lập phiếu",
+			name: creatorName,
+		},
+		{ code: "RECEIVER", fallbackTitle: "Người nhận hàng" },
+		{
+			code: "WORKSHOP_MANAGER",
+			fallbackTitle: "Quản đốc",
+			note: "(Ký, đóng dấu)",
+		},
+	]);
 
 	return (
 		<div
@@ -185,24 +202,7 @@ export const InventoryDocument = React.forwardRef<
 				</tfoot>
 			</table>
 
-			{/* Footer Section - Signatures */}
-			<div className="grid grid-cols-3 gap-4 text-center text-sm font-medium mt-12 pb-12">
-				<div className="space-y-16">
-					<div>
-						<p className="font-bold">Người lập phiếu</p>
-						<p className="italic text-[11px]">(Ký, họ tên)</p>
-					</div>
-					<p className="font-bold uppercase text-[12px]">{creatorName}</p>
-				</div>
-				<div>
-					<p className="font-bold">Người nhận hàng</p>
-					<p className="italic text-[11px]">(Ký, họ tên)</p>
-				</div>
-				<div>
-					<p className="font-bold">Quản đốc</p>
-					<p className="italic text-[11px]">(Ký, họ tên)</p>
-				</div>
-			</div>
+			<DocumentSignatures signers={signers} />
 
 			<PrintAppFooter />
 

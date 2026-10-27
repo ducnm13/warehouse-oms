@@ -19,12 +19,19 @@ registerLocale("vi", vi);
 import toast from "../components/ui/toast";
 import { confirm } from "../components/ui/confirm";
 import { useReactToPrint } from "react-to-print";
+import { useQuery } from "@tanstack/react-query";
 import { Transaction, Product, Warehouse, User, Customer } from "../types";
 import { formatDate, formatProductName, quantityAllowsDecimal } from "../lib/utils";
 import { InventoryDocument } from "../components/InventoryDocument";
 import NumberInput from "../components/NumberInput";
 import TableActions from "../components/TableActions";
 import DetailOptionsMenu from "../components/DetailOptionsMenu";
+import { apiV1 } from "../lib/apiV1";
+import { hasPermission } from "../lib/permissions";
+import {
+  buildCompanyPrintProfile,
+  type CompanyPrintProfile,
+} from "../lib/printTemplate";
 
 // Hàm chuẩn hóa Date sang chuỗi YYYY-MM để lọc dữ liệu tháng
 const formatToYYYYMM = (date: Date | null) => {
@@ -245,9 +252,25 @@ const MaterialTransactions = () => {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewTx, setPreviewTx] = useState<Transaction | null>(null);
   const componentRef = useRef<HTMLDivElement>(null);
+  const companyQuery = useQuery({
+    queryKey: ["company-profile"],
+    queryFn: async () => {
+      try {
+        const response = await apiV1<any>("/api/v1/company");
+        return buildCompanyPrintProfile(response.data);
+      } catch {
+        return null as CompanyPrintProfile | null;
+      }
+    },
+  });
 
   const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
   const isAdmin = currentUser.role === "ADMIN";
+  const canManageInventory = hasPermission(
+    currentUser.role,
+    currentUser.permissions,
+    "inventory.manage",
+  );
 
   const handlePrint = useReactToPrint({
     contentRef: componentRef,
@@ -638,7 +661,7 @@ const MaterialTransactions = () => {
                               label: "Xóa phiếu",
                               icon: <Trash2 size={15} />,
                               tone: "danger",
-                              hidden: !isAdmin,
+                              hidden: !canManageInventory,
                               onClick: () =>
                                 handleDeleteTransaction(tx.id, tx.code),
                             },
@@ -1137,7 +1160,7 @@ const MaterialTransactions = () => {
             {/* Preview Content */}
             <div className="flex-1 overflow-auto p-8 flex justify-center bg-gray-200/50">
               <div className="shadow-2xl bg-white">
-                <InventoryDocument ref={componentRef} transaction={previewTx} />
+                <InventoryDocument ref={componentRef} transaction={previewTx} company={companyQuery.data} />
               </div>
             </div>
           </div>

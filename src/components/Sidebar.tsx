@@ -393,8 +393,10 @@ export default function Sidebar({
 						<NavItem icon={BarChart3} label="Báo cáo" path="/reports" />
 					)}
 
-					{/* Tin nhắn nội bộ: mọi tài khoản đăng nhập đều dùng được */}
-					<NavItem icon={MessageCircle} label="Tin nhắn" path="/chat" />
+					{/* Tin nhắn nội bộ */}
+					{access.chat && (
+						<NavItem icon={MessageCircle} label="Tin nhắn" path="/chat" />
+					)}
 
 					{/* Quản lý */}
 					{showManageSection && (

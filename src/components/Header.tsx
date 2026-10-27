@@ -14,6 +14,7 @@ import {
 import { startGuidedTour } from "./GuidedTour";
 import { User as UserType } from "../types";
 import { formatDate } from "../lib/utils";
+import { hasPermission } from "../lib/permissions";
 
 interface HeaderProps {
 	sidebarOpen: boolean;
@@ -46,7 +47,7 @@ const Header = ({
 	const [lastSeenLogId, setLastSeenLogId] = useState(() =>
 		Number(localStorage.getItem(LAST_SEEN_LOG_KEY) || 0),
 	);
-	const isAdmin = user?.role === "ADMIN";
+	const canViewAuditLogs = Boolean(user?.role) && hasPermission(user?.role, user?.permissions, "audit.view");
 	const newestLogId = latestLogId(logs);
 	const hasUnreadNotifications = newestLogId > lastSeenLogId;
 
@@ -75,7 +76,7 @@ const Header = ({
 	}, [logs]);
 
 	useEffect(() => {
-		if (!isAdmin) return;
+		if (!canViewAuditLogs) return;
 		void fetchLogs();
 		const interval = window.setInterval(() => void fetchLogs(), 60_000);
 		const onVisible = () => {
@@ -86,7 +87,7 @@ const Header = ({
 			window.clearInterval(interval);
 			document.removeEventListener("visibilitychange", onVisible);
 		};
-	}, [isAdmin, fetchLogs]);
+	}, [canViewAuditLogs, fetchLogs]);
 
 	useEffect(() => {
 		if (showNotifications) markNotificationsRead();
@@ -182,7 +183,7 @@ const Header = ({
 								<HelpCircle size={20} />
 							</button>
 						</li>
-						{isAdmin && (
+						{canViewAuditLogs && (
 							<li className="relative">
 								<button
 									data-tour="notifications"

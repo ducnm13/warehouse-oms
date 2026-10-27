@@ -3,9 +3,11 @@ import { SalesReturnV1 } from "../types";
 import { formatDate, formatNumber, formatProductName } from "../lib/utils";
 import {
 	numberToVietnameseWords,
+	resolvePrintSigners,
 	type CompanyPrintProfile,
 } from "../lib/printTemplate";
 import PrintAppFooter from "./PrintAppFooter";
+import { DocumentSignatures } from "./DocumentPrintShell";
 
 interface SalesReturnDocumentProps {
 	document: SalesReturnV1;
@@ -25,6 +27,12 @@ export const SalesReturnDocument = React.forwardRef<
 		Number(document.subtotal || 0) > 0
 			? (Number(document.taxAmount || 0) / Number(document.subtotal || 0)) * 100
 			: 0;
+	const signers = resolvePrintSigners(company, [
+		{ code: "PREPARER", fallbackTitle: "Người lập phiếu" },
+		{ code: "WAREHOUSE_KEEPER", fallbackTitle: "Thủ kho" },
+		{ code: "CHIEF_ACCOUNTANT", fallbackTitle: "Kế toán" },
+		{ code: "CUSTOMER", fallbackTitle: "Khách hàng" },
+	]);
 
 	return (
 		<div
@@ -185,27 +193,7 @@ export const SalesReturnDocument = React.forwardRef<
 				</div>
 			</div>
 
-			<div className="grid grid-cols-4 gap-0 mt-6">
-				<div className="text-center italic">
-					<p className="font-bold uppercase not-italic">Người lập phiếu</p>
-					<p className="text-xs">(ký, họ tên)</p>
-					<div className="mt-8">
-						<p className="font-bold uppercase text-[12px]">&nbsp;</p>
-					</div>
-				</div>
-				<div className="text-center italic">
-					<p className="font-bold uppercase not-italic">Thủ kho</p>
-					<p className="text-xs">(ký, họ tên)</p>
-				</div>
-				<div className="text-center italic">
-					<p className="font-bold uppercase not-italic">Kế toán</p>
-					<p className="text-xs">(ký, họ tên)</p>
-				</div>
-				<div className="text-center italic">
-					<p className="font-bold uppercase not-italic">Khách hàng</p>
-					<p className="text-xs">(ký, họ tên)</p>
-				</div>
-			</div>
+			<DocumentSignatures signers={signers} />
 			<PrintAppFooter />
 		</div>
 	);

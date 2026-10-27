@@ -3,9 +3,11 @@ import { SalesOrder } from "../types";
 import { formatNumber, formatDate } from "../lib/utils";
 import {
 	numberToVietnameseWords,
+	resolvePrintSigners,
 	type CompanyPrintProfile,
 } from "../lib/printTemplate";
 import PrintAppFooter from "./PrintAppFooter";
+import { DocumentSignatures } from "./DocumentPrintShell";
 
 interface SalesOrderDocumentProps {
 	order: SalesOrder;
@@ -51,6 +53,14 @@ export const SalesOrderDocument = React.forwardRef<
 	const day = String(date.getDate()).padStart(2, "0");
 	const month = String(date.getMonth() + 1).padStart(2, "0");
 	const year = date.getFullYear();
+	const signers = resolvePrintSigners(company, [
+		{
+			code: "SALES_STAFF",
+			fallbackTitle: "Người bán hàng",
+			name: order.creatorName,
+		},
+		{ code: "CUSTOMER", fallbackTitle: "Khách hàng" },
+	]);
 
 	return (
 		<div
@@ -253,30 +263,10 @@ export const SalesOrderDocument = React.forwardRef<
 				</div>
 			</div>
 
-			{/* Footer: Signatures */}
-			<div className="grid grid-cols-2 gap-0">
-				<div className="col-span-1"></div>
-				<div className="col-span-1 text-center">
-					<p className="italic font-medium">
-						Ngày {day} tháng {month} năm {year}
-					</p>
-				</div>
-				<div className="col-span-1 text-center italic">
-					<p className="font-bold uppercase not-italic">Người bán hàng</p>
-					<p className="text-xs">(ký, họ tên)</p>
-					<div className="mt-8">
-						<p className="font-bold uppercase text-[12px]">
-							{order.creatorName || ""}
-						</p>
-					</div>
-				</div>
-				<div className="col-span-1 text-center italic">
-					<p className="font-bold uppercase not-italic tracking-tight">
-						Khách hàng
-					</p>
-					<p className="text-xs">(ký, họ tên)</p>
-				</div>
+			<div className="mt-6 text-right text-sm italic">
+				Ngày {day} tháng {month} năm {year}
 			</div>
+			<DocumentSignatures signers={signers} />
 			<PrintAppFooter />
 		</div>
 	);

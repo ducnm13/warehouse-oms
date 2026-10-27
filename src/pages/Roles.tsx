@@ -44,6 +44,9 @@ const RESOURCE_META: Record<string, string> = {
 	company: "Doanh nghiệp",
 	employee: "Nhân viên",
 	iam: "Người dùng & Phân quyền",
+	audit: "Nhật ký hoạt động",
+	devtools: "Công cụ phát triển",
+	chat: "Tin nhắn nội bộ",
 	system: "Hệ thống",
 };
 

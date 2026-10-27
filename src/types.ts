@@ -9,7 +9,8 @@ export type Role =
 	| "P_MANAGER"
 	| "S_SALES"
 	| "QD"
-	| "O_SALES";
+	| "O_SALES"
+	| "FULL_ACCESS";
 
 export interface User {
 	id: number;

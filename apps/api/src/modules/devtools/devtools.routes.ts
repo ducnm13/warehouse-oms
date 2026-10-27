@@ -16,7 +16,9 @@ devtoolsRouter.use((_req, res, next) => {
 });
 devtoolsRouter.use(authenticateV1);
 devtoolsRouter.get("/access", (req: any, res: any) => {
-  const allowed = isDevToolsAllowed(req.auth?.username) && req.auth?.permissions?.includes("system.admin") === true;
+  const permissions: string[] = req.auth?.permissions || [];
+  const hasAccess = permissions.includes("system.admin") || permissions.includes("devtools.use");
+  const allowed = isDevToolsAllowed(req.auth?.username) && hasAccess;
   res.json({ success: true, message: "OK", data: { allowed } });
 });
 devtoolsRouter.use((req: any, res: any, next: any) => {
@@ -26,7 +28,7 @@ devtoolsRouter.use((req: any, res: any, next: any) => {
   }
   next();
 });
-devtoolsRouter.use(requirePermission("system.admin"));
+devtoolsRouter.use(requirePermission("devtools.use"));
 
 devtoolsRouter.get("/overview", asyncHandler(devtoolsController.overview));
 devtoolsRouter.get("/database/tables", asyncHandler(devtoolsController.tables));

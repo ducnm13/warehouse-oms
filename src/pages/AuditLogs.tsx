@@ -45,6 +45,7 @@ const ROLE_LABELS: Record<string, string> = {
 	S_SALES: "Kinh doanh",
 	O_SALES: "Bán hàng online",
 	QD: "Quản lý",
+	FULL_ACCESS: "Toàn quyền nghiệp vụ",
 };
 
 const formatDateTime = (iso: string) => {
