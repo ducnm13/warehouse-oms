@@ -481,6 +481,7 @@ export interface DisassemblyOrderV1 {
 export interface InventorySummaryReportV1 {
 	rows: Array<{
 		packagingId: number;
+		productId: number;
 		warehouseId: number;
 		sku?: string;
 		packagingName: string;
@@ -532,6 +533,9 @@ export interface ItemLedgerReportV1 {
 		documentCode: string;
 		sourceType: string;
 		sourceId: number;
+		sourceLineId?: number;
+		sourceModule?: string;
+		description?: string;
 		direction: "IN" | "OUT";
 		warehouseId: number;
 		warehouseName: string;
@@ -542,6 +546,32 @@ export interface ItemLedgerReportV1 {
 		outboundValue: number;
 		runningQuantity: number;
 		runningValue: number;
+	}>;
+}
+export interface LedgerDocumentReportV1 {
+	code: string;
+	documentType: string;
+	documentDate?: string;
+	status?: string;
+	warehouseName?: string;
+	partnerName?: string;
+	note?: string;
+	cancelReason?: string;
+	lines: Array<{
+		id: string;
+		packagingId: number;
+		sku?: string;
+		packagingName?: string;
+		productName?: string;
+		unit?: string;
+		quantity: number;
+		plannedQuantity?: number;
+		actualQuantity?: number;
+		expectedQuantity?: number;
+		difference?: number;
+		unitCost?: number;
+		totalValue?: number;
+		note?: string;
 	}>;
 }
 export interface SalesProfitReportV1 {

@@ -12,7 +12,7 @@ const inventoryFilters = (query: InventoryQuery) => {
 export const reportingRepository = {
   inventorySummary(query: InventoryQuery) {
     const filter = inventoryFilters(query);
-    return prisma.$queryRawUnsafe<any[]>(`SELECT pw.packagingId,pw.warehouseId,pp.sku,pp.name packagingName,pp.unit,p.name productName,p.category,w.name warehouseName,
+    return prisma.$queryRawUnsafe<any[]>(`SELECT pw.packagingId,pw.warehouseId,p.id productId,pp.sku,pp.name packagingName,pp.unit,p.name productName,p.category,w.name warehouseName,
       COALESCE(ob.quantity,0)+COALESCE(SUM(CASE WHEN l.occurredAt<? THEN CASE WHEN l.direction='IN' THEN l.quantity ELSE -l.quantity END ELSE 0 END),0) openingQuantity,
       COALESCE(SUM(CASE WHEN l.occurredAt>=? AND l.occurredAt<? AND l.direction='IN' THEN l.quantity ELSE 0 END),0) inboundQuantity,
       COALESCE(SUM(CASE WHEN l.occurredAt>=? AND l.occurredAt<? AND l.direction='OUT' THEN l.quantity ELSE 0 END),0) outboundQuantity,
@@ -23,12 +23,27 @@ export const reportingRepository = {
       FROM productwarehouses pw JOIN productpackagings pp ON pp.id=pw.packagingId JOIN products p ON p.id=pp.productId JOIN warehouses w ON w.id=pw.warehouseId
       LEFT JOIN inventory_ledger_opening_balances ob ON ob.packagingId=pw.packagingId AND ob.warehouseId=pw.warehouseId
       LEFT JOIN inventory_ledger l ON l.packagingId=pw.packagingId AND l.warehouseId=pw.warehouseId AND l.occurredAt<?
-      ${filter.sql} GROUP BY pw.packagingId,pw.warehouseId,pp.sku,pp.name,pp.unit,p.name,p.category,w.name,ob.quantity,pw.stock_quantity ORDER BY p.name,pp.name,w.name`,
+      ${filter.sql} GROUP BY pw.packagingId,pw.warehouseId,p.id,pp.sku,pp.name,pp.unit,p.name,p.category,w.name,ob.quantity,pw.stock_quantity ORDER BY p.id,pp.id,w.name`,
       query.from, query.from, query.toExclusive, query.from, query.toExclusive, query.from, query.from, query.toExclusive, query.from, query.toExclusive, query.toExclusive, ...filter.params);
   },
   itemLedger(query: { from: Date; toExclusive: Date; packagingId: number; warehouseId?: number }) {
-    return prisma.$queryRawUnsafe<any[]>(`SELECT l.id,l.occurredAt,l.documentCode,l.sourceType,l.sourceId,l.direction,l.quantity,l.unitCost,l.totalValue,l.warehouseId,w.name warehouseName
+    return prisma.$queryRawUnsafe<any[]>(`SELECT l.id,l.occurredAt,l.documentCode,l.sourceType,l.sourceId,l.sourceLineId,l.reversalOfId,l.direction,l.quantity,l.unitCost,l.totalValue,l.warehouseId,w.name warehouseName,
+      it.sourceModule sourceModule,
+      CASE
+        WHEN l.sourceType IN ('INVENTORY_DOCUMENT','INVENTORY_DOCUMENT_CANCEL') THEN CONCAT_WS(' · ',NULLIF(it.reason,''),NULLIF(it.note,''))
+        WHEN l.sourceType IN ('ASSEMBLY_COMPONENT','ASSEMBLY_COMPONENT_CANCEL','ASSEMBLY_OUTPUT','ASSEMBLY_OUTPUT_CANCEL') THEN (SELECT CONCAT_WS(' · ',NULLIF(a.cancelReason,''),NULLIF(a.note,'')) FROM assembly_orders a WHERE a.id=l.sourceId)
+        WHEN l.sourceType IN ('DISASSEMBLY_SOURCE','DISASSEMBLY_SOURCE_CANCEL','DISASSEMBLY_RECOVERY','DISASSEMBLY_RECOVERY_CANCEL') THEN (SELECT CONCAT_WS(' · ',NULLIF(d.cancelReason,''),NULLIF(d.note,'')) FROM disassembly_orders d WHERE d.id=l.sourceId)
+        WHEN l.sourceType IN ('SALE','SALE_CANCEL','SALE_UNPOST') THEN (SELECT CONCAT_WS(' · ',NULLIF(so.cancelReason,''),NULLIF(so.note,'')) FROM sales_orders so WHERE so.id=l.sourceId)
+        WHEN l.sourceType IN ('PURCHASE','PURCHASE_CANCEL') THEN (SELECT CONCAT_WS(' · ',NULLIF(pd.cancelReason,''),NULLIF(pd.description,'')) FROM purchase_documents pd WHERE pd.id=l.sourceId)
+        WHEN l.sourceType IN ('SALES_RETURN','SALES_RETURN_CANCEL') THEN (SELECT CONCAT_WS(' · ',NULLIF(sr.cancelReason,''),NULLIF(sr.reason,'')) FROM sales_returns sr WHERE sr.id=l.sourceId)
+        WHEN l.sourceType LIKE 'TRANSFER%' THEN (SELECT CONCAT_WS(' · ',NULLIF(wt.cancelReason,''),NULLIF(wt.note,'')) FROM warehouse_transfers wt WHERE wt.id=l.sourceId)
+        WHEN l.sourceType LIKE 'STOCKTAKE%' THEN (SELECT CONCAT_WS(' · ',NULLIF(st.cancelReason,''),NULLIF(st.note,'')) FROM stocktakes st WHERE st.id=l.sourceId)
+        WHEN l.sourceType LIKE 'PRODUCTION%' THEN (SELECT CONCAT_WS(' · ',NULLIF(po.cancelReason,''),NULLIF(po.note,'')) FROM productionorders po WHERE po.id=l.sourceId)
+        WHEN l.sourceType IN ('OPENING','OPENING_CANCEL') THEN (SELECT CONCAT_WS(' · ',NULLIF(od.cancelReason,''),NULLIF(od.note,'')) FROM opening_inventory_documents od WHERE od.id=l.sourceId)
+        ELSE NULL
+      END description
       FROM inventory_ledger l JOIN warehouses w ON w.id=l.warehouseId
+      LEFT JOIN inventorytransactions it ON it.id=l.sourceId AND l.sourceType IN ('INVENTORY_DOCUMENT','INVENTORY_DOCUMENT_CANCEL')
       WHERE l.packagingId=? AND l.occurredAt>=? AND l.occurredAt<? ${query.warehouseId ? "AND l.warehouseId=?" : ""}
       ORDER BY l.occurredAt,l.id`, query.packagingId, query.from, query.toExclusive, ...(query.warehouseId ? [query.warehouseId] : []));
   },
@@ -41,6 +56,78 @@ export const reportingRepository = {
       COALESCE((SELECT SUM(CASE WHEN direction='IN' THEN totalValue ELSE -totalValue END) FROM inventory_ledger WHERE packagingId=? AND occurredAt<?${warehouseFilter}),0) totalValue,
       COALESCE((SELECT SUM(quantity) FROM inventory_ledger_opening_balances WHERE packagingId=?${warehouseFilter}),0) baselineQuantity`,
       ...args, query.packagingId, query.from, ...(query.warehouseId ? [query.warehouseId] : []), query.packagingId, ...(query.warehouseId ? [query.warehouseId] : []));
+  },
+  async ledgerDocument(sourceType: string, sourceId: number) {
+    const base = sourceType.replace(/_(CANCEL|UNPOST)$/, "");
+    const packagings = `LEFT JOIN productpackagings pp ON pp.id=%PACKAGING% LEFT JOIN products p ON p.id=pp.productId`;
+    const headerRows = async (sql: string, params: any[]) => (await prisma.$queryRawUnsafe<any[]>(sql, ...params))[0] || null;
+    const lineRows = (sql: string, packagingColumn: string, params: any[]) =>
+      prisma.$queryRawUnsafe<any[]>(sql.replace("%PACKAGING%", packagingColumn), ...params);
+    if (base === "OPENING") {
+      const header = await headerRows(`SELECT od.code,'Tồn đầu kỳ' documentType,od.documentDate documentDate,od.status status,w.name warehouseName,od.note note,od.cancelReason cancelReason FROM opening_inventory_documents od LEFT JOIN warehouses w ON w.id=od.warehouseId WHERE od.id=?`, [sourceId]);
+      if (!header) return null;
+      header.lines = await lineRows(`SELECT l.packagingId,pp.sku,pp.name packagingName,p.name productName,pp.unit,l.quantity,l.unitCost,l.totalValue,l.note FROM opening_inventory_lines l ${packagings} WHERE l.documentId=? ORDER BY l.id`, "l.packagingId", [sourceId]);
+      return header;
+    }
+    if (base === "INVENTORY_DOCUMENT") {
+      const header = await headerRows(`SELECT it.code,CASE it.type WHEN 'IMPORT' THEN 'Phiếu nhập kho' ELSE 'Phiếu xuất kho' END documentType,it.transaction_date documentDate,it.documentStatus status,w.name warehouseName,it.recipient partnerName,CONCAT_WS(' · ',NULLIF(it.reason,''),NULLIF(it.note,'')) note,it.cancelReason cancelReason FROM inventorytransactions it LEFT JOIN warehouses w ON w.id=it.warehouseId WHERE it.id=?`, [sourceId]);
+      if (!header) return null;
+      header.lines = await lineRows(`SELECT l.packagingId,pp.sku,pp.name packagingName,p.name productName,pp.unit,l.quantity,l.unitCost,l.totalValue,l.note FROM inventorytransactiondetails l ${packagings} WHERE l.transactionId=? ORDER BY l.id`, "l.packagingId", [sourceId]);
+      return header;
+    }
+    if (base === "STOCKTAKE") {
+      const header = await headerRows(`SELECT st.code,'Phiếu kiểm kê' documentType,st.date documentDate,st.status status,w.name warehouseName,st.note note,st.cancelReason cancelReason FROM stocktakes st LEFT JOIN warehouses w ON w.id=st.warehouseId WHERE st.id=?`, [sourceId]);
+      if (!header) return null;
+      header.lines = await lineRows(`SELECT l.packagingId,pp.sku,pp.name packagingName,p.name productName,pp.unit,l.actual_qty quantity,l.expected_qty expectedQuantity,l.actual_qty actualQuantity,l.difference difference FROM stocktake_details l ${packagings} WHERE l.stocktakeId=? ORDER BY l.id`, "l.packagingId", [sourceId]);
+      return header;
+    }
+    if (base === "PURCHASE") {
+      const header = await headerRows(`SELECT pd.code,'Phiếu nhập mua hàng' documentType,pd.documentDate documentDate,pd.documentStatus status,s.name partnerName,pd.description note,pd.cancelReason cancelReason FROM purchase_documents pd LEFT JOIN suppliers s ON s.id=pd.supplierId WHERE pd.id=?`, [sourceId]);
+      if (!header) return null;
+      header.lines = await lineRows(`SELECT l.packagingId,pp.sku,pp.name packagingName,p.name productName,pp.unit,l.quantity,l.unitPrice unitCost,l.lineAmount totalValue,l.note FROM purchase_document_details l ${packagings} WHERE l.documentId=? ORDER BY l.id`, "l.packagingId", [sourceId]);
+      return header;
+    }
+    if (base === "SALE") {
+      const header = await headerRows(`SELECT so.code,'Đơn bán hàng' documentType,so.orderDate documentDate,so.status status,w.name warehouseName,c.name partnerName,so.note note,so.cancelReason cancelReason FROM sales_orders so LEFT JOIN warehouses w ON w.id=so.warehouseId LEFT JOIN customers c ON c.id=so.customerId WHERE so.id=?`, [sourceId]);
+      if (!header) return null;
+      header.lines = await lineRows(`SELECT l.packagingId,pp.sku,pp.name packagingName,p.name productName,pp.unit,l.quantity,l.unitPrice unitCost,l.lineTotal totalValue,l.note FROM sales_order_details l ${packagings} WHERE l.orderId=? ORDER BY l.id`, "l.packagingId", [sourceId]);
+      return header;
+    }
+    if (base === "SALES_RETURN") {
+      const header = await headerRows(`SELECT sr.code,'Phiếu trả hàng bán' documentType,sr.returnDate documentDate,sr.status status,w.name warehouseName,c.name partnerName,sr.reason note,sr.cancelReason cancelReason FROM sales_returns sr LEFT JOIN warehouses w ON w.id=sr.warehouseId LEFT JOIN customers c ON c.id=sr.customerId WHERE sr.id=?`, [sourceId]);
+      if (!header) return null;
+      header.lines = await lineRows(`SELECT l.packagingId,pp.sku,pp.name packagingName,p.name productName,pp.unit,l.quantity,l.unitPrice unitCost,l.lineTotal totalValue,l.note FROM sales_return_lines l ${packagings} WHERE l.salesReturnId=? ORDER BY l.id`, "l.packagingId", [sourceId]);
+      return header;
+    }
+    if (sourceType.startsWith("TRANSFER")) {
+      const header = await headerRows(`SELECT wt.code,'Phiếu chuyển kho' documentType,wt.transferDate documentDate,wt.status status,CONCAT(fw.name,' → ',tw.name) partnerName,wt.note note,wt.cancelReason cancelReason FROM warehouse_transfers wt LEFT JOIN warehouses fw ON fw.id=wt.fromWarehouseId LEFT JOIN warehouses tw ON tw.id=wt.toWarehouseId WHERE wt.id=?`, [sourceId]);
+      if (!header) return null;
+      header.lines = await lineRows(`SELECT l.packagingId,pp.sku,pp.name packagingName,p.name productName,pp.unit,l.quantity,l.unitCost,l.totalValue,l.note FROM warehouse_transfer_details l ${packagings} WHERE l.transferId=? ORDER BY l.id`, "l.packagingId", [sourceId]);
+      return header;
+    }
+    if (sourceType.startsWith("PRODUCTION")) {
+      const header = await headerRows(`SELECT po.code,'Lệnh sản xuất' documentType,COALESCE(po.order_date,DATE_FORMAT(po.completedAt,'%Y-%m-%d')) documentDate,po.status status,w.name warehouseName,p.name partnerName,po.note note,po.cancelReason cancelReason FROM productionorders po LEFT JOIN warehouses w ON w.id=po.warehouseId LEFT JOIN products p ON p.id=po.productId WHERE po.id=?`, [sourceId]);
+      if (!header) return null;
+      header.lines = await lineRows(`SELECT l.packagingId,pp.sku,pp.name packagingName,p.name productName,pp.unit,l.actual_quantity quantity,l.quantity plannedQuantity,l.actual_quantity actualQuantity,l.unitCost,l.totalValue,l.note FROM productiondetails l ${packagings} WHERE l.orderId=? ORDER BY l.id`, "l.packagingId", [sourceId]);
+      return header;
+    }
+    if (base === "ASSEMBLY_COMPONENT" || base === "ASSEMBLY_OUTPUT") {
+      const header = await headerRows(`SELECT a.code,'Lệnh lắp ráp' documentType,a.orderDate documentDate,a.status status,CONCAT(cw.name,' → ',ow.name) partnerName,a.note note,a.cancelReason cancelReason FROM assembly_orders a LEFT JOIN warehouses cw ON cw.id=a.componentWarehouseId LEFT JOIN warehouses ow ON ow.id=a.outputWarehouseId WHERE a.id=?`, [sourceId]);
+      if (!header) return null;
+      header.lines = base === "ASSEMBLY_COMPONENT"
+        ? await lineRows(`SELECT l.componentPackagingId packagingId,pp.sku,pp.name packagingName,p.name productName,pp.unit,l.actualQuantity quantity,l.plannedQuantity,l.actualQuantity,l.unitCost,l.totalValue,l.note FROM assembly_order_lines l ${packagings} WHERE l.orderId=? ORDER BY l.id`, "l.componentPackagingId", [sourceId])
+        : await lineRows(`SELECT l.outputPackagingId packagingId,pp.sku,pp.name packagingName,p.name productName,pp.unit,l.actualQuantity quantity,l.plannedQuantity,l.actualQuantity,l.unitCost,l.totalValue,l.note FROM assembly_order_outputs l ${packagings} WHERE l.orderId=? ORDER BY l.id`, "l.outputPackagingId", [sourceId]);
+      return header;
+    }
+    if (base === "DISASSEMBLY_SOURCE" || base === "DISASSEMBLY_RECOVERY") {
+      const header = await headerRows(`SELECT d.code,'Lệnh tháo dỡ' documentType,d.orderDate documentDate,d.status status,CONCAT(sw.name,' → ',rw.name) partnerName,d.note note,d.cancelReason cancelReason FROM disassembly_orders d LEFT JOIN warehouses sw ON sw.id=d.sourceWarehouseId LEFT JOIN warehouses rw ON rw.id=d.recoveryWarehouseId WHERE d.id=?`, [sourceId]);
+      if (!header) return null;
+      header.lines = base === "DISASSEMBLY_SOURCE"
+        ? await lineRows(`SELECT l.sourcePackagingId packagingId,pp.sku,pp.name packagingName,p.name productName,pp.unit,l.actualQuantity quantity,l.plannedQuantity,l.actualQuantity,l.unitCost,l.totalValue,l.note FROM disassembly_order_sources l ${packagings} WHERE l.orderId=? ORDER BY l.id`, "l.sourcePackagingId", [sourceId])
+        : await lineRows(`SELECT l.componentPackagingId packagingId,pp.sku,pp.name packagingName,p.name productName,pp.unit,l.actualQuantity quantity,l.plannedQuantity,l.actualQuantity,l.unitCost,l.totalValue,l.note FROM disassembly_order_lines l ${packagings} WHERE l.orderId=? ORDER BY l.id`, "l.componentPackagingId", [sourceId]);
+      return header;
+    }
+    return null;
   },
   packaging(id: number) { return prisma.productpackagings.findUnique({ where: { id }, include: { products: true } }); },
   salesProfit(query: { from: string; to: string; warehouseId?: number; customerId?: number; search?: string }) {

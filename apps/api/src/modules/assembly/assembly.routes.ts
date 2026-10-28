@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { assemblyBomInputSchema, assemblyBomListQuerySchema, assemblyBomUpdateSchema, assemblyCancelSchema, assemblyDraftSchema, assemblyPostSchema, assemblyUpdateSchema, disassemblyDraftSchema, disassemblyPostSchema, disassemblyUpdateSchema, lifecycleListQuerySchema, numericIdParamsSchema } from "@challenge/contracts";
+import { assemblyBomInputSchema, assemblyBomListQuerySchema, assemblyBomUpdateSchema, assemblyCancelSchema, assemblyDeleteSchema, assemblyDraftSchema, assemblyPostSchema, assemblyUpdateSchema, disassemblyDraftSchema, disassemblyPostSchema, disassemblyUpdateSchema, lifecycleListQuerySchema, numericIdParamsSchema } from "@challenge/contracts";
 import { asyncHandler } from "../../common/async-handler";
 import { authenticateV1, requirePermission } from "../../common/authenticate";
 import { validateBody, validateParams, validateQuery } from "../../common/validate";
@@ -16,6 +16,7 @@ assemblyRouter.put("/orders/:id", requirePermission("assembly.manage"), validate
 assemblyRouter.post("/orders/:id/post", requirePermission("assembly.post"), validateParams(numericIdParamsSchema), validateBody(assemblyPostSchema), asyncHandler(assemblyController.postAssembly));
 assemblyRouter.post("/orders/:id/cancel", requirePermission("assembly.cancel"), validateParams(numericIdParamsSchema), validateBody(assemblyCancelSchema), asyncHandler(assemblyController.cancelAssembly));
 assemblyRouter.post("/orders/:id/unpost", requirePermission("assembly.post"), validateParams(numericIdParamsSchema), validateBody(assemblyCancelSchema), asyncHandler(assemblyController.unpostAssembly));
+assemblyRouter.post("/orders/:id/delete", requirePermission("assembly.manage"), validateParams(numericIdParamsSchema), validateBody(assemblyDeleteSchema), asyncHandler(assemblyController.deleteAssembly));
 assemblyRouter.post("/orders/:id/link-inventory", requirePermission("assembly.manage"), validateParams(numericIdParamsSchema), asyncHandler(assemblyController.linkAssemblyInventory));
 assemblyRouter.get("/disassembly-orders", requirePermission("assembly.view"), validateQuery(lifecycleListQuerySchema), asyncHandler(assemblyController.listDisassembly));
 assemblyRouter.get("/disassembly-orders/:id", requirePermission("assembly.view"), validateParams(numericIdParamsSchema), asyncHandler(assemblyController.getDisassembly));
@@ -24,4 +25,5 @@ assemblyRouter.put("/disassembly-orders/:id", requirePermission("assembly.manage
 assemblyRouter.post("/disassembly-orders/:id/post", requirePermission("assembly.post"), validateParams(numericIdParamsSchema), validateBody(disassemblyPostSchema), asyncHandler(assemblyController.postDisassembly));
 assemblyRouter.post("/disassembly-orders/:id/cancel", requirePermission("assembly.cancel"), validateParams(numericIdParamsSchema), validateBody(assemblyCancelSchema), asyncHandler(assemblyController.cancelDisassembly));
 assemblyRouter.post("/disassembly-orders/:id/unpost", requirePermission("assembly.post"), validateParams(numericIdParamsSchema), validateBody(assemblyCancelSchema), asyncHandler(assemblyController.unpostDisassembly));
+assemblyRouter.post("/disassembly-orders/:id/delete", requirePermission("assembly.manage"), validateParams(numericIdParamsSchema), validateBody(assemblyDeleteSchema), asyncHandler(assemblyController.deleteDisassembly));
 assemblyRouter.post("/disassembly-orders/:id/link-inventory", requirePermission("assembly.manage"), validateParams(numericIdParamsSchema), asyncHandler(assemblyController.linkDisassemblyInventory));

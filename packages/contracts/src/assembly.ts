@@ -70,6 +70,7 @@ export const disassemblyPostSchema = z.object({
   lines: z.array(z.object({ lineId: positiveId, actualQuantity: z.coerce.number().min(0).max(999999999), lossQuantity: z.coerce.number().min(0).max(999999999).default(0) })).min(1),
 }).refine(value => value.lines.some(line => line.actualQuantity > 0), { path: ["lines"], message: "Phải có ít nhất một linh kiện thu hồi" });
 export const assemblyCancelSchema = z.object({ version: z.coerce.number().int().positive(), reason: z.string().trim().min(3).max(500) });
+export const assemblyDeleteSchema = z.object({ version: z.coerce.number().int().positive() });
 
 export type AssemblyBomInput = z.infer<typeof assemblyBomInputSchema>;
 export type AssemblyBomUpdateInput = z.infer<typeof assemblyBomUpdateSchema>;
@@ -80,3 +81,4 @@ export type DisassemblyDraftInput = z.infer<typeof disassemblyDraftSchema>;
 export type DisassemblyUpdateInput = z.infer<typeof disassemblyUpdateSchema>;
 export type DisassemblyPostInput = z.infer<typeof disassemblyPostSchema>;
 export type AssemblyCancelInput = z.infer<typeof assemblyCancelSchema>;
+export type AssemblyDeleteInput = z.infer<typeof assemblyDeleteSchema>;

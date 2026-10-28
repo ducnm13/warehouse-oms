@@ -2,6 +2,7 @@ import type {
 	AssemblyBomInput,
 	AssemblyBomUpdateInput,
 	AssemblyCancelInput,
+	AssemblyDeleteInput,
 	AssemblyDraftInput,
 	AssemblyPostInput,
 	AssemblyUpdateInput,
@@ -397,6 +398,16 @@ export const assemblyService = {
 			verifyVersion(locked, input.version);
 			if (locked.status !== "DRAFT")
 				throw new HttpError(409, "INVALID_STATUS", "Chỉ sửa lệnh nháp");
+			const linked = (await tx.$queryRawUnsafe(
+				"SELECT COUNT(*) total FROM assembly_order_document_links WHERE orderId=?",
+				id,
+			)) as any[];
+			if (Number(linked[0]?.total || 0) > 0)
+				throw new HttpError(
+					409,
+					"ORDER_HAS_INVENTORY_DOCUMENTS",
+					"Lệnh đã có phiếu xuất/nhập. Hãy hủy lưu/hoàn tồn kho trước khi sửa lệnh.",
+				);
 			await validateWarehouses(tx, [
 				input.componentWarehouseId,
 				input.outputWarehouseId,
@@ -477,7 +488,8 @@ export const assemblyService = {
 					code: `PX-${order.code}`,
 					type: "EXPORT",
 					warehouseId: order.componentWarehouseId,
-					note: `Xuất linh kiện ${order.code}`,
+					note: `Xuất linh kiện cho lệnh lắp ráp ${order.code}`,
+					reason: `Lắp ráp lệnh ${order.code}`,
 					sourceModule: "ASSEMBLY_COMPONENT_V1",
 					userId,
 					date: day,
@@ -486,7 +498,8 @@ export const assemblyService = {
 					code: `PN-${order.code}`,
 					type: "IMPORT",
 					warehouseId: order.outputWarehouseId,
-					note: `Nhập thành phẩm ${order.code}`,
+					note: `Nhập thành phẩm từ lệnh lắp ráp ${order.code}`,
+					reason: `Lắp ráp lệnh ${order.code}`,
 					sourceModule: "ASSEMBLY_OUTPUT_V1",
 					userId,
 					date: day,
@@ -803,6 +816,16 @@ export const assemblyService = {
 			verifyVersion(locked, input.version);
 			if (locked.status !== "DRAFT")
 				throw new HttpError(409, "INVALID_STATUS", "Chỉ sửa lệnh nháp");
+			const linked = (await tx.$queryRawUnsafe(
+				"SELECT COUNT(*) total FROM disassembly_order_document_links WHERE orderId=?",
+				id,
+			)) as any[];
+			if (Number(linked[0]?.total || 0) > 0)
+				throw new HttpError(
+					409,
+					"ORDER_HAS_INVENTORY_DOCUMENTS",
+					"Lệnh đã có phiếu xuất/nhập. Hãy hủy lưu/hoàn tồn kho trước khi sửa lệnh.",
+				);
 			await validateWarehouses(tx, [
 				input.sourceWarehouseId,
 				input.recoveryWarehouseId,
@@ -909,7 +932,8 @@ export const assemblyService = {
 						code: `PX-${order.code}`,
 						type: "EXPORT",
 						warehouseId: order.sourceWarehouseId,
-						note: `Xuất nguồn tháo dỡ ${order.code}`,
+						note: `Xuất thành phẩm cho lệnh tháo dỡ ${order.code}`,
+						reason: `Tháo dỡ lệnh ${order.code}`,
 						sourceModule: "DISASSEMBLY_SOURCE_V1",
 						userId,
 						date: day,
@@ -918,7 +942,8 @@ export const assemblyService = {
 						code: `PN-${order.code}`,
 						type: "IMPORT",
 						warehouseId: order.recoveryWarehouseId,
-						note: `Nhập thu hồi ${order.code}`,
+						note: `Nhập linh kiện thu hồi từ lệnh tháo dỡ ${order.code}`,
+						reason: `Tháo dỡ lệnh ${order.code}`,
 						sourceModule: "DISASSEMBLY_RECOVERY_V1",
 						userId,
 						date: day,
@@ -1445,6 +1470,67 @@ export const assemblyService = {
 			{ timeout: 30_000 },
 		);
 		return kind === "ASSEMBLY" ? this.getAssembly(id) : this.getDisassembly(id);
+	},
+
+	async remove(
+		kind: "ASSEMBLY" | "DISASSEMBLY",
+		id: number,
+		input: AssemblyDeleteInput,
+		userId: number,
+	) {
+		const isAssembly = kind === "ASSEMBLY";
+		const table = isAssembly ? "assembly_orders" : "disassembly_orders";
+		const module = isAssembly ? "ASSEMBLY_V1" : "DISASSEMBLY_V1";
+		const linksTable = isAssembly
+			? "assembly_order_document_links"
+			: "disassembly_order_document_links";
+		await prisma.$transaction(async tx => {
+			const locked = await lockOrder(tx, table as any, id, module);
+			verifyVersion(locked, input.version);
+			if (locked.status !== "DRAFT")
+				throw new HttpError(
+					409,
+					"INVALID_STATUS",
+					"Chỉ được xóa lệnh ở trạng thái nháp. Hãy hủy lưu/hoàn tồn trước khi xóa.",
+				);
+			const links = (await tx.$queryRawUnsafe(
+				`SELECT COUNT(*) total FROM ${linksTable} WHERE orderId=?`,
+				id,
+			)) as any[];
+			if (Number(links[0]?.total || 0) > 0)
+				throw new HttpError(
+					409,
+					"ORDER_HAS_INVENTORY_DOCUMENTS",
+					"Lệnh đã có phiếu xuất/nhập. Hãy hủy lưu/hoàn tồn kho trước khi xóa lệnh.",
+				);
+			const ledger = (await tx.$queryRawUnsafe(
+				"SELECT COUNT(*) total FROM inventory_ledger WHERE sourceType LIKE ? AND sourceId=?",
+				isAssembly ? "ASSEMBLY%" : "DISASSEMBLY%",
+				id,
+			)) as any[];
+			if (Number(ledger[0]?.total || 0) > 0)
+				throw new HttpError(
+					409,
+					"ORDER_HAS_LEDGER",
+					"Lệnh đã phát sinh tồn kho. Hãy hủy lưu/hoàn tồn kho trước khi xóa lệnh.",
+				);
+			const children = isAssembly
+				? ["assembly_order_lines", "assembly_order_outputs"]
+				: ["disassembly_order_lines", "disassembly_order_sources"];
+			for (const child of children)
+				await tx.$executeRawUnsafe(
+					`DELETE FROM ${child} WHERE orderId=?`,
+					id,
+				);
+			await tx.$executeRawUnsafe(`DELETE FROM ${table} WHERE id=?`, id);
+			await audit(
+				tx,
+				isAssembly ? "Xóa lệnh lắp ráp v1" : "Xóa lệnh tháo dỡ v1",
+				String(id),
+				userId,
+			);
+		});
+		return { id };
 	},
 
 	async unpost(

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { financialSummaryReportQuerySchema, inventorySummaryReportQuerySchema, itemLedgerReportQuerySchema, operationsReportQuerySchema, productionOverviewReportQuerySchema, productionVarianceReportQuerySchema, purchaseReportQuerySchema, salesByCustomerReportQuerySchema, salesByProductReportQuerySchema, salesProfitReportQuerySchema, salesReturnReportQuerySchema, stockOnHandReportQuerySchema, transferReportQuerySchema } from "@challenge/contracts";
+import { financialSummaryReportQuerySchema, inventorySummaryReportQuerySchema, itemLedgerReportQuerySchema, ledgerDocumentReportQuerySchema, operationsReportQuerySchema, productionOverviewReportQuerySchema, productionVarianceReportQuerySchema, purchaseReportQuerySchema, salesByCustomerReportQuerySchema, salesByProductReportQuerySchema, salesProfitReportQuerySchema, salesReturnReportQuerySchema, stockOnHandReportQuerySchema, transferReportQuerySchema } from "@challenge/contracts";
 import { asyncHandler } from "../../common/async-handler";
 import { authenticateV1, requirePermission } from "../../common/authenticate";
 import { validateQuery } from "../../common/validate";
@@ -8,6 +8,7 @@ export const reportingRouter = Router(); reportingRouter.use(authenticateV1, req
 reportingRouter.get("/export-authorization", requirePermission("report.export"), (_req, res) => res.json({ data: { allowed: true } }));
 reportingRouter.get("/inventory-summary", validateQuery(inventorySummaryReportQuerySchema), asyncHandler(reportingController.inventorySummary));
 reportingRouter.get("/item-ledger", validateQuery(itemLedgerReportQuerySchema), asyncHandler(reportingController.itemLedger));
+reportingRouter.get("/item-ledger/document", validateQuery(ledgerDocumentReportQuerySchema), asyncHandler(reportingController.ledgerDocument));
 reportingRouter.get("/sales-profit", validateQuery(salesProfitReportQuerySchema), asyncHandler(reportingController.salesProfit));
 reportingRouter.get("/operations", validateQuery(operationsReportQuerySchema), asyncHandler(reportingController.operations));
 reportingRouter.get("/production-variance", validateQuery(productionVarianceReportQuerySchema), asyncHandler(reportingController.productionVariance));

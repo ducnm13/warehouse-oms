@@ -3,6 +3,7 @@ import { reportingService } from "./reporting.service";
 export const reportingController = {
   async inventorySummary(req: Request, res: Response) { res.json({ success: true, message: "Lấy báo cáo tổng hợp tồn kho thành công", data: await reportingService.inventorySummary(req.query as any) }); },
   async itemLedger(req: Request, res: Response) { res.json({ success: true, message: "Lấy sổ chi tiết vật tư thành công", data: await reportingService.itemLedger(req.query as any) }); },
+  async ledgerDocument(req: Request, res: Response) { const data = await reportingService.ledgerDocument(req.query as any); if (!data) { res.status(404).json({ success: false, message: "Không tìm thấy chứng từ nguồn", error: { code: "DOCUMENT_NOT_FOUND", message: "Không tìm thấy chứng từ nguồn" } }); return; } res.json({ success: true, message: "Lấy chi tiết chứng từ thành công", data }); },
   async salesProfit(req: Request, res: Response) { res.json({ success: true, message: "Lấy báo cáo doanh thu và lợi nhuận thành công", data: await reportingService.salesProfit(req.query as any) }); },
   async operations(req: Request, res: Response) { res.json({ success: true, message: "Lấy báo cáo sản xuất và lắp ráp thành công", data: await reportingService.operations(req.query as any) }); },
   async productionVariance(req: Request, res: Response) { res.json({ success: true, message: "Lấy báo cáo chênh lệch sản xuất thành công", data: await reportingService.productionVariance(req.query as any) }); },

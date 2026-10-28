@@ -325,6 +325,33 @@ export default function Assembly({ user }: { user: User }) {
 		onError: (e: Error) => toast.error(e.message),
 	});
 
+	const deleteOrder = useMutation({
+		mutationFn: async (row: AssemblyOrderV1 | DisassemblyOrderV1) => {
+			if (
+				!(await confirm(
+					`Xóa lệnh nháp ${row.code}? Thao tác này không thể hoàn tác.`,
+				))
+			)
+				throw Error("Đã bỏ xóa");
+			const base =
+				tab === "ASSEMBLY"
+					? "/api/v1/assembly/orders"
+					: "/api/v1/assembly/disassembly-orders";
+			return apiV1(`${base}/${row.id}/delete`, {
+				method: "POST",
+				body: JSON.stringify({ version: row.version }),
+			});
+		},
+		onSuccess: (r: any) => {
+			toast.success(r.message);
+			setSelected(null);
+			void invalidate();
+		},
+		onError: (e: Error) => {
+			if (e.message !== "Đã bỏ xóa") toast.error(e.message);
+		},
+	});
+
 	const unpostOrder = useMutation({
 		mutationFn: async (row: AssemblyOrderV1 | DisassemblyOrderV1) => {
 			if (
@@ -456,11 +483,12 @@ export default function Assembly({ user }: { user: User }) {
 					transactionDate: today(),
 					warehouseId,
 					recipient: type === "EXPORT" ? "Tổ lắp ráp" : "Kho thành phẩm",
-					reason:
-						type === "EXPORT"
-							? "Xuất linh kiện lắp ráp"
-							: "Nhập thành phẩm lắp ráp",
-					note: `${type === "EXPORT" ? "Xuất cho" : "Nhập từ"} lệnh ${order.code}`,
+					reason: `${
+						tab === "ASSEMBLY" ? "Lắp ráp" : "Tháo dỡ"
+					} lệnh ${order.code}`,
+					note: `${
+						type === "EXPORT" ? "Xuất cho" : "Nhập từ"
+					} lệnh ${tab === "ASSEMBLY" ? "lắp ráp" : "tháo dỡ"} ${order.code}`,
 					details: normalized,
 				}),
 			});
@@ -869,6 +897,14 @@ export default function Assembly({ user }: { user: User }) {
 												hidden: !manage || row.status !== "POSTED",
 												onClick: () => unpostOrder.mutate(row),
 											},
+											{
+												key: "delete",
+												label: "Xóa lệnh",
+												icon: <Trash2 size={15} />,
+												tone: "danger",
+												hidden: !manage || row.status !== "DRAFT",
+												onClick: () => deleteOrder.mutate(row),
+											},
 										]}
 									/>
 								</td>
@@ -1148,6 +1184,7 @@ export default function Assembly({ user }: { user: User }) {
 					<>
 						<DocumentActions
 							status={selected?.status || "DRAFT"}
+							canEdit={!(selected?.links || []).length}
 							printing={false}
 							unposting={unpostOrder.isPending}
 							onUnpost={() => selected && unpostOrder.mutate(selected)}
@@ -1160,6 +1197,15 @@ export default function Assembly({ user }: { user: User }) {
 								void duplicateOrder(order);
 							}}
 						/>
+						{selected?.status === "DRAFT" ? (
+							<button
+								type="button"
+								className="erp-btn text-red-600"
+								onClick={() => deleteOrder.mutate(selected)}
+							>
+								<Trash2 size={15} /> Xóa
+							</button>
+						) : null}
 						{selected &&
 							["DRAFT"].includes(selected.status) &&
 							!(selected.links || []).some(

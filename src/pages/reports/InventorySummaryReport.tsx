@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { Search } from "lucide-react";
 import ReportPeriodFilter from "../../components/ReportPeriodFilter";
 import { apiV1 } from "../../lib/apiV1";
@@ -23,6 +24,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 const monthStart = () => `${today().slice(0, 7)}-01`;
 
 export default function InventorySummaryReport() {
+	const navigate = useNavigate();
 	const [from, setFrom] = useState(monthStart());
 	const [to, setTo] = useState(today());
 	const [warehouseId, setWarehouseId] = useState(0);
@@ -174,7 +176,22 @@ export default function InventorySummaryReport() {
 							{rows.map(row => (
 								<tr key={`${row.packagingId}-${row.warehouseId}`}>
 									<td>
-										<b>{row.productName}</b>
+										<button
+											type="button"
+											className="text-left font-bold text-[#422afb] hover:underline"
+											title="Mở sổ chi tiết vật tư"
+											onClick={() =>
+												navigate(
+													`/reports/item-ledger?${new URLSearchParams({
+														packagingId: String(row.packagingId),
+														from,
+														to,
+													}).toString()}`,
+												)
+											}
+										>
+											{row.productName}
+										</button>
 										<small>
 											{row.packagingName} · {row.sku || "-"}
 										</small>

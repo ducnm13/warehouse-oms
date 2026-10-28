@@ -1,4 +1,4 @@
-import type { FinancialSummaryReportQuery, InventorySummaryReportQuery, ItemLedgerReportQuery, OperationsReportQuery, ProductionOverviewReportQuery, ProductionVarianceReportQuery, PurchaseReportQuery, SalesByCustomerReportQuery, SalesByProductReportQuery, SalesProfitReportQuery, SalesReturnReportQuery, StockOnHandReportQuery, TransferReportQuery } from "@challenge/contracts";
+import type { FinancialSummaryReportQuery, InventorySummaryReportQuery, ItemLedgerReportQuery, LedgerDocumentReportQuery, OperationsReportQuery, ProductionOverviewReportQuery, ProductionVarianceReportQuery, PurchaseReportQuery, SalesByCustomerReportQuery, SalesByProductReportQuery, SalesProfitReportQuery, SalesReturnReportQuery, StockOnHandReportQuery, TransferReportQuery } from "@challenge/contracts";
 import { HttpError } from "../../common/http-error";
 import { reportingRepository } from "./reporting.repository";
 
@@ -11,7 +11,7 @@ export const reportingService = {
     const rows = (await reportingRepository.inventorySummary({ ...range(query.from, query.to), warehouseId: query.warehouseId, category: query.category, search: query.search })).map(row => {
       const openingQuantity = n(row.openingQuantity), inboundQuantity = n(row.inboundQuantity), outboundQuantity = n(row.outboundQuantity), closingQuantity = openingQuantity + inboundQuantity - outboundQuantity;
       const openingValue = n(row.openingValue), inboundValue = n(row.inboundValue), outboundValue = n(row.outboundValue), closingValue = openingValue + inboundValue - outboundValue, projectionQuantity = n(row.projectionQuantity);
-      return { packagingId: row.packagingId, warehouseId: row.warehouseId, sku: row.sku, packagingName: row.packagingName, unit: row.unit, productName: row.productName, category: row.category, warehouseName: row.warehouseName, openingQuantity, inboundQuantity, outboundQuantity, closingQuantity, openingValue: round(openingValue), inboundValue: round(inboundValue), outboundValue: round(outboundValue), closingValue: round(closingValue), projectionQuantity, projectionDifference: round(projectionQuantity - closingQuantity), valueCoverageComplete: Math.abs(n(row.openingBaselineQuantity)) < 0.00005 };
+              return { packagingId: row.packagingId, productId: row.productId, warehouseId: row.warehouseId, sku: row.sku, packagingName: row.packagingName, unit: row.unit, productName: row.productName, category: row.category, warehouseName: row.warehouseName, openingQuantity, inboundQuantity, outboundQuantity, closingQuantity, openingValue: round(openingValue), inboundValue: round(inboundValue), outboundValue: round(outboundValue), closingValue: round(closingValue), projectionQuantity, projectionDifference: round(projectionQuantity - closingQuantity), valueCoverageComplete: Math.abs(n(row.openingBaselineQuantity)) < 0.00005 };
     });
     const summary = rows.reduce((sum, row) => ({ openingQuantity: sum.openingQuantity + row.openingQuantity, inboundQuantity: sum.inboundQuantity + row.inboundQuantity, outboundQuantity: sum.outboundQuantity + row.outboundQuantity, closingQuantity: sum.closingQuantity + row.closingQuantity, openingValue: sum.openingValue + row.openingValue, inboundValue: sum.inboundValue + row.inboundValue, outboundValue: sum.outboundValue + row.outboundValue, closingValue: sum.closingValue + row.closingValue, projectionDifference: sum.projectionDifference + row.projectionDifference }), { openingQuantity: 0, inboundQuantity: 0, outboundQuantity: 0, closingQuantity: 0, openingValue: 0, inboundValue: 0, outboundValue: 0, closingValue: 0, projectionDifference: 0 });
     return { rows, summary, valueCoverageComplete: rows.every(row => row.valueCoverageComplete) };
@@ -19,9 +19,46 @@ export const reportingService = {
   async itemLedger(query: ItemLedgerReportQuery) {
     const packaging = await reportingRepository.packaging(query.packagingId); if (!packaging) throw new HttpError(404, "PACKAGING_NOT_FOUND", "Không tìm thấy quy cách hàng hóa");
     const dates = range(query.from, query.to), [openingRows, movements] = await Promise.all([reportingRepository.itemOpening({ from: dates.from, packagingId: query.packagingId, warehouseId: query.warehouseId }), reportingRepository.itemLedger({ ...dates, packagingId: query.packagingId, warehouseId: query.warehouseId })]);
+    let visibleMovements = movements;
+    if (query.includeReversals !== "true") {
+      const ids = new Set(movements.map(row => Number(row.id)));
+      const hidden = new Set<number>();
+      for (const row of movements) if (row.reversalOfId && ids.has(Number(row.reversalOfId))) { hidden.add(Number(row.id)); hidden.add(Number(row.reversalOfId)); }
+      visibleMovements = movements.filter(row => !hidden.has(Number(row.id)));
+    }
     let runningQuantity = n(openingRows[0]?.quantity), runningValue = n(openingRows[0]?.totalValue);
-    const rows = movements.map(row => { const quantity = n(row.quantity), totalValue = n(row.totalValue), inboundQuantity = row.direction === "IN" ? quantity : 0, outboundQuantity = row.direction === "OUT" ? quantity : 0, inboundValue = row.direction === "IN" ? totalValue : 0, outboundValue = row.direction === "OUT" ? totalValue : 0; runningQuantity += inboundQuantity - outboundQuantity; runningValue += inboundValue - outboundValue; return { id: String(row.id), occurredAt: row.occurredAt, documentCode: row.documentCode, sourceType: row.sourceType, sourceId: row.sourceId, direction: row.direction, warehouseId: row.warehouseId, warehouseName: row.warehouseName, inboundQuantity, outboundQuantity, unitCost: n(row.unitCost), inboundValue, outboundValue, runningQuantity, runningValue: round(runningValue) }; });
+    const rows = visibleMovements.map(row => { const quantity = n(row.quantity), totalValue = n(row.totalValue), inboundQuantity = row.direction === "IN" ? quantity : 0, outboundQuantity = row.direction === "OUT" ? quantity : 0, inboundValue = row.direction === "IN" ? totalValue : 0, outboundValue = row.direction === "OUT" ? totalValue : 0; runningQuantity += inboundQuantity - outboundQuantity; runningValue += inboundValue - outboundValue; return { id: String(row.id), occurredAt: row.occurredAt, documentCode: row.documentCode, sourceType: row.sourceType, sourceId: row.sourceId, sourceLineId: row.sourceLineId, sourceModule: row.sourceModule || undefined, description: row.description || undefined, direction: row.direction, warehouseId: row.warehouseId, warehouseName: row.warehouseName, inboundQuantity, outboundQuantity, unitCost: n(row.unitCost), inboundValue, outboundValue, runningQuantity, runningValue: round(runningValue) }; });
     return { packaging: { id: packaging.id, sku: packaging.sku, name: packaging.name, unit: packaging.unit, productName: packaging.products?.name }, openingQuantity: n(openingRows[0]?.quantity), openingValue: round(n(openingRows[0]?.totalValue)), valueCoverageComplete: Math.abs(n(openingRows[0]?.baselineQuantity)) < 0.00005, rows, closingQuantity: runningQuantity, closingValue: round(runningValue) };
+  },
+  async ledgerDocument(query: LedgerDocumentReportQuery) {
+    const row = await reportingRepository.ledgerDocument(query.sourceType, query.sourceId);
+    if (!row) return null;
+    return {
+      code: row.code,
+      documentType: row.documentType,
+      documentDate: row.documentDate,
+      status: row.status,
+      warehouseName: row.warehouseName || undefined,
+      partnerName: row.partnerName || undefined,
+      note: row.note || undefined,
+      cancelReason: row.cancelReason || undefined,
+      lines: (row.lines || []).map((line: any) => ({
+        id: String(line.id || line.packagingId),
+        packagingId: line.packagingId,
+        sku: line.sku || undefined,
+        packagingName: line.packagingName || undefined,
+        productName: line.productName || undefined,
+        unit: line.unit || undefined,
+        quantity: n(line.quantity),
+        plannedQuantity: line.plannedQuantity == null ? undefined : n(line.plannedQuantity),
+        actualQuantity: line.actualQuantity == null ? undefined : n(line.actualQuantity),
+        expectedQuantity: line.expectedQuantity == null ? undefined : n(line.expectedQuantity),
+        difference: line.difference == null ? undefined : n(line.difference),
+        unitCost: line.unitCost == null ? undefined : n(line.unitCost),
+        totalValue: line.totalValue == null ? undefined : n(line.totalValue),
+        note: line.note || undefined,
+      })),
+    };
   },
   async salesProfit(query: SalesProfitReportQuery) {
     const rows = (await reportingRepository.salesProfit(query)).map(row => ({ id: row.id, code: row.code, orderDate: row.orderDate, customerId: row.customerId, customerCode: row.customerCode, customerName: row.customerName, warehouseId: row.warehouseId, warehouseName: row.warehouseName, grossSales: round(n(row.grossSales)), discountAmount: round(n(row.discountAmount)), netRevenue: round(n(row.netRevenue)), taxAmount: round(n(row.taxAmount)), cogs: round(n(row.cogs)), grossProfit: round(n(row.netRevenue) - n(row.cogs)), grossMarginPercent: n(row.netRevenue) ? round((n(row.netRevenue) - n(row.cogs)) / n(row.netRevenue) * 100) : 0 }));

@@ -14,6 +14,7 @@ export const assemblyController = {
   async postAssembly(req: Request, res: Response) { res.json({ success: true, message: "Đã lưu lắp ráp", data: await assemblyService.postAssembly(id(req), req.body, user(req)) }); },
   async cancelAssembly(req: Request, res: Response) { res.json({ success: true, message: "Đã hủy lệnh lắp ráp", data: await assemblyService.cancel("ASSEMBLY", id(req), req.body, user(req)) }); },
   async unpostAssembly(req: Request, res: Response) { res.json({ success: true, message: "Da huy luu lenh lap rap", data: await assemblyService.unpost("ASSEMBLY", id(req), Number(req.body.version), user(req)) }); },
+  async deleteAssembly(req: Request, res: Response) { res.json({ success: true, message: "Đã xóa lệnh lắp ráp", data: await assemblyService.remove("ASSEMBLY", id(req), req.body, user(req)) }); },
   async linkAssemblyInventory(req: Request, res: Response) { res.json({ success: true, message: "Đã liên kết phiếu kho với lệnh lắp ráp", data: await assemblyService.linkInventory("ASSEMBLY", id(req), req.body, user(req)) }); },
   async linkDisassemblyInventory(req: Request, res: Response) { res.json({ success: true, message: "Đã liên kết phiếu kho với lệnh tháo dỡ", data: await assemblyService.linkInventory("DISASSEMBLY", id(req), req.body, user(req)) }); },
   async listDisassembly(req: Request, res: Response) { const result = await assemblyService.listDisassembly(req.query); res.json({ success: true, message: "Lấy lệnh tháo dỡ thành công", ...result }); },
@@ -23,4 +24,5 @@ export const assemblyController = {
   async postDisassembly(req: Request, res: Response) { res.json({ success: true, message: "Đã lưu tháo dỡ", data: await assemblyService.postDisassembly(id(req), req.body, user(req)) }); },
   async cancelDisassembly(req: Request, res: Response) { res.json({ success: true, message: "Đã hủy lệnh tháo dỡ", data: await assemblyService.cancel("DISASSEMBLY", id(req), req.body, user(req)) }); },
   async unpostDisassembly(req: Request, res: Response) { res.json({ success: true, message: "Da huy luu lenh thao do", data: await assemblyService.unpost("DISASSEMBLY", id(req), Number(req.body.version), user(req)) }); },
+  async deleteDisassembly(req: Request, res: Response) { res.json({ success: true, message: "Đã xóa lệnh tháo dỡ", data: await assemblyService.remove("DISASSEMBLY", id(req), req.body, user(req)) }); },
 };

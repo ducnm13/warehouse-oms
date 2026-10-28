@@ -17,9 +17,9 @@ export async function averageCost(tx: any, packagingId: number, warehouseId: num
   const rows = await tx.$queryRawUnsafe("SELECT COALESCE(SUM(CASE WHEN direction='IN' THEN quantity ELSE -quantity END),0) q,COALESCE(SUM(CASE WHEN direction='IN' THEN totalValue ELSE -totalValue END),0) v FROM inventory_ledger WHERE packagingId=? AND warehouseId=?", packagingId, warehouseId) as any[];
   return Number(rows[0].q) > 0 ? Number(rows[0].v) / Number(rows[0].q) : 0;
 }
-export async function inventoryDocument(tx: any, data: { code: string; type: "IMPORT" | "EXPORT"; warehouseId: number; note: string; sourceModule: string; userId: number; date: string }) {
+export async function inventoryDocument(tx: any, data: { code: string; type: "IMPORT" | "EXPORT"; warehouseId: number; note: string; reason?: string; sourceModule: string; userId: number; date: string }) {
   const timestamp = nowIso();
-  return tx.inventorytransactions.create({ data: { code: data.code, type: data.type, transaction_date: data.date, entry_date: data.type === "IMPORT" ? data.date : null, exit_date: data.type === "EXPORT" ? data.date : null, warehouseId: data.warehouseId, note: data.note, reason: "Lắp ráp / tháo dỡ V1", createdBy: data.userId, createdAt: timestamp, updatedAt: timestamp, documentStatus: "POSTED", postedAt: new Date(), postedBy: data.userId, sourceModule: data.sourceModule } });
+  return tx.inventorytransactions.create({ data: { code: data.code, type: data.type, transaction_date: data.date, entry_date: data.type === "IMPORT" ? data.date : null, exit_date: data.type === "EXPORT" ? data.date : null, warehouseId: data.warehouseId, note: data.note, reason: data.reason || "Lắp ráp / tháo dỡ V1", createdBy: data.userId, createdAt: timestamp, updatedAt: timestamp, documentStatus: "POSTED", postedAt: new Date(), postedBy: data.userId, sourceModule: data.sourceModule } });
 }
 export function verifyVersion(row: any, version: number) { if (Number(row.version) !== version) throw new HttpError(409, "VERSION_CONFLICT", "Dữ liệu đã thay đổi"); }
 export function verifyLinePayload(snapshot: any[], payload: Array<{ lineId: number }>) {
