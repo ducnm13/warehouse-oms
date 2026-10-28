@@ -438,8 +438,8 @@ export default function WarehouseTransfers() {
 				<div>
 					<h1>Chuyển kho</h1>
 					<p>
-						Xuất giao tại kho nguồn, theo dõi hàng đi đường và xác nhận nhận tại
-						kho đích
+						Quản lý phiếu chuyển kho, theo dõi luồng điều chuyển hàng hóa giữa
+						các kho.
 					</p>
 				</div>
 				<button
@@ -928,19 +928,19 @@ export default function WarehouseTransfers() {
 							</span>
 							<table className="erp-table">
 								<thead>
-								<tr>
-									<th className="w-12 text-center">STT</th>
-									<th>Hàng hóa</th>
-									<th className="text-right">Số lượng</th>
-									<th className="text-right">Giá vốn</th>
-									<th className="text-right">Giá trị</th>
-								</tr>
-							</thead>
-							<tbody>
-								{selected.details.map((line, index) => (
-									<tr key={line.id}>
-										<td className="text-center">{index + 1}</td>
-										<td>
+									<tr>
+										<th className="w-12 text-center">STT</th>
+										<th>Hàng hóa</th>
+										<th className="text-right">Số lượng</th>
+										<th className="text-right">Giá vốn</th>
+										<th className="text-right">Giá trị</th>
+									</tr>
+								</thead>
+								<tbody>
+									{selected.details.map((line, index) => (
+										<tr key={line.id}>
+											<td className="text-center">{index + 1}</td>
+											<td>
 												<b>
 													{formatProductName(
 														line.productName,

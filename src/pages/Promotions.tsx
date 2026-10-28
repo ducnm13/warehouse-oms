@@ -310,8 +310,8 @@ export default function Promotions() {
 				<div>
 					<h1>Khuyến mãi</h1>
 					<p>
-						Quản lý, áp dụng các chương trình khuyến mãi cho khách hàng. Chương
-						trình chỉ tác động đơn bán lập trong thời gian hiệu lực.
+						Quan lý các chương trình khuyến mãi, hàng tặng, điều kiện áp dụng và
+						phạm vi khách hàng.
 					</p>
 				</div>
 				<button className="erp-btn erp-btn-primary" onClick={create}>

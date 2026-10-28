@@ -104,8 +104,16 @@ export default function Debt() {
 		role?: string;
 		permissions?: string[];
 	};
-	const canReceive = hasPermission(currentUser.role, currentUser.permissions, "debt.receive");
-	const canPay = hasPermission(currentUser.role, currentUser.permissions, "debt.pay");
+	const canReceive = hasPermission(
+		currentUser.role,
+		currentUser.permissions,
+		"debt.receive",
+	);
+	const canPay = hasPermission(
+		currentUser.role,
+		currentUser.permissions,
+		"debt.pay",
+	);
 	const [view, setView] = useState<View>("receivables"),
 		[search, setSearch] = useState("");
 	const [filters, setFilters] = useState<FilterValues>({});
@@ -329,12 +337,12 @@ export default function Debt() {
 	};
 	const act = async (document: DebtPaymentV1, action: "post" | "cancel") => {
 		if (action === "post") {
-		if (
-			!(await confirm(
-				`Lưu ${document.code}? Công nợ các chứng từ phân bổ sẽ thay đổi.`,
-			))
-		)
-			return;
+			if (
+				!(await confirm(
+					`Lưu ${document.code}? Công nợ các chứng từ phân bổ sẽ thay đổi.`,
+				))
+			)
+				return;
 			actionMutation.mutate({ document, action });
 			return;
 		}
@@ -411,7 +419,9 @@ export default function Debt() {
 			);
 		}
 		return exportExcelFile(
-			view === "receivables" ? "cong-no-phai-thu.xlsx" : "cong-no-phai-tra.xlsx",
+			view === "receivables"
+				? "cong-no-phai-thu.xlsx"
+				: "cong-no-phai-tra.xlsx",
 			view === "receivables" ? "Cong no phai thu" : "Cong no phai tra",
 			[
 				{
@@ -454,11 +464,7 @@ export default function Debt() {
 			<div className="erp-page-header">
 				<div>
 					<h1>Công nợ</h1>
-					<p>
-						Quản lý các công nợ phải thu, phải trả, lập phiếu thu/chi để phân bổ
-						công nợ cho nhiều chứng từ. Chỉ phiếu đã lưu mới tác động công
-						nợ.
-					</p>
+					<p>Quản lý công nợ phải thu, phải trả, phiếu thu và phiếu chi</p>
 				</div>
 				<div className="flex gap-2">
 					{canReceive && (
@@ -700,8 +706,7 @@ export default function Debt() {
 															label: "Lưu",
 															icon: <CheckCircle2 size={15} />,
 															tone: "success",
-															hidden:
-																!canManage || document.status !== "DRAFT",
+															hidden: !canManage || document.status !== "DRAFT",
 															onClick: () => act(document, "post"),
 														},
 														{
@@ -750,13 +755,13 @@ export default function Debt() {
 						>
 							<div className="erp-modal-body space-y-5">
 								<div className="grid gap-4 md:grid-cols-4">
-								<label>
-									Ngày phiếu
-									<DateInput
-										value={paymentDate}
-										onChange={value => setPaymentDate(value)}
-									/>
-								</label>
+									<label>
+										Ngày phiếu
+										<DateInput
+											value={paymentDate}
+											onChange={value => setPaymentDate(value)}
+										/>
+									</label>
 									<label>
 										Đối tác
 										<select
@@ -908,21 +913,21 @@ export default function Debt() {
 							</span>
 							<table className="erp-table">
 								<thead>
-								<tr>
-									<th className="w-12 text-center">STT</th>
-									<th>Chứng từ</th>
-									<th className="text-right">Phân bổ</th>
-								</tr>
-							</thead>
-							<tbody>
-								{selected.allocations.map((row, index) => (
-									<tr
-										key={row.id}
-										className="cursor-pointer hover:bg-slate-50"
-										onClick={() => setAllocationDocId(row.documentId)}
-									>
-										<td className="text-center">{index + 1}</td>
-										<td className="flex items-center gap-2">
+									<tr>
+										<th className="w-12 text-center">STT</th>
+										<th>Chứng từ</th>
+										<th className="text-right">Phân bổ</th>
+									</tr>
+								</thead>
+								<tbody>
+									{selected.allocations.map((row, index) => (
+										<tr
+											key={row.id}
+											className="cursor-pointer hover:bg-slate-50"
+											onClick={() => setAllocationDocId(row.documentId)}
+										>
+											<td className="text-center">{index + 1}</td>
+											<td className="flex items-center gap-2">
 												<Eye size={14} className="text-slate-400" />
 												{row.documentCode}
 											</td>
@@ -1140,8 +1145,7 @@ export default function Debt() {
 							<div>
 								<h2>Hủy khoản thu {cancelTarget.code}</h2>
 								<p>
-									Hủy để đủ điều kiện hủy lưu đơn bán, công nợ được hoàn
-									nguyên
+									Hủy để đủ điều kiện hủy lưu đơn bán, công nợ được hoàn nguyên
 								</p>
 							</div>
 							<button onClick={() => setCancelTarget(null)}>

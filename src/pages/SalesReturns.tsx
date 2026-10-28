@@ -198,7 +198,9 @@ export default function SalesReturns() {
 	const save = useMutation({
 		mutationFn: () => {
 			if (!orderId || !warehouseId || reason.trim().length < 3)
-				throw new Error("Chọn đơn bán, kho nhận và nhập lý do trả (ít nhất 3 ký tự)");
+				throw new Error(
+					"Chọn đơn bán, kho nhận và nhập lý do trả (ít nhất 3 ký tự)",
+				);
 			return editing
 				? apiV1<SalesReturnV1>(`/api/v1/sales-returns/${editing.id}`, {
 						method: "PUT",
@@ -352,8 +354,7 @@ export default function SalesReturns() {
 				},
 				{
 					header: "Trạng thái",
-					value: (row: SalesReturnV1) =>
-						statusLabel[row.status] || row.status,
+					value: (row: SalesReturnV1) => statusLabel[row.status] || row.status,
 				},
 			],
 			visibleRows,
@@ -365,9 +366,8 @@ export default function SalesReturns() {
 				<div>
 					<h1>Trả hàng bán</h1>
 					<p>
-						Đối soát chứng từ bán hàng với khách hàng, lập phiếu trả hàng để
-						giảm công nợ và nhập lại hàng hóa về kho. Chỉ phiếu đã lưu mới
-						tác động tồn và công nợ.
+						Quản lý các phiếu trả hàng bán, giảm công nợ và nhập lại hàng hóa về
+						kho.
 					</p>
 				</div>
 				<button className="erp-btn erp-btn-primary" onClick={create}>
@@ -404,7 +404,7 @@ export default function SalesReturns() {
 					<div className="p-12 text-center text-red-600">
 						{(documents.error as Error).message}
 					</div>
-				 ) : !visibleRows.length ? (
+				) : !visibleRows.length ? (
 					<div className="erp-empty">
 						<PackagePlus size={48} />
 						<p>Chưa có phiếu trả hàng.</p>
@@ -612,13 +612,13 @@ export default function SalesReturns() {
 											placeholder="Chọn đơn đã lưu"
 										/>
 									</label>
-								<label>
-									Ngày trả
-									<DateInput
-										value={returnDate}
-										onChange={value => setReturnDate(value)}
-									/>
-								</label>
+									<label>
+										Ngày trả
+										<DateInput
+											value={returnDate}
+											onChange={value => setReturnDate(value)}
+										/>
+									</label>
 									<label>
 										Kho nhận
 										<select
@@ -666,72 +666,73 @@ export default function SalesReturns() {
 														),
 													)
 													.map((line, index) => {
-													const input = lines.find(
-														row => row.originalSalesOrderLineId === line.id,
-													);
-													const alreadyReturned =
-														returnedByLine.get(line.id!) || 0;
-													const returnable = Math.max(
-														0,
-														line.quantity - alreadyReturned,
-													);
-													return (
-														<tr key={line.id}>
-															<td className="text-center">{index + 1}</td>
-															<td>
-																{formatProductName(
-																	line.productName,
-																	line.packagingName,
-																)}
-																<small>{line.sku}</small>
-															</td>
-															<td>{line.lineType || "SALE"}</td>
-															<td>
-																{formatNumber(line.quantity)} {line.unit}
-															</td>
-															<td>
-																{formatNumber(alreadyReturned)} {line.unit}
-															</td>
-															<td className="font-bold text-emerald-700">
-																{formatNumber(returnable)} {line.unit}
-															</td>
-															<td>
-																<input
-																	className="w-28"
-																	type="number"
-																	min={0}
-																	max={returnable}
-																	step="any"
-																	value={input?.quantity || 0}
-																	onChange={event =>
-																		setLines(current =>
-																			current.map(row =>
-																				row.originalSalesOrderLineId === line.id
-																					? {
-																							...row,
-																							quantity: +event.target.value,
-																						}
-																					: row,
-																			),
-																		)
-																	}
-																/>
-															</td>
-															<td>{formatNumber(line.lineTotal || 0)} ₫</td>
-															<td>{formatNumber(line.costAmount || 0)} ₫</td>
-															<td className="text-right">
-																<button
-																	type="button"
-																	className="erp-btn text-red-600 !px-2"
-																	title="Xóa mặt hàng khỏi phiếu trả"
-																	onClick={() => removeLine(line.id!)}
-																>
-																	<Trash2 size={15} />
-																</button>
-															</td>
-														</tr>
-													);
-												})}
+														const input = lines.find(
+															row => row.originalSalesOrderLineId === line.id,
+														);
+														const alreadyReturned =
+															returnedByLine.get(line.id!) || 0;
+														const returnable = Math.max(
+															0,
+															line.quantity - alreadyReturned,
+														);
+														return (
+															<tr key={line.id}>
+																<td className="text-center">{index + 1}</td>
+																<td>
+																	{formatProductName(
+																		line.productName,
+																		line.packagingName,
+																	)}
+																	<small>{line.sku}</small>
+																</td>
+																<td>{line.lineType || "SALE"}</td>
+																<td>
+																	{formatNumber(line.quantity)} {line.unit}
+																</td>
+																<td>
+																	{formatNumber(alreadyReturned)} {line.unit}
+																</td>
+																<td className="font-bold text-emerald-700">
+																	{formatNumber(returnable)} {line.unit}
+																</td>
+																<td>
+																	<input
+																		className="w-28"
+																		type="number"
+																		min={0}
+																		max={returnable}
+																		step="any"
+																		value={input?.quantity || 0}
+																		onChange={event =>
+																			setLines(current =>
+																				current.map(row =>
+																					row.originalSalesOrderLineId ===
+																					line.id
+																						? {
+																								...row,
+																								quantity: +event.target.value,
+																							}
+																						: row,
+																				),
+																			)
+																		}
+																	/>
+																</td>
+																<td>{formatNumber(line.lineTotal || 0)} ₫</td>
+																<td>{formatNumber(line.costAmount || 0)} ₫</td>
+																<td className="text-right">
+																	<button
+																		type="button"
+																		className="erp-btn text-red-600 !px-2"
+																		title="Xóa mặt hàng khỏi phiếu trả"
+																		onClick={() => removeLine(line.id!)}
+																	>
+																		<Trash2 size={15} />
+																	</button>
+																</td>
+															</tr>
+														);
+													})}
 											</tbody>
 										</table>
 									</div>
@@ -780,19 +781,19 @@ export default function SalesReturns() {
 							</span>
 							<table className="erp-table">
 								<thead>
-								<tr>
-									<th className="w-12 text-center">STT</th>
-									<th>Hàng hóa</th>
-									<th>SL trả</th>
-									<th>Giảm doanh thu + thuế</th>
-									<th>Giá vốn nhập lại</th>
-								</tr>
-							</thead>
-							<tbody>
-								{selected.lines.map((line, index) => (
-									<tr key={line.id}>
-										<td className="text-center">{index + 1}</td>
-										<td>
+									<tr>
+										<th className="w-12 text-center">STT</th>
+										<th>Hàng hóa</th>
+										<th>SL trả</th>
+										<th>Giảm doanh thu + thuế</th>
+										<th>Giá vốn nhập lại</th>
+									</tr>
+								</thead>
+								<tbody>
+									{selected.lines.map((line, index) => (
+										<tr key={line.id}>
+											<td className="text-center">{index + 1}</td>
+											<td>
 												{formatProductName(
 													line.productName,
 													line.packagingName,

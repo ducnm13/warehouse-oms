@@ -47,7 +47,9 @@ const Header = ({
 	const [lastSeenLogId, setLastSeenLogId] = useState(() =>
 		Number(localStorage.getItem(LAST_SEEN_LOG_KEY) || 0),
 	);
-	const canViewAuditLogs = Boolean(user?.role) && hasPermission(user?.role, user?.permissions, "audit.view");
+	const canViewAuditLogs =
+		Boolean(user?.role) &&
+		hasPermission(user?.role, user?.permissions, "audit.view");
 	const newestLogId = latestLogId(logs);
 	const hasUnreadNotifications = newestLogId > lastSeenLogId;
 
@@ -68,12 +70,15 @@ const Header = ({
 		return [];
 	}, []);
 
-	const markNotificationsRead = useCallback((rows: AuditLog[] = logs) => {
-		const newest = latestLogId(rows);
-		if (!newest) return;
-		localStorage.setItem(LAST_SEEN_LOG_KEY, String(newest));
-		setLastSeenLogId(current => Math.max(current, newest));
-	}, [logs]);
+	const markNotificationsRead = useCallback(
+		(rows: AuditLog[] = logs) => {
+			const newest = latestLogId(rows);
+			if (!newest) return;
+			localStorage.setItem(LAST_SEEN_LOG_KEY, String(newest));
+			setLastSeenLogId(current => Math.max(current, newest));
+		},
+		[logs],
+	);
 
 	useEffect(() => {
 		if (!canViewAuditLogs) return;
@@ -171,11 +176,7 @@ const Header = ({
 								type="button"
 								data-tour="help"
 								onClick={() =>
-									window.open(
-										"/user-guide",
-										"_blank",
-										"noopener,noreferrer",
-									)
+									window.open("/user-guide", "_blank", "noopener,noreferrer")
 								}
 								title="Trang hướng dẫn sử dụng"
 								className="flex h-10 w-10 items-center justify-center rounded-xl border border-transparent bg-[#f4f7fe] text-[#707eae] transition-all hover:bg-[#e9e3ff] hover:text-primary active:scale-95"
@@ -202,7 +203,7 @@ const Header = ({
 											className="fixed inset-0 z-10"
 											onClick={() => setShowNotifications(false)}
 										></div>
-										<div className="absolute right-0 mt-3 w-[350px] bg-white rounded-2xl shadow-2xl border border-slate-100 z-20 animate-in fade-in slide-in-from-top-2 duration-200 overflow-hidden">
+										<div className="absolute right-[-80px] mt-3 w-[330px] bg-white rounded-2xl shadow-2xl border border-slate-100 z-20 animate-in fade-in slide-in-from-top-2 duration-200 overflow-hidden">
 											<div className="p-5 border-b flex items-center justify-between bg-slate-50/50">
 												<div>
 													<h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">
@@ -299,7 +300,11 @@ const Header = ({
 							<div className="flex items-center gap-2">
 								<div className="w-10 h-10 rounded-xl bg-[#e9e3ff] border-2 border-white shadow-sm flex items-center justify-center text-[#422afb] font-black text-lg ring-1 ring-[#eef2fb] group-hover:scale-105 transition-transform overflow-hidden">
 									{user?.avatarUrl ? (
-										<img src={user.avatarUrl} alt="Ảnh đại diện" className="h-full w-full object-cover" />
+										<img
+											src={user.avatarUrl}
+											alt="Ảnh đại diện"
+											className="h-full w-full object-cover"
+										/>
 									) : (
 										user?.fullName?.charAt(0).toUpperCase() || "U"
 									)}

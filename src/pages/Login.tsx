@@ -64,19 +64,19 @@ export default function Login({ onLogin }: LoginProps) {
 					</span> */}
 					<div>
 						{/* <p className="font-semibold tracking-tight">Challenge ERP</p> */}
-						<p className="text-xs text-white/60">Challenge ERP</p>
+						<p className="text-xs text-white/60">ERP</p>
 						<p className="text-xs text-white/60">Version v1.0.2</p>
 					</div>
 				</div>
 				<div className="relative space-y-6">
 					<h1 className="text-4xl font-bold leading-tight tracking-tight">
-						Quản trị kho, mua bán và sản xuất trên một nền tảng.
+						Quản lý kho, mua bán và sản xuất trên một nền tảng.
 					</h1>
 					<p className="max-w-md text-sm leading-relaxed text-white/70">
 						Theo dõi tồn kho theo thời gian thực, duyệt chứng từ mua bán, quản
-						lý công nợ và lệnh sản xuất an toàn theo phân quyền.
+						lý công nợ và lệnh sản xuất.
 					</p>
-					<div className="grid max-w-md grid-cols-3 gap-3">
+					<div className="grid max-w-md grid-cols-4 gap-2">
 						{[
 							["99.9%", "Uptime"],
 							["30+", "Phân hệ"],
@@ -93,8 +93,15 @@ export default function Login({ onLogin }: LoginProps) {
 					</div>
 				</div>
 				<p className="relative text-xs text-white/50">
-					© 2026 Challenge ERP · Quản lý sản xuất, mua bán và kho hàng. All
-					rights reserved.
+					© 2026 Challenge ERP · All rights reserved. Developed by{" "}
+					<a
+						href="https://www.facebook.com/ducnm13/"
+						target="_blank"
+						rel="noopener noreferrer"
+						className="text-blue-500 hover:underline"
+					>
+						NMD with love ❤️
+					</a>
 				</p>
 			</div>
 
@@ -110,7 +117,7 @@ export default function Login({ onLogin }: LoginProps) {
 									Đăng nhập
 								</h1>
 								<p className="text-sm text-[#a3aed0]">
-									Chào mừng trở lại hệ thống kho Challenge
+									Chào mừng trở lại hệ thống Challenge
 								</p>
 							</div>
 						</div>

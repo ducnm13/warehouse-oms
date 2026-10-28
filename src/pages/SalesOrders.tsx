@@ -39,11 +39,7 @@ import DetailOptionsMenu from "../components/DetailOptionsMenu";
 import ListToolbar from "../components/ListToolbar";
 import type { FilterField, FilterValues } from "../components/FilterDrawer";
 import { exportExcelFile } from "../lib/excelExport";
-import {
-	comboBoms,
-	comboOptionLabel,
-	isComboPackaging,
-} from "../lib/combo";
+import { comboBoms, comboOptionLabel, isComboPackaging } from "../lib/combo";
 import { SalesOrderDocument } from "../components/SalesOrderDocument";
 import Button from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -103,8 +99,7 @@ const tokenHeader = () => ({
 	Authorization: `Bearer ${localStorage.getItem("token")}`,
 });
 const today = () => new Date().toISOString().slice(0, 10);
-const orderDiscountNotePattern =
-	/^Chiết khấu đơn\s+([\d.,]+)\s*%\s*$/i;
+const orderDiscountNotePattern = /^Chiết khấu đơn\s+([\d.,]+)\s*%\s*$/i;
 const splitOrderDiscountNote = (note?: string | null) => {
 	let rate = 0;
 	const lines: string[] = [];
@@ -966,9 +961,7 @@ export default function SalesOrders() {
 				)
 					return {
 						...line,
-						quantity: Number(
-							(Number(line.quantity || 0) * factor).toFixed(4),
-						),
+						quantity: Number((Number(line.quantity || 0) * factor).toFixed(4)),
 					};
 				return line;
 			});
@@ -1039,10 +1032,7 @@ export default function SalesOrders() {
 				weight: basePrice * quantity,
 			};
 		});
-		const totalBaseValue = weighted.reduce(
-			(sum, item) => sum + item.weight,
-			0,
-		);
+		const totalBaseValue = weighted.reduce((sum, item) => sum + item.weight, 0);
 		const targetValue = comboPrice > 0 ? comboPrice : totalBaseValue;
 		const comboGroupId = `combo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -1353,8 +1343,7 @@ export default function SalesOrders() {
 				<div>
 					<h1>Bán hàng</h1>
 					<p>
-						Các chứng từ bán hàng, xuất kho và ghi nhận công nợ. Lập đơn nháp
-						rồi lưu trực tiếp.
+						Quản lý chứng từ bán hàng, xuất kho và ghi nhận công nợ phải thu
 					</p>
 				</div>
 				<Button
@@ -2293,7 +2282,9 @@ export default function SalesOrders() {
 														{(issue.details || []).map(
 															(line: any, lineIndex: number) => (
 																<tr key={line.id || lineIndex}>
-																	<td className="text-center">{lineIndex + 1}</td>
+																	<td className="text-center">
+																		{lineIndex + 1}
+																	</td>
 																	<td>
 																		<b>{line.productName}</b>
 																		<small>{line.sku}</small>

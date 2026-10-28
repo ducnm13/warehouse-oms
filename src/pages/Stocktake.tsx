@@ -83,7 +83,9 @@ export default function Stocktake() {
 	const importInputRef = useRef<HTMLInputElement>(null);
 	const handlePrint = useReactToPrint({
 		contentRef: printRef,
-		documentTitle: printTarget ? `Bien-ban-kiem-ke-${printTarget.code}` : "Bien-ban-kiem-ke",
+		documentTitle: printTarget
+			? `Bien-ban-kiem-ke-${printTarget.code}`
+			: "Bien-ban-kiem-ke",
 		pageStyle: "@page { size: A4; margin: 0; }",
 	});
 	const [date, setDate] = useState(today()),
@@ -227,11 +229,17 @@ export default function Stocktake() {
 				if (rowNumber === 1) return;
 				const sku = String(row.getCell(skuColumn).value ?? "").trim();
 				const rawActual = row.getCell(actualColumn).value;
-				if (!sku && (rawActual === null || rawActual === undefined || rawActual === "")) return;
+				if (
+					!sku &&
+					(rawActual === null || rawActual === undefined || rawActual === "")
+				)
+					return;
 				const actual = Number(
 					typeof rawActual === "number"
 						? rawActual
-						: String(rawActual ?? "").replace(/,/g, "").trim(),
+						: String(rawActual ?? "")
+								.replace(/,/g, "")
+								.trim(),
 				);
 				if (!sku || Number.isNaN(actual) || actual < 0) {
 					invalidRows.push(`Dòng ${rowNumber}`);
@@ -239,7 +247,8 @@ export default function Stocktake() {
 				}
 				values.set(norm(sku), actual);
 			});
-			if (!values.size) throw new Error("File Excel không có dòng dữ liệu hợp lệ");
+			if (!values.size)
+				throw new Error("File Excel không có dòng dữ liệu hợp lệ");
 			const snapshotSkus = new Set(lines.map(line => norm(line.sku)));
 			const missing = [...values.keys()].filter(sku => !snapshotSkus.has(sku));
 			const matched = lines.reduce(
@@ -249,7 +258,9 @@ export default function Stocktake() {
 			setLines(current =>
 				current.map(line => {
 					const actual = values.get(norm(line.sku));
-					return actual === undefined ? line : { ...line, actualQuantity: actual };
+					return actual === undefined
+						? line
+						: { ...line, actualQuantity: actual };
 				}),
 			);
 			toast.success(`Đã cập nhật ${matched} dòng kiểm kê từ Excel`);
@@ -258,7 +269,9 @@ export default function Stocktake() {
 					`${missing.length} mã không có trong kho đang kiểm kê: ${missing.slice(0, 5).join(", ")}${missing.length > 5 ? "..." : ""}`,
 				);
 			if (invalidRows.length)
-				toast.error(`Bỏ qua ${invalidRows.length} dòng không hợp lệ: ${invalidRows.slice(0, 5).join(", ")}`);
+				toast.error(
+					`Bỏ qua ${invalidRows.length} dòng không hợp lệ: ${invalidRows.slice(0, 5).join(", ")}`,
+				);
 		} catch (error) {
 			toast.error((error as Error).message);
 		} finally {
@@ -422,10 +435,7 @@ export default function Stocktake() {
 			<div className="erp-page-header">
 				<div>
 					<h1>Kiểm kê kho</h1>
-					<p>
-						Snapshot theo từng kho; chốt bị từ chối nếu tồn sổ thay đổi sau lúc
-						lập phiếu.
-					</p>
+					<p>Quản lý phiếu kiểm kê, nhập thực tế và tạo điều chỉnh tồn kho</p>
 				</div>
 				<button className="erp-btn erp-btn-primary" onClick={create}>
 					<Plus size={16} /> Lập kiểm kê
@@ -662,13 +672,13 @@ export default function Stocktake() {
 						>
 							<div className="erp-modal-body space-y-5">
 								<div className="grid gap-4 md:grid-cols-3">
-								<label>
-									Ngày kiểm kê
-									<DateInput
-										value={date}
-										onChange={value => setDate(value)}
-									/>
-								</label>
+									<label>
+										Ngày kiểm kê
+										<DateInput
+											value={date}
+											onChange={value => setDate(value)}
+										/>
+									</label>
 									<label>
 										Kho kiểm kê
 										<select
@@ -720,7 +730,9 @@ export default function Stocktake() {
 											type="file"
 											accept=".xlsx,.xls"
 											className="hidden"
-											onChange={event => void importExcel(event.target.files?.[0])}
+											onChange={event =>
+												void importExcel(event.target.files?.[0])
+											}
 										/>
 									</div>
 								</div>
@@ -840,19 +852,19 @@ export default function Stocktake() {
 							</span>
 							<table className="erp-table">
 								<thead>
-								<tr>
-									<th className="w-12 text-center">STT</th>
-									<th>Hàng hóa</th>
-									<th className="text-right">Tồn sổ</th>
-									<th className="text-right">Thực tế</th>
-									<th className="text-right">Chênh lệch</th>
-								</tr>
-							</thead>
-							<tbody>
-								{selected.details.map((line, index) => (
-									<tr key={line.id}>
-										<td className="text-center">{index + 1}</td>
-										<td>
+									<tr>
+										<th className="w-12 text-center">STT</th>
+										<th>Hàng hóa</th>
+										<th className="text-right">Tồn sổ</th>
+										<th className="text-right">Thực tế</th>
+										<th className="text-right">Chênh lệch</th>
+									</tr>
+								</thead>
+								<tbody>
+									{selected.details.map((line, index) => (
+										<tr key={line.id}>
+											<td className="text-center">{index + 1}</td>
+											<td>
 												{formatProductName(
 													line.productName,
 													line.packagingName,
@@ -957,19 +969,19 @@ export default function Stocktake() {
 									type="button"
 									className="erp-btn erp-btn-unpost"
 									disabled={actionMutation.isPending}
-								onClick={async () => {
-									if (
-										await confirm(
-											`Hủy lưu kiểm kê ${selected.code}? Tồn kho sẽ được hoàn lại và phiếu trở về nháp.`,
+									onClick={async () => {
+										if (
+											await confirm(
+												`Hủy lưu kiểm kê ${selected.code}? Tồn kho sẽ được hoàn lại và phiếu trở về nháp.`,
+											)
 										)
-									)
-										actionMutation.mutate({
-											document: selected,
-											action: "unpost",
-										});
-								}}
-							>
-								<Undo2 size={16} /> Hủy lưu
+											actionMutation.mutate({
+												document: selected,
+												action: "unpost",
+											});
+									}}
+								>
+									<Undo2 size={16} /> Hủy lưu
 								</button>
 							)}
 							<button

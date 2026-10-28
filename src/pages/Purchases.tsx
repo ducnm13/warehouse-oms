@@ -603,7 +603,7 @@ export default function Purchases() {
 			<div className="erp-page-header">
 				<div>
 					<h1>Mua hàng</h1>
-					<p>Quản lý việc mua hàng, lập chứng từ mua hàng đến nhập kho</p>
+					<p>Quản lý chứng từ mua hàng, nhập kho, thanh toán và công nợ.</p>
 				</div>
 				<button
 					className="erp-btn erp-btn-primary"

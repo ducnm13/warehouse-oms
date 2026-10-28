@@ -323,7 +323,7 @@ const Customers = ({
 					<div className="erp-page-header">
 						<div>
 							<h1>Quản lý khách hàng</h1>
-							<p>Danh mục khách hàng và nhà cung cấp</p>
+							<p>Quản lý thông tin khách hàng, nhóm khách hàng.</p>
 						</div>
 						<div className="flex items-center gap-2">
 							<button

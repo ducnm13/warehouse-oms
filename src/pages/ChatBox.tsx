@@ -1,7 +1,13 @@
 /* Lucian UX/UI Prompt #078 + #077 · MIT License (c) 2026 Seokwoooo · https://lucianlabs.dev/uxui-prompt/#078 */
 // Chat nội bộ realtime (polling): hội thoại, tin nhắn, trả lời (vuốt), reaction,
 // đang gõ / online. Dữ liệu thật từ /api/v1/chat.
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { MessageCirclePlus, Undo2, Users, X } from "lucide-react";
 import toast from "../components/ui/toast";
 import { confirm } from "../components/ui/confirm";
@@ -82,7 +88,12 @@ const fmtTime = (iso: string) => {
 };
 
 const initials = (name: string) =>
-	name.trim().split(/\s+/).slice(-2).map(w => w.charAt(0).toUpperCase()).join("") || "?";
+	name
+		.trim()
+		.split(/\s+/)
+		.slice(-2)
+		.map(w => w.charAt(0).toUpperCase())
+		.join("") || "?";
 
 export default function ChatBox({
 	initialActiveId,
@@ -103,7 +114,9 @@ export default function ChatBox({
 	const meId = Number(me.id) || 0;
 
 	const [conversations, setConversations] = useState<Conversation[]>([]);
-	const [activeId, setActiveId] = useState<number | null>(initialActiveId || null);
+	const [activeId, setActiveId] = useState<number | null>(
+		initialActiveId || null,
+	);
 	const [messages, setMessages] = useState<ChatMsg[]>([]);
 	const [hasMore, setHasMore] = useState(false);
 	const [loadingMore, setLoadingMore] = useState(false);
@@ -155,7 +168,9 @@ export default function ChatBox({
 					: mode === "poll" && messagesRef.current.length
 						? `after=${messagesRef.current[messagesRef.current.length - 1].id}&limit=50`
 						: "after=0&limit=50";
-			const res = await apiV1<ChatMsg[]>(`/api/v1/chat/conversations/${conversationId}/messages?${params}`);
+			const res = await apiV1<ChatMsg[]>(
+				`/api/v1/chat/conversations/${conversationId}/messages?${params}`,
+			);
 			const rows = res.data || [];
 			if (mode === "more") {
 				if (!rows.length) setHasMore(false);
@@ -186,18 +201,23 @@ export default function ChatBox({
 	const loadMessagesRef = useRef(loadMessages);
 	loadMessagesRef.current = loadMessages;
 
-	const markRead = useCallback(async (conversationId: number, lastId: number) => {
-		if (!lastId) return;
-		try {
-			await apiV1(`/api/v1/chat/conversations/${conversationId}/read`, {
-				method: "POST",
-				body: JSON.stringify({ lastMessageId: lastId }),
-			});
-			setConversations(prev => prev.map(c => (c.id === conversationId ? { ...c, unread: 0 } : c)));
-		} catch {
-			// bỏ qua
-		}
-	}, []);
+	const markRead = useCallback(
+		async (conversationId: number, lastId: number) => {
+			if (!lastId) return;
+			try {
+				await apiV1(`/api/v1/chat/conversations/${conversationId}/read`, {
+					method: "POST",
+					body: JSON.stringify({ lastMessageId: lastId }),
+				});
+				setConversations(prev =>
+					prev.map(c => (c.id === conversationId ? { ...c, unread: 0 } : c)),
+				);
+			} catch {
+				// bỏ qua
+			}
+		},
+		[],
+	);
 
 	// nạp hội thoại + poll nền
 	useEffect(() => {
@@ -219,9 +239,13 @@ export default function ChatBox({
 		(async () => {
 			try {
 				const rows = await loadMessagesRef.current(activeId, "init");
-				if (!cancelled && rows.length) void markReadRef.current(activeId, rows[rows.length - 1].id);
+				if (!cancelled && rows.length)
+					void markReadRef.current(activeId, rows[rows.length - 1].id);
 			} catch (e) {
-				if (!cancelled) toast.error(e instanceof Error ? e.message : "Không tải được tin nhắn");
+				if (!cancelled)
+					toast.error(
+						e instanceof Error ? e.message : "Không tải được tin nhắn",
+					);
 			}
 		})();
 		return () => {
@@ -237,14 +261,16 @@ export default function ChatBox({
 		const poll = async () => {
 			try {
 				const rows = await loadMessagesRef.current(activeId, "poll");
-				if (rows.length) void markReadRef.current(activeId, rows[rows.length - 1].id);
+				if (rows.length)
+					void markReadRef.current(activeId, rows[rows.length - 1].id);
 			} catch {
 				// bỏ qua lỗi poll nền
 			}
 			try {
-				const res = await apiV1<{ typing: PresenceUser[]; online: PresenceUser[] }>(
-					`/api/v1/chat/conversations/${activeId}/presence`,
-				);
+				const res = await apiV1<{
+					typing: PresenceUser[];
+					online: PresenceUser[];
+				}>(`/api/v1/chat/conversations/${activeId}/presence`);
 				setTyping(res.data?.typing || []);
 				setOnline(res.data?.online || []);
 			} catch {
@@ -288,18 +314,21 @@ export default function ChatBox({
 		const onTyping = (payload: { conversationId: number; userId: number }) => {
 			const conversationId = Number(payload?.conversationId);
 			const userId = Number(payload?.userId);
-			if (!userId || userId === meId || conversationId !== activeIdRef.current) return;
+			if (!userId || userId === meId || conversationId !== activeIdRef.current)
+				return;
 			const name =
 				conversationsRef.current
 					.find(conversation => conversation.id === conversationId)
-					?.participants.find(participant => participant.id === userId)?.name || "";
+					?.participants.find(participant => participant.id === userId)?.name ||
+				"";
 			setTyping(previous =>
 				previous.some(user => user.id === userId)
 					? previous
 					: [...previous, { id: userId, name }],
 			);
 			window.setTimeout(
-				() => setTyping(previous => previous.filter(user => user.id !== userId)),
+				() =>
+					setTyping(previous => previous.filter(user => user.id !== userId)),
 				8000,
 			);
 		};
@@ -318,10 +347,15 @@ export default function ChatBox({
 				),
 			);
 		};
-		const onRecall = (payload: { conversationId: number; messageId: number }) => {
+		const onRecall = (payload: {
+			conversationId: number;
+			messageId: number;
+		}) => {
 			if (Number(payload?.conversationId) !== activeIdRef.current) return;
 			const messageId = Number(payload?.messageId);
-			setMessages(previous => previous.filter(message => message.id !== messageId));
+			setMessages(previous =>
+				previous.filter(message => message.id !== messageId),
+			);
 		};
 		const onConversation = () => void loadConversations();
 
@@ -349,7 +383,8 @@ export default function ChatBox({
 	const handleScrollLog = () => {
 		const el = logRef.current;
 		if (!el) return;
-		stickBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+		stickBottom.current =
+			el.scrollHeight - el.scrollTop - el.clientHeight < 120;
 	};
 
 	const loadMore = async () => {
@@ -369,7 +404,9 @@ export default function ChatBox({
 		const now = Date.now();
 		if (now - lastTypingSent.current < 3000) return;
 		lastTypingSent.current = now;
-		void apiV1(`/api/v1/chat/conversations/${activeId}/typing`, { method: "POST" }).catch(() => {});
+		void apiV1(`/api/v1/chat/conversations/${activeId}/typing`, {
+			method: "POST",
+		}).catch(() => {});
 	};
 
 	const send = async (e?: React.FormEvent) => {
@@ -380,10 +417,16 @@ export default function ChatBox({
 		setComposer("");
 		setReplyTo(null);
 		try {
-			const res = await apiV1<ChatMsg>(`/api/v1/chat/conversations/${activeId}/messages`, {
-				method: "POST",
-				body: JSON.stringify({ body, replyToId: quote ? quote.id : undefined }),
-			});
+			const res = await apiV1<ChatMsg>(
+				`/api/v1/chat/conversations/${activeId}/messages`,
+				{
+					method: "POST",
+					body: JSON.stringify({
+						body,
+						replyToId: quote ? quote.id : undefined,
+					}),
+				},
+			);
 			if (res.data) {
 				setMessages(prev => [...prev, res.data]);
 				setFreshIds(new Set([res.data.id]));
@@ -391,7 +434,9 @@ export default function ChatBox({
 				void markRead(activeId, res.data.id);
 			}
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : "Không gửi được tin nhắn");
+			toast.error(
+				err instanceof Error ? err.message : "Không gửi được tin nhắn",
+			);
 			setComposer(body);
 			if (quote) setReplyTo(quote);
 		}
@@ -399,15 +444,24 @@ export default function ChatBox({
 
 	const toggleReaction = async (messageId: number, emoji: string) => {
 		try {
-			const res = await apiV1<{ added: boolean; reactions: Reaction[] }>(`/api/v1/chat/messages/${messageId}/reactions`, {
-				method: "POST",
-				body: JSON.stringify({ emoji }),
-			});
+			const res = await apiV1<{ added: boolean; reactions: Reaction[] }>(
+				`/api/v1/chat/messages/${messageId}/reactions`,
+				{
+					method: "POST",
+					body: JSON.stringify({ emoji }),
+				},
+			);
 			if (res.data) {
-				setMessages(prev => prev.map(m => (m.id === messageId ? { ...m, reactions: res.data!.reactions } : m)));
+				setMessages(prev =>
+					prev.map(m =>
+						m.id === messageId ? { ...m, reactions: res.data!.reactions } : m,
+					),
+				);
 			}
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : "Không thả được reaction");
+			toast.error(
+				err instanceof Error ? err.message : "Không thả được reaction",
+			);
 		}
 	};
 
@@ -415,11 +469,15 @@ export default function ChatBox({
 		if (!activeId || m.senderId !== meId) return;
 		if (!(await confirm("Thu hồi tin nhắn này?"))) return;
 		try {
-			await apiV1(`/api/v1/chat/conversations/${activeId}/messages/${m.id}`, { method: "DELETE" });
+			await apiV1(`/api/v1/chat/conversations/${activeId}/messages/${m.id}`, {
+				method: "DELETE",
+			});
 			setMessages(prev => prev.filter(x => x.id !== m.id));
 			toast.success("Đã thu hồi tin nhắn");
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : "Không thu hồi được tin nhắn");
+			toast.error(
+				err instanceof Error ? err.message : "Không thu hồi được tin nhắn",
+			);
 		}
 	};
 
@@ -433,24 +491,38 @@ export default function ChatBox({
 		setAddPick(null);
 		setShowMembers(true);
 		try {
-			const res = await fetch("/api/chat/users", { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
+			const res = await fetch("/api/chat/users", {
+				headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+			});
 			if (res.ok) {
 				const rows = await res.json();
-				setAccounts((Array.isArray(rows) ? rows : []).filter((u: Account) => Number(u.id) !== meId));
+				setAccounts(
+					(Array.isArray(rows) ? rows : []).filter(
+						(u: Account) => Number(u.id) !== meId,
+					),
+				);
 			}
 		} catch {
 			toast.error("Không tải được danh sách người dùng");
 		}
 	};
 
-	const patchMembers = async (body: Record<string, unknown>, successMsg: string) => {
+	const patchMembers = async (
+		body: Record<string, unknown>,
+		successMsg: string,
+	) => {
 		if (!activeId) return;
 		try {
-			await apiV1(`/api/v1/chat/conversations/${activeId}`, { method: "PATCH", body: JSON.stringify(body) });
+			await apiV1(`/api/v1/chat/conversations/${activeId}`, {
+				method: "PATCH",
+				body: JSON.stringify(body),
+			});
 			toast.success(successMsg);
 			await loadConversations();
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : "Không cập nhật được nhóm");
+			toast.error(
+				err instanceof Error ? err.message : "Không cập nhật được nhóm",
+			);
 		}
 	};
 
@@ -475,10 +547,16 @@ export default function ChatBox({
 		setGroupName("");
 		setShowNewChat(true);
 		try {
-			const res = await fetch("/api/chat/users", { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
+			const res = await fetch("/api/chat/users", {
+				headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+			});
 			if (res.ok) {
 				const rows = await res.json();
-				setAccounts((Array.isArray(rows) ? rows : []).filter((u: Account) => Number(u.id) !== meId));
+				setAccounts(
+					(Array.isArray(rows) ? rows : []).filter(
+						(u: Account) => Number(u.id) !== meId,
+					),
+				);
 			}
 		} catch {
 			toast.error("Không tải được danh sách người dùng");
@@ -491,15 +569,20 @@ export default function ChatBox({
 			return;
 		}
 		try {
-			const res = await apiV1<{ id: number; reused: boolean }>("/api/v1/chat/conversations", {
-				method: "POST",
-				body: JSON.stringify({ name: groupName.trim(), userIds: picked }),
-			});
+			const res = await apiV1<{ id: number; reused: boolean }>(
+				"/api/v1/chat/conversations",
+				{
+					method: "POST",
+					body: JSON.stringify({ name: groupName.trim(), userIds: picked }),
+				},
+			);
 			setShowNewChat(false);
 			await loadConversations();
 			if (res.data) setActiveId(res.data.id);
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : "Không tạo được cuộc trò chuyện");
+			toast.error(
+				err instanceof Error ? err.message : "Không tạo được cuộc trò chuyện",
+			);
 		}
 	};
 
@@ -521,11 +604,21 @@ export default function ChatBox({
 						<b>Tin nhắn</b>
 					</div>
 					<div className="u078-emb-actions">
-						<button type="button" className="erp-btn erp-btn-primary" onClick={openNewChat} title="Đoạn chat mới">
+						<button
+							type="button"
+							className="erp-btn erp-btn-primary"
+							onClick={openNewChat}
+							title="Đoạn chat mới"
+						>
 							<MessageCirclePlus size={16} />
 						</button>
 						{onClose && (
-							<button type="button" className="erp-icon-btn" onClick={onClose} title="Đóng">
+							<button
+								type="button"
+								className="erp-icon-btn"
+								onClick={onClose}
+								title="Đóng"
+							>
 								<X size={16} />
 							</button>
 						)}
@@ -535,31 +628,54 @@ export default function ChatBox({
 				<div className="erp-page-header">
 					<div>
 						<h1>Tin nhắn</h1>
-						<p>Trao đổi nội bộ theo thời gian thực</p>
+						<p>Trò chuyện nội bộ</p>
 					</div>
 					<button className="erp-btn erp-btn-primary" onClick={openNewChat}>
 						<MessageCirclePlus size={16} /> Đoạn chat mới
 					</button>
 				</div>
 			)}
-			<div className={`u078 u078-page${embedded && activeId ? " thread-open" : ""}`}>
+			<div
+				className={`u078 u078-page${embedded && activeId ? " thread-open" : ""}`}
+			>
 				{/* ── cột hội thoại ── */}
 				<div className="u078-side">
 					<h3>Hội thoại</h3>
 					<div className="u078-clist">
 						{conversations.map(c => (
-							<button key={c.id} type="button" className={`u078-c${c.id === activeId ? " on" : ""}`} onClick={() => setActiveId(c.id)}>
+							<button
+								key={c.id}
+								type="button"
+								className={`u078-c${c.id === activeId ? " on" : ""}`}
+								onClick={() => setActiveId(c.id)}
+							>
 								<span className="u078-av" aria-hidden="true">
-									{c.avatarUrl ? <img src={c.avatarUrl} alt="" /> : initials(c.name)}
+									{c.avatarUrl ? (
+										<img src={c.avatarUrl} alt="" />
+									) : (
+										initials(c.name)
+									)}
 								</span>
 								<span className="min-w-0 flex-1">
 									<b>{c.name}</b>
-									<small>{c.lastMessage ? c.lastMessage.body : "Chưa có tin nhắn"}</small>
+									<small>
+										{c.lastMessage ? c.lastMessage.body : "Chưa có tin nhắn"}
+									</small>
 								</span>
-								{c.unread > 0 && <span className="u078-badge">{c.unread > 99 ? "99+" : c.unread}</span>}
+								{c.unread > 0 && (
+									<span className="u078-badge">
+										{c.unread > 99 ? "99+" : c.unread}
+									</span>
+								)}
 							</button>
 						))}
-						{!conversations.length && <p className="u078-empty">Chưa có hội thoại nào.<br />Bấm “Đoạn chat mới” để bắt đầu.</p>}
+						{!conversations.length && (
+							<p className="u078-empty">
+								Chưa có hội thoại nào.
+								<br />
+								Bấm “Đoạn chat mới” để bắt đầu.
+							</p>
+						)}
 					</div>
 				</div>
 
@@ -572,29 +688,58 @@ export default function ChatBox({
 					<div className="u078 u078-thread">
 						<div className="u078-top">
 							{embedded && (
-								<button type="button" className="u078-back" aria-label="Về danh sách" onClick={() => setActiveId(null)}>
+								<button
+									type="button"
+									className="u078-back"
+									aria-label="Về danh sách"
+									onClick={() => setActiveId(null)}
+								>
 									<svg viewBox="0 0 16 16" aria-hidden="true">
 										<path d="M10 3.5L5.5 8l4.5 4.5" />
 									</svg>
 								</button>
 							)}
 							<span className="u078-av" aria-hidden="true">
-								{active.avatarUrl ? <img src={active.avatarUrl} alt="" /> : initials(active.name)}
+								{active.avatarUrl ? (
+									<img src={active.avatarUrl} alt="" />
+								) : (
+									initials(active.name)
+								)}
 							</span>
 							<span className="min-w-0 flex-1">
 								<b>{active.name}</b>
-								<small className={typing.length || online.length ? undefined : "off"}>{headerStatus}</small>
+								<small
+									className={typing.length || online.length ? undefined : "off"}
+								>
+									{headerStatus}
+								</small>
 							</span>
 							{active.isGroup && (
-								<button type="button" className="u078-members" title="Thành viên nhóm" aria-label="Thành viên nhóm" onClick={openMembers}>
+								<button
+									type="button"
+									className="u078-members"
+									title="Thành viên nhóm"
+									aria-label="Thành viên nhóm"
+									onClick={openMembers}
+								>
 									<Users size={16} />
 								</button>
 							)}
 						</div>
 
-						<div ref={logRef} className="u078-log" aria-live="polite" onScroll={handleScrollLog}>
+						<div
+							ref={logRef}
+							className="u078-log"
+							aria-live="polite"
+							onScroll={handleScrollLog}
+						>
 							{hasMore && (
-								<button type="button" className="u078-new" onClick={loadMore} disabled={loadingMore}>
+								<button
+									type="button"
+									className="u078-new"
+									onClick={loadMore}
+									disabled={loadingMore}
+								>
 									{loadingMore ? "Đang tải..." : "Xem tin cũ hơn"}
 								</button>
 							)}
@@ -617,23 +762,41 @@ export default function ChatBox({
 								/>
 							))}
 							{typing.length > 0 && (
-								<div className="u078-ty u078-m" aria-label={`${typing.map(t => t.name).join(", ")} đang nhập`}>
+								<div
+									className="u078-ty u078-m"
+									aria-label={`${typing.map(t => t.name).join(", ")} đang nhập`}
+								>
 									<i />
 									<i />
 									<i />
 								</div>
 							)}
-							{!messages.length && <p className="u078-empty">Chưa có tin nhắn. Chào nhau một câu nhé.</p>}
+							{!messages.length && (
+								<p className="u078-empty">
+									Chưa có tin nhắn. Chào nhau một câu nhé.
+								</p>
+							)}
 						</div>
 
 						<div className={`u078-reply${replyTo ? " on" : ""}`}>
 							<div>
 								<div className="u078-rbox">
 									<span>
-										<b>Trả lời {replyTo?.senderId === meId ? "chính bạn" : replyTo?.senderName}</b>
+										<b>
+											Trả lời{" "}
+											{replyTo?.senderId === meId
+												? "chính bạn"
+												: replyTo?.senderName}
+										</b>
 										<em>{replyTo?.body}</em>
 									</span>
-									<button type="button" className="u078-rx" aria-label="Hủy trả lời" tabIndex={replyTo ? 0 : -1} onClick={() => setReplyTo(null)}>
+									<button
+										type="button"
+										className="u078-rx"
+										aria-label="Hủy trả lời"
+										tabIndex={replyTo ? 0 : -1}
+										onClick={() => setReplyTo(null)}
+									>
 										<svg viewBox="0 0 12 12">
 											<path d="M3 3l6 6M9 3L3 9" />
 										</svg>
@@ -642,10 +805,7 @@ export default function ChatBox({
 							</div>
 						</div>
 
-						<form
-							className="u078-bar"
-							onSubmit={send}
-						>
+						<form className="u078-bar" onSubmit={send}>
 							<input
 								ref={inputRef}
 								className="u078-in"
@@ -665,7 +825,12 @@ export default function ChatBox({
 									}
 								}}
 							/>
-							<button type="submit" className={`u078-send${composer.trim() ? " go" : ""}`} aria-label="Gửi tin nhắn" title="Gửi tin nhắn">
+							<button
+								type="submit"
+								className={`u078-send${composer.trim() ? " go" : ""}`}
+								aria-label="Gửi tin nhắn"
+								title="Gửi tin nhắn"
+							>
 								<svg className="s" viewBox="0 0 20 20" aria-hidden="true">
 									<path d="M3.5 10L16.5 3.5 12 16.5 9.5 11z" />
 								</svg>
@@ -682,7 +847,9 @@ export default function ChatBox({
 						<div className="erp-modal-header">
 							<div>
 								<h2>Đoạn chat mới</h2>
-								<p>Chọn người để trò chuyện 1-1, chọn nhiều người để tạo nhóm</p>
+								<p>
+									Chọn người để trò chuyện 1-1, chọn nhiều người để tạo nhóm
+								</p>
 							</div>
 							<button type="button" onClick={() => setShowNewChat(false)}>
 								<X size={18} />
@@ -690,31 +857,63 @@ export default function ChatBox({
 						</div>
 						<div className="erp-modal-body space-y-3">
 							<label className="block text-[13px] font-medium text-slate-700">
-								<span className="mb-1 block">Tên nhóm (để trống nếu chat 1-1)</span>
-								<input type="text" value={groupName} onChange={e => setGroupName(e.target.value)} placeholder="VD: Kho – Kinh doanh" />
+								<span className="mb-1 block">
+									Tên nhóm (để trống nếu chat 1-1)
+								</span>
+								<input
+									type="text"
+									value={groupName}
+									onChange={e => setGroupName(e.target.value)}
+									placeholder="VD: Kho – Kinh doanh"
+								/>
 							</label>
 							<div className="u078-users u077">
 								{accounts.map(u => (
 									<button
 										key={u.id}
 										type="button"
-										onClick={() => setPicked(prev => (prev.includes(u.id) ? prev.filter(id => id !== u.id) : [...prev, u.id]))}
+										onClick={() =>
+											setPicked(prev =>
+												prev.includes(u.id)
+													? prev.filter(id => id !== u.id)
+													: [...prev, u.id],
+											)
+										}
 									>
-										<input type="checkbox" readOnly checked={picked.includes(u.id)} className="h-4 w-4 accent-indigo-600" />
+										<input
+											type="checkbox"
+											readOnly
+											checked={picked.includes(u.id)}
+											className="h-4 w-4 accent-indigo-600"
+										/>
 										<span>
 											{u.fullName}
-											<span className="ml-1 font-mono text-[11px] text-slate-400">@{u.username}</span>
+											<span className="ml-1 font-mono text-[11px] text-slate-400">
+												@{u.username}
+											</span>
 										</span>
 									</button>
 								))}
-								{!accounts.length && <p className="py-4 text-center text-sm text-slate-400">Không tải được danh sách</p>}
+								{!accounts.length && (
+									<p className="py-4 text-center text-sm text-slate-400">
+										Không tải được danh sách
+									</p>
+								)}
 							</div>
 						</div>
 						<div className="erp-modal-footer">
-							<button type="button" className="erp-btn" onClick={() => setShowNewChat(false)}>
+							<button
+								type="button"
+								className="erp-btn"
+								onClick={() => setShowNewChat(false)}
+							>
 								Hủy
 							</button>
-							<button type="button" className="erp-btn erp-btn-primary" onClick={createChat}>
+							<button
+								type="button"
+								className="erp-btn erp-btn-primary"
+								onClick={createChat}
+							>
 								Bắt đầu chat ({picked.length})
 							</button>
 						</div>
@@ -754,7 +953,10 @@ export default function ChatBox({
 												toast.error("Nhập tên nhóm");
 												return;
 											}
-											void patchMembers({ name: memberName.trim() }, "Đã đổi tên nhóm");
+											void patchMembers(
+												{ name: memberName.trim() },
+												"Đã đổi tên nhóm",
+											);
 										}}
 									>
 										Lưu
@@ -762,10 +964,16 @@ export default function ChatBox({
 								</div>
 							</label>
 							<div>
-								<span className="mb-1 block text-[13px] font-medium text-slate-700">Thành viên</span>
+								<span className="mb-1 block text-[13px] font-medium text-slate-700">
+									Thành viên
+								</span>
 								<div className="u078-mlist u078">
 									<div className="u078-mrow">
-										<span className="u078-av" style={{ width: 28, height: 28, fontSize: 12 }} aria-hidden="true">
+										<span
+											className="u078-av"
+											style={{ width: 28, height: 28, fontSize: 12 }}
+											aria-hidden="true"
+										>
 											{initials(me.fullName || me.username || "?")}
 										</span>
 										<span>
@@ -774,8 +982,16 @@ export default function ChatBox({
 									</div>
 									{active.participants.map(p => (
 										<div key={p.id} className="u078-mrow">
-											<span className="u078-av" style={{ width: 28, height: 28, fontSize: 12 }} aria-hidden="true">
-												{p.avatarUrl ? <img src={p.avatarUrl} alt="" /> : initials(p.name)}
+											<span
+												className="u078-av"
+												style={{ width: 28, height: 28, fontSize: 12 }}
+												aria-hidden="true"
+											>
+												{p.avatarUrl ? (
+													<img src={p.avatarUrl} alt="" />
+												) : (
+													initials(p.name)
+												)}
 											</span>
 											<span>{p.name}</span>
 											<button
@@ -784,8 +1000,12 @@ export default function ChatBox({
 												title={`Xóa ${p.name} khỏi nhóm`}
 												aria-label={`Xóa ${p.name} khỏi nhóm`}
 												onClick={async () => {
-													if (!(await confirm(`Xóa ${p.name} khỏi nhóm?`))) return;
-													void patchMembers({ removeUserIds: [p.id] }, `Đã xóa ${p.name} khỏi nhóm`);
+													if (!(await confirm(`Xóa ${p.name} khỏi nhóm?`)))
+														return;
+													void patchMembers(
+														{ removeUserIds: [p.id] },
+														`Đã xóa ${p.name} khỏi nhóm`,
+													);
 												}}
 											>
 												<X size={13} />
@@ -795,16 +1015,26 @@ export default function ChatBox({
 								</div>
 							</div>
 							<div>
-								<span className="mb-1 block text-[13px] font-medium text-slate-700">Thêm thành viên</span>
+								<span className="mb-1 block text-[13px] font-medium text-slate-700">
+									Thêm thành viên
+								</span>
 								<div className="flex gap-2">
 									<select
 										value={addPick ?? ""}
-										onChange={e => setAddPick(e.target.value ? Number(e.target.value) : null)}
+										onChange={e =>
+											setAddPick(e.target.value ? Number(e.target.value) : null)
+										}
 										className="min-w-0 flex-1"
 									>
 										<option value="">Chọn người...</option>
 										{accounts
-											.filter(u => ![meId, ...active.participants.map(p => p.id)].includes(Number(u.id)))
+											.filter(
+												u =>
+													![
+														meId,
+														...active.participants.map(p => p.id),
+													].includes(Number(u.id)),
+											)
 											.map(u => (
 												<option key={u.id} value={u.id}>
 													{u.fullName} (@{u.username})
@@ -818,7 +1048,10 @@ export default function ChatBox({
 										onClick={() => {
 											if (!addPick) return;
 											setAddPick(null);
-											void patchMembers({ addUserIds: [addPick] }, "Đã thêm thành viên");
+											void patchMembers(
+												{ addUserIds: [addPick] },
+												"Đã thêm thành viên",
+											);
 										}}
 									>
 										Thêm
@@ -827,10 +1060,18 @@ export default function ChatBox({
 							</div>
 						</div>
 						<div className="erp-modal-footer">
-							<button type="button" className="erp-btn text-red-600" onClick={leaveGroup}>
+							<button
+								type="button"
+								className="erp-btn text-red-600"
+								onClick={leaveGroup}
+							>
 								Rời nhóm
 							</button>
-							<button type="button" className="erp-btn erp-btn-primary" onClick={() => setShowMembers(false)}>
+							<button
+								type="button"
+								className="erp-btn erp-btn-primary"
+								onClick={() => setShowMembers(false)}
+							>
 								Xong
 							</button>
 						</div>
@@ -885,7 +1126,8 @@ function MessageRow({
 				ref={rowRef}
 				className={`u078-m${mine ? " me" : ""}${drag ? " drag" : ""}${fresh ? " in" : ""}`}
 				onAnimationEnd={e => {
-					if ((e.target as HTMLElement).classList.contains("u078-m")) onArrived(msg.id);
+					if ((e.target as HTMLElement).classList.contains("u078-m"))
+						onArrived(msg.id);
 				}}
 			>
 				{!mine && (
@@ -910,9 +1152,17 @@ function MessageRow({
 						if (!g.down) return;
 						g.dx = Math.max(0, e.clientX - g.sx);
 						const d = g.dx > 60 ? 60 + (g.dx - 60) * 0.3 : g.dx;
-						(e.currentTarget as HTMLElement).style.setProperty("--dx", `${d}px`);
-						rowRef.current?.style.setProperty("--ro", Math.min(1, g.dx / 60).toFixed(2));
-						rowRef.current?.querySelector(".u078-rep")?.classList.toggle("full", g.dx >= 60);
+						(e.currentTarget as HTMLElement).style.setProperty(
+							"--dx",
+							`${d}px`,
+						);
+						rowRef.current?.style.setProperty(
+							"--ro",
+							Math.min(1, g.dx / 60).toFixed(2),
+						);
+						rowRef.current
+							?.querySelector(".u078-rep")
+							?.classList.toggle("full", g.dx >= 60);
 					}}
 					onPointerUp={endGesture}
 					onPointerCancel={endGesture}
@@ -927,18 +1177,34 @@ function MessageRow({
 					<span className="u078-meta">{fmtTime(msg.createdAt)}</span>
 				</span>
 				{!mine && (
-					<button type="button" className="u078-rb" aria-label={`Trả lời ${msg.senderName}`} onClick={onReply}>
+					<button
+						type="button"
+						className="u078-rb"
+						aria-label={`Trả lời ${msg.senderName}`}
+						onClick={onReply}
+					>
 						{ARROW}
 					</button>
 				)}
-				{mine && Date.now() - new Date(msg.createdAt).getTime() <= 5 * 60 * 1000 && (
-					<button type="button" className="u078-rb" title="Thu hồi (trong 5 phút)" aria-label="Thu hồi tin nhắn" onClick={onRecall}>
-						<Undo2 size={14} />
-					</button>
-				)}
+				{mine &&
+					Date.now() - new Date(msg.createdAt).getTime() <= 5 * 60 * 1000 && (
+						<button
+							type="button"
+							className="u078-rb"
+							title="Thu hồi (trong 5 phút)"
+							aria-label="Thu hồi tin nhắn"
+							onClick={onRecall}
+						>
+							<Undo2 size={14} />
+						</button>
+					)}
 			</div>
 			{(msg.reactions.length > 0 || !mine) && (
-				<div className={`u077-rx${mine ? " me" : ""}`} role="group" aria-label="Cảm xúc">
+				<div
+					className={`u077-rx${mine ? " me" : ""}`}
+					role="group"
+					aria-label="Cảm xúc"
+				>
 					{msg.reactions.map(r => (
 						<button
 							key={r.emoji}
@@ -981,7 +1247,15 @@ function MessageRow({
 	);
 }
 
-function ReactionPopover({ open, onClose, onPick }: { open: boolean; onClose: () => void; onPick: (emoji: string) => void }) {
+function ReactionPopover({
+	open,
+	onClose,
+	onPick,
+}: {
+	open: boolean;
+	onClose: () => void;
+	onPick: (emoji: string) => void;
+}) {
 	const popRef = useRef<HTMLDivElement>(null);
 	const gridRef = useRef<HTMLDivElement>(null);
 
@@ -1003,22 +1277,36 @@ function ReactionPopover({ open, onClose, onPick }: { open: boolean; onClose: ()
 
 	useEffect(() => {
 		if (open) {
-			const first = gridRef.current?.querySelector<HTMLButtonElement>(".u077-e");
+			const first =
+				gridRef.current?.querySelector<HTMLButtonElement>(".u077-e");
 			first?.focus({ preventScroll: true });
 		}
-	}, [open ]);
+	}, [open]);
 
 	if (!open) return null;
 	return (
-		<div ref={popRef} className="u077-pop" role="dialog" aria-label="Chọn cảm xúc">
+		<div
+			ref={popRef}
+			className="u077-pop"
+			role="dialog"
+			aria-label="Chọn cảm xúc"
+		>
 			<small>Thường dùng</small>
 			<div
 				ref={gridRef}
 				className="u077-grid"
 				onKeyDown={e => {
-					const items = Array.from(gridRef.current?.querySelectorAll<HTMLButtonElement>(".u077-e") || []);
+					const items = Array.from(
+						gridRef.current?.querySelectorAll<HTMLButtonElement>(".u077-e") ||
+							[],
+					);
 					const i = items.indexOf(document.activeElement as HTMLButtonElement);
-					const d: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 6, ArrowUp: -6 };
+					const d: Record<string, number> = {
+						ArrowRight: 1,
+						ArrowLeft: -1,
+						ArrowDown: 6,
+						ArrowUp: -6,
+					};
 					const step = d[e.key];
 					if (step !== undefined && i >= 0) {
 						e.preventDefault();
@@ -1028,7 +1316,14 @@ function ReactionPopover({ open, onClose, onPick }: { open: boolean; onClose: ()
 				}}
 			>
 				{EMOJIS.map(([emoji, name], i) => (
-					<button key={emoji} type="button" className="u077-e" tabIndex={i === 0 ? 0 : -1} aria-label={name} onClick={() => onPick(emoji)}>
+					<button
+						key={emoji}
+						type="button"
+						className="u077-e"
+						tabIndex={i === 0 ? 0 : -1}
+						aria-label={name}
+						onClick={() => onPick(emoji)}
+					>
 						{emoji}
 					</button>
 				))}

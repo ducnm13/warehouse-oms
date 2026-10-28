@@ -766,8 +766,8 @@ export default function Assembly({ user }: { user: User }) {
 					<h1>{tab === "ASSEMBLY" ? "Lệnh lắp ráp" : "Lệnh tháo dỡ"}</h1>
 					<p>
 						{tab === "ASSEMBLY"
-							? "Ráp thành phẩm từ linh kiện theo BOM danh mục"
-							: "Tháo thành phẩm đã đóng gói ra linh kiện theo BOM"}
+							? "Lập lệnh lắp ráp thành phẩm từ bán thành phẩm theo định mức"
+							: "Lập lệnh tháo dỡ thành phẩm ra bán thành phẩm theo định mức"}
 					</p>
 				</div>
 				<div className="flex gap-2">

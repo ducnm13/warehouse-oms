@@ -24,11 +24,7 @@ import DocumentActions from "../components/DocumentActions";
 import { InventoryDocument } from "../components/InventoryDocument";
 import { buildCompanyPrintProfile } from "../lib/printTemplate";
 import { finishedGoodsWarehouseId } from "../lib/warehouse-defaults";
-import {
-	comboBoms,
-	comboOptionLabel,
-	isComboPackaging,
-} from "../lib/combo";
+import { comboBoms, comboOptionLabel, isComboPackaging } from "../lib/combo";
 import {
 	formatDate,
 	formatNumber,
@@ -381,9 +377,7 @@ export default function Transactions({
 			packagingOptions
 				.filter(item => form.type !== "IMPORT" || !item.isCombo)
 				.map(item => {
-					const comboCount = item.isCombo
-						? comboBoms(item.boms).length
-						: 0;
+					const comboCount = item.isCombo ? comboBoms(item.boms).length : 0;
 					return {
 						value: item.id,
 						label: item.isCombo
@@ -620,9 +614,7 @@ export default function Transactions({
 				)
 					return {
 						...line,
-						quantity: Number(
-							(Number(line.quantity || 0) * factor).toFixed(4),
-						),
+						quantity: Number((Number(line.quantity || 0) * factor).toFixed(4)),
 					};
 				return line;
 			});
@@ -648,8 +640,7 @@ export default function Transactions({
 					const expanded: Line[] = components.map(item => ({
 						packagingId: item.option.id,
 						quantity: Number(item.bom.quantity || 0) * comboQuantity,
-						unitCost:
-							references.data?.costPriceMap?.get(item.option.id) || 0,
+						unitCost: references.data?.costPriceMap?.get(item.option.id) || 0,
 						note: `Thu\u1ed9c combo ${selected.productName}`,
 						comboGroupId,
 					}));
@@ -778,7 +769,10 @@ export default function Transactions({
 			"danh-sach-chung-tu-kho.xlsx",
 			"Chung tu kho",
 			[
-				{ header: "Mã chứng từ", value: (row: InventoryDocumentV1) => row.code },
+				{
+					header: "Mã chứng từ",
+					value: (row: InventoryDocumentV1) => row.code,
+				},
 				{
 					header: "Ngày",
 					value: (row: InventoryDocumentV1) => row.transactionDate,
@@ -853,10 +847,7 @@ export default function Transactions({
 								? "Nhập kho"
 								: "Nhập, xuất kho"}
 					</h1>
-					<p>
-						Phiếu bán hàng lưu tự sinh phiếu xuất kho tại đây · Chứng từ nháp
-						→ lưu → hủy/đảo.
-					</p>
+					<p>Quan lý chứng từ nhập xuất kho, tồn kho theo kho và đối soát.</p>
 				</div>
 				{view === "documents" && (
 					<div className="flex gap-2">
@@ -1125,9 +1116,7 @@ export default function Transactions({
 																		document.sourceModule === "MANUAL_V1")
 																),
 																onClick: async () => {
-																	if (
-																		document.documentStatus === "DRAFT"
-																	) {
+																	if (document.documentStatus === "DRAFT") {
 																		if (
 																			await confirm(
 																				`Xóa phiếu nháp ${document.code}?`,
@@ -1136,9 +1125,7 @@ export default function Transactions({
 																			deleteMutation.mutate(document);
 																		return;
 																	}
-																	if (
-																		document.documentStatus === "CANCELLED"
-																	) {
+																	if (document.documentStatus === "CANCELLED") {
 																		if (
 																			await confirm(
 																				`Xóa vĩnh viễn phiếu đã hủy ${document.code}? Thao tác không thể hoàn tác.`,
@@ -1332,8 +1319,8 @@ export default function Transactions({
 												: "Lập chứng từ kho"}
 								</h2>
 								<p>
-									Chứng từ chỉ ảnh hưởng tồn sau khi lưu. Phiếu đã lưu có
-									nút hủy lưu để chỉnh sửa.
+									Chứng từ chỉ ảnh hưởng tồn sau khi lưu. Phiếu đã lưu có nút
+									hủy lưu để chỉnh sửa.
 								</p>
 							</div>
 							<button onClick={() => setOpen(false)}>
@@ -1363,17 +1350,17 @@ export default function Transactions({
 											<option value="EXPORT">Xuất kho</option>
 										</select>
 									</label>
-								<label>
-									Ngày chứng từ
-									<DateInput
-										value={form.transactionDate}
-										onChange={value =>
-											setForm({
-												...form,
-												transactionDate: value,
-											})
-										}
-									/>
+									<label>
+										Ngày chứng từ
+										<DateInput
+											value={form.transactionDate}
+											onChange={value =>
+												setForm({
+													...form,
+													transactionDate: value,
+												})
+											}
+										/>
 									</label>
 									<label>
 										Kho
@@ -1578,19 +1565,19 @@ export default function Transactions({
 							</div>
 							<table className="erp-table">
 								<thead>
-								<tr>
-									<th className="w-12 text-center">STT</th>
-									<th>Hàng hóa</th>
-									<th className="text-right">Số lượng</th>
-									<th className="text-right">Đơn giá</th>
-									<th className="text-right">Thành tiền</th>
-								</tr>
-							</thead>
-							<tbody>
-								{selected.details.map((line, index) => (
-									<tr key={line.id}>
-										<td className="text-center">{index + 1}</td>
-										<td>
+									<tr>
+										<th className="w-12 text-center">STT</th>
+										<th>Hàng hóa</th>
+										<th className="text-right">Số lượng</th>
+										<th className="text-right">Đơn giá</th>
+										<th className="text-right">Thành tiền</th>
+									</tr>
+								</thead>
+								<tbody>
+									{selected.details.map((line, index) => (
+										<tr key={line.id}>
+											<td className="text-center">{index + 1}</td>
+											<td>
 												{formatProductName(
 													line.productName,
 													line.packagingName,
@@ -1635,17 +1622,17 @@ export default function Transactions({
 										action: "post",
 									})
 								}
-											onUnpost={async () => {
-												if (
-													await confirm(
-														`Hủy lưu phiếu ${selected.code}? Tồn kho sẽ được hoàn lại và phiếu trở về nháp.`,
-													)
-												)
-													actionMutation.mutate({
-														document: selected,
-														action: "unpost",
-													});
-											}}
+								onUnpost={async () => {
+									if (
+										await confirm(
+											`Hủy lưu phiếu ${selected.code}? Tồn kho sẽ được hoàn lại và phiếu trở về nháp.`,
+										)
+									)
+										actionMutation.mutate({
+											document: selected,
+											action: "unpost",
+										});
+								}}
 								onEdit={() => {
 									setSelected(null);
 									openEdit(selected);
@@ -1662,18 +1649,17 @@ export default function Transactions({
 									type="button"
 									className="erp-btn text-red-600"
 									disabled={deleteMutation.isPending}
-											onClick={async () => {
-												const isCancelled =
-													selected.documentStatus === "CANCELLED";
-												if (
-													await confirm(
-														isCancelled
-															? `Xóa vĩnh viễn phiếu đã hủy ${selected.code}? Thao tác không thể hoàn tác.`
-															: `Xóa phiếu nháp ${selected.code}?`,
-													)
-												)
-													deleteMutation.mutate(selected);
-											}}
+									onClick={async () => {
+										const isCancelled = selected.documentStatus === "CANCELLED";
+										if (
+											await confirm(
+												isCancelled
+													? `Xóa vĩnh viễn phiếu đã hủy ${selected.code}? Thao tác không thể hoàn tác.`
+													: `Xóa phiếu nháp ${selected.code}?`,
+											)
+										)
+											deleteMutation.mutate(selected);
+									}}
 								>
 									Xóa
 								</button>

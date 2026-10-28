@@ -716,10 +716,7 @@ export default function Production({
 			<div className="erp-page-header">
 				<div>
 					<h1>Lệnh sản xuất</h1>
-					<p>
-						Mã LSX tự tăng, đa thành phẩm, BOM trực tiếp, phiếu xuất/nhập liên
-						kết
-					</p>
+					<p>Quản lý sản xuất, theo dõi tiến độ.</p>
 				</div>
 				{manage && (
 					<button className="erp-btn erp-btn-primary" onClick={create}>

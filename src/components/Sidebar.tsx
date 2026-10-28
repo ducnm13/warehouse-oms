@@ -181,7 +181,8 @@ export default function Sidebar({
 		staleTime: 5 * 60_000,
 		retry: false,
 	});
-	const showDevTools = canUseDevTools && devToolsAccess.data?.data.allowed === true;
+	const showDevTools =
+		canUseDevTools && devToolsAccess.data?.data.allowed === true;
 
 	return (
 		<>
@@ -206,7 +207,7 @@ export default function Sidebar({
 				{/* Logo */}
 				<div className="h-20 flex items-center px-5 flex-shrink-0 border-b border-[#e6ecfa]">
 					<div className="flex items-center gap-2.5 justify-center w-full">
-						<div className="w-36 flex items-center justify-center">
+						<div className="w-30 flex items-center justify-center">
 							<img
 								src="/public/images/logo.png"
 								alt=""
@@ -214,10 +215,10 @@ export default function Sidebar({
 							/>
 						</div>
 						<div>
-							<p className="text-[#2b3674] font-bold text-[14px] leading-tight tracking-tight">
+							<p className="text-[#545454] font-bold text-[14px] leading-tight tracking-tight">
 								ERP
 							</p>
-							<p className="text-[#2b3674] text-[11px]">v1.0.2</p>
+							<p className="text-[#545454] text-[11px]">v1.0.2</p>
 						</div>
 					</div>
 				</div>
