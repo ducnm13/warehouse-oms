@@ -1,0 +1,25 @@
+{
+	"id": "/",
+	"name": "Challenge ERP",
+	"short_name": "Challenge ERP",
+	"description": "Hệ thống quản lý kho và vận hành Challenge ERP",
+	"lang": "vi",
+	"start_url": "/",
+	"scope": "/",
+	"display": "standalone",
+	"background_color": "#F4F7FE",
+	"theme_color": "#422AFB",
+	"orientation": "portrait",
+	"icons": [
+		{
+			"src": "/images/favicon_io/web-app-manifest-192x192.png",
+			"type": "image/png",
+			"sizes": "192x192"
+		},
+		{
+			"src": "/images/favicon_io/web-app-manifest-512x512.png",
+			"type": "image/png",
+			"sizes": "512x512"
+		}
+	]
+}
