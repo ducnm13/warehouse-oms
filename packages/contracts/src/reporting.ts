@@ -23,6 +23,11 @@ export const ledgerDocumentReportQuerySchema = z.object({
   sourceLineId: z.coerce.number().int().positive().optional(),
 });
 
+export const assemblyIssueReportQuerySchema = dateRange.safeExtend({
+  warehouseId: z.coerce.number().int().positive().optional(),
+  search: z.string().trim().max(255).optional(),
+});
+
 export const salesProfitReportQuerySchema = dateRange.safeExtend({
   warehouseId: z.coerce.number().int().positive().optional(),
   customerId: z.coerce.number().int().positive().optional(),
@@ -87,6 +92,7 @@ export const financialSummaryReportQuerySchema = dateRange;
 export type InventorySummaryReportQuery = z.infer<typeof inventorySummaryReportQuerySchema>;
 export type ItemLedgerReportQuery = z.infer<typeof itemLedgerReportQuerySchema>;
 export type LedgerDocumentReportQuery = z.infer<typeof ledgerDocumentReportQuerySchema>;
+export type AssemblyIssueReportQuery = z.infer<typeof assemblyIssueReportQuerySchema>;
 export type SalesProfitReportQuery = z.infer<typeof salesProfitReportQuerySchema>;
 export type OperationsReportQuery = z.infer<typeof operationsReportQuerySchema>;
 export type ProductionVarianceReportQuery = z.infer<typeof productionVarianceReportQuerySchema>;

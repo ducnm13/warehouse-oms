@@ -1,10 +1,11 @@
-import type { FinancialSummaryReportQuery, InventorySummaryReportQuery, ItemLedgerReportQuery, LedgerDocumentReportQuery, OperationsReportQuery, ProductionOverviewReportQuery, ProductionVarianceReportQuery, PurchaseReportQuery, SalesByCustomerReportQuery, SalesByProductReportQuery, SalesProfitReportQuery, SalesReturnReportQuery, StockOnHandReportQuery, TransferReportQuery } from "@challenge/contracts";
+import type { AssemblyIssueReportQuery, FinancialSummaryReportQuery, InventorySummaryReportQuery, ItemLedgerReportQuery, LedgerDocumentReportQuery, OperationsReportQuery, ProductionOverviewReportQuery, ProductionVarianceReportQuery, PurchaseReportQuery, SalesByCustomerReportQuery, SalesByProductReportQuery, SalesProfitReportQuery, SalesReturnReportQuery, StockOnHandReportQuery, TransferReportQuery } from "@challenge/contracts";
 import { HttpError } from "../../common/http-error";
 import { reportingRepository } from "./reporting.repository";
 
 const range = (from: string, to: string) => ({ from: new Date(`${from}T00:00:00.000Z`), toExclusive: new Date(new Date(`${to}T00:00:00.000Z`).getTime() + 86400000) });
 const n = (value: unknown) => Number(value || 0);
 const round = (value: number) => Math.round(value * 100) / 100;
+const splitCodes = (value: unknown) => new Set(String(value || "").split(",").map(item => item.trim()).filter(Boolean));
 
 export const reportingService = {
   async inventorySummary(query: InventorySummaryReportQuery) {
@@ -15,6 +16,49 @@ export const reportingService = {
     });
     const summary = rows.reduce((sum, row) => ({ openingQuantity: sum.openingQuantity + row.openingQuantity, inboundQuantity: sum.inboundQuantity + row.inboundQuantity, outboundQuantity: sum.outboundQuantity + row.outboundQuantity, closingQuantity: sum.closingQuantity + row.closingQuantity, openingValue: sum.openingValue + row.openingValue, inboundValue: sum.inboundValue + row.inboundValue, outboundValue: sum.outboundValue + row.outboundValue, closingValue: sum.closingValue + row.closingValue, projectionDifference: sum.projectionDifference + row.projectionDifference }), { openingQuantity: 0, inboundQuantity: 0, outboundQuantity: 0, closingQuantity: 0, openingValue: 0, inboundValue: 0, outboundValue: 0, closingValue: 0, projectionDifference: 0 });
     return { rows, summary, valueCoverageComplete: rows.every(row => row.valueCoverageComplete) };
+  },
+  async assemblyIssues(query: AssemblyIssueReportQuery) {
+    const rows = (await reportingRepository.assemblyIssues({ ...range(query.from, query.to), warehouseId: query.warehouseId, search: query.search })).map(row => {
+      const issuedQuantity = n(row.issuedQuantity), totalValue = round(n(row.totalValue));
+      return {
+        id: `${row.bomCode}|${row.bomVersion}|${row.outputPackagingId}|${row.componentPackagingId}|${row.warehouseId}`,
+        bomCode: row.bomCode,
+        bomVersion: n(row.bomVersion),
+        outputPackagingId: row.outputPackagingId,
+        outputSku: row.outputSku || undefined,
+        outputPackagingName: row.outputPackagingName,
+        outputProductName: row.outputProductName,
+        componentPackagingId: row.componentPackagingId,
+        componentSku: row.componentSku || undefined,
+        componentPackagingName: row.componentPackagingName,
+        componentProductName: row.componentProductName,
+        unit: row.unit || undefined,
+        warehouseId: row.warehouseId,
+        warehouseName: row.warehouseName,
+        orders: n(row.orders),
+        orderCodes: row.orderCodes || "",
+        plannedQuantity: n(row.plannedQuantity),
+        issuedQuantity,
+        avgUnitCost: issuedQuantity ? round(totalValue / issuedQuantity) : 0,
+        totalValue,
+        lastIssuedAt: row.lastIssuedAt,
+        documentCodes: row.documentCodes || "",
+      };
+    });
+    const orderCodes = new Set<string>(), documentCodes = new Set<string>();
+    for (const row of rows) {
+      for (const code of splitCodes(row.orderCodes)) orderCodes.add(code);
+      for (const code of splitCodes(row.documentCodes)) documentCodes.add(code);
+    }
+    return {
+      rows,
+      summary: {
+        orders: orderCodes.size,
+        components: new Set(rows.map(row => row.componentPackagingId)).size,
+        documents: documentCodes.size,
+        totalValue: round(rows.reduce((sum, row) => sum + row.totalValue, 0)),
+      },
+    };
   },
   async itemLedger(query: ItemLedgerReportQuery) {
     const packaging = await reportingRepository.packaging(query.packagingId); if (!packaging) throw new HttpError(404, "PACKAGING_NOT_FOUND", "Không tìm thấy quy cách hàng hóa");

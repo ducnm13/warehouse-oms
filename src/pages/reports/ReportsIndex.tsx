@@ -11,6 +11,7 @@ import {
 	HandCoins,
 	Landmark,
 	Package,
+	PackageMinus,
 	ShoppingBag,
 	ShoppingCart,
 	Store,
@@ -106,8 +107,14 @@ const GROUPS: Array<{
 				icon: BarChart3,
 			},
 			{
+				title: "Xuất kho để lắp ráp",
+				description: "Số lượng linh kiện xuất kho theo BOM phục vụ lắp ráp",
+				path: "/reports/assembly-issues",
+				icon: PackageMinus,
+			},
+			{
 				title: "Chuyển kho",
-				description: "Danh sách phiếu chuyển kho và sản lượng luân chuyển",
+				description: "Danh sách phiếu chuyển kho và số lượng luân chuyển",
 				path: "/reports/transfers",
 				icon: ArrowRightLeft,
 			},

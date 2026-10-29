@@ -41,6 +41,7 @@ import TransfersReport from './pages/reports/TransfersReport';
 import ProductionOverviewReport from './pages/reports/ProductionOverviewReport';
 import ProductionVarianceReport from './pages/reports/ProductionVarianceReport';
 import OperationsReport from './pages/reports/OperationsReport';
+import AssemblyIssueReport from './pages/reports/AssemblyIssueReport';
 import DebtAgingReport from './pages/reports/DebtAgingReport';
 import PromotionUsageReport from './pages/reports/PromotionUsageReport';
 import OnlineReport from './pages/reports/OnlineReport';
@@ -196,6 +197,7 @@ const AppRoutes = () => {
           <Route path="/reports/production-overview" element={<ProductionOverviewReport />} />
           <Route path="/reports/production-variance" element={<ProductionVarianceReport />} />
           <Route path="/reports/operations" element={<OperationsReport />} />
+          <Route path="/reports/assembly-issues" element={<AssemblyIssueReport />} />
           <Route path="/reports/debt-receivable" element={<DebtAgingReport kind="receivable" />} />
           <Route path="/reports/debt-payable" element={<DebtAgingReport kind="payable" />} />
           <Route path="/reports/promotions" element={<PromotionUsageReport />} />

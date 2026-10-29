@@ -548,6 +548,38 @@ export interface ItemLedgerReportV1 {
 		runningValue: number;
 	}>;
 }
+export interface AssemblyIssueReportV1 {
+	rows: Array<{
+		id: string;
+		bomCode: string;
+		bomVersion: number;
+		outputPackagingId: number;
+		outputSku?: string;
+		outputPackagingName: string;
+		outputProductName?: string;
+		componentPackagingId: number;
+		componentSku?: string;
+		componentPackagingName: string;
+		componentProductName: string;
+		unit?: string;
+		warehouseId: number;
+		warehouseName: string;
+		orders: number;
+		orderCodes: string;
+		plannedQuantity: number;
+		issuedQuantity: number;
+		avgUnitCost: number;
+		totalValue: number;
+		lastIssuedAt: string;
+		documentCodes: string;
+	}>;
+	summary: {
+		orders: number;
+		components: number;
+		documents: number;
+		totalValue: number;
+	};
+}
 export interface LedgerDocumentReportV1 {
 	code: string;
 	documentType: string;

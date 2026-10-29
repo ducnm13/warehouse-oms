@@ -129,6 +129,63 @@ export const reportingRepository = {
     }
     return null;
   },
+  assemblyIssues(query: { from: Date; toExclusive: Date; warehouseId?: number; search?: string }) {
+    const clauses: string[] = [];
+    const params: unknown[] = [query.from, query.toExclusive, query.from, query.toExclusive];
+    if (query.warehouseId) { clauses.push("oc.warehouseId=?"); params.push(query.warehouseId); }
+    if (query.search) {
+      clauses.push("(oc.orderCode LIKE ? OR oc.bomCode LIKE ? OR cp.sku LIKE ? OR cp.name LIKE ? OR cpr.name LIKE ? OR op.sku LIKE ? OR op.name LIKE ? OR opr.name LIKE ?)");
+      const value = `%${query.search}%`;
+      params.push(value, value, value, value, value, value, value, value);
+    }
+    return prisma.$queryRawUnsafe<any[]>(`WITH issue_movements AS (
+      SELECT l.occurredAt,l.documentCode,l.direction,l.quantity,l.totalValue,l.packagingId componentPackagingId,l.warehouseId,
+        a.id orderId,a.code orderCode,a.orderDate,a.bomCode,a.bomVersion,a.outputPackagingId,
+        COALESCE(line.plannedQuantity,0) plannedQuantity
+      FROM inventory_ledger l
+      JOIN assembly_orders a ON a.id=l.sourceId AND a.sourceModule='ASSEMBLY_V1'
+      LEFT JOIN assembly_order_lines line ON line.id=l.sourceLineId AND line.orderId=a.id
+      WHERE l.sourceType IN ('ASSEMBLY_COMPONENT','ASSEMBLY_COMPONENT_CANCEL') AND l.occurredAt>=? AND l.occurredAt<?
+      UNION ALL
+      SELECT l.occurredAt,l.documentCode,l.direction,l.quantity,l.totalValue,l.packagingId,l.warehouseId,
+        a.id,a.code,a.orderDate,a.bomCode,a.bomVersion,a.outputPackagingId,
+        COALESCE(line.plannedQuantity,0)
+      FROM assembly_order_document_links link
+      JOIN assembly_orders a ON a.id=link.orderId AND a.sourceModule='ASSEMBLY_V1'
+      JOIN inventory_ledger l ON l.sourceId=link.linkedId AND l.sourceType IN ('INVENTORY_DOCUMENT','INVENTORY_DOCUMENT_CANCEL')
+      LEFT JOIN assembly_order_lines line ON line.orderId=a.id AND line.componentPackagingId=l.packagingId
+      WHERE link.linkType='INVENTORY_ISSUE' AND l.occurredAt>=? AND l.occurredAt<?
+    ), order_components AS (
+      SELECT orderId,orderCode,orderDate,bomCode,bomVersion,outputPackagingId,componentPackagingId,warehouseId,
+        MAX(plannedQuantity) plannedQuantity,
+        SUM(CASE WHEN direction='OUT' THEN quantity ELSE -quantity END) issuedQuantity,
+        SUM(CASE WHEN direction='OUT' THEN totalValue ELSE -totalValue END) totalValue,
+        MAX(occurredAt) lastIssuedAt,
+        GROUP_CONCAT(DISTINCT documentCode ORDER BY documentCode SEPARATOR ', ') documentCodes
+      FROM issue_movements
+      GROUP BY orderId,orderCode,orderDate,bomCode,bomVersion,outputPackagingId,componentPackagingId,warehouseId
+    )
+    SELECT oc.bomCode,oc.bomVersion,oc.outputPackagingId,op.sku outputSku,op.name outputPackagingName,opr.name outputProductName,
+      oc.componentPackagingId,cp.sku componentSku,cp.name componentPackagingName,cpr.name componentProductName,cp.unit,
+      oc.warehouseId,w.name warehouseName,
+      COUNT(DISTINCT oc.orderId) orders,
+      GROUP_CONCAT(DISTINCT oc.orderCode ORDER BY oc.orderCode SEPARATOR ', ') orderCodes,
+      SUM(oc.plannedQuantity) plannedQuantity,
+      SUM(oc.issuedQuantity) issuedQuantity,
+      SUM(oc.totalValue) totalValue,
+      MAX(oc.lastIssuedAt) lastIssuedAt,
+      GROUP_CONCAT(DISTINCT oc.documentCodes ORDER BY oc.documentCodes SEPARATOR ', ') documentCodes
+    FROM order_components oc
+    JOIN productpackagings cp ON cp.id=oc.componentPackagingId
+    JOIN products cpr ON cpr.id=cp.productId
+    JOIN productpackagings op ON op.id=oc.outputPackagingId
+    LEFT JOIN products opr ON opr.id=op.productId
+    JOIN warehouses w ON w.id=oc.warehouseId
+    ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""}
+    GROUP BY oc.bomCode,oc.bomVersion,oc.outputPackagingId,op.sku,op.name,opr.name,oc.componentPackagingId,cp.sku,cp.name,cpr.name,cp.unit,oc.warehouseId,w.name
+    HAVING ABS(issuedQuantity)>0.00005
+    ORDER BY opr.name,op.name,cpr.name,cp.name,w.name`, ...params);
+  },
   packaging(id: number) { return prisma.productpackagings.findUnique({ where: { id }, include: { products: true } }); },
   salesProfit(query: { from: string; to: string; warehouseId?: number; customerId?: number; search?: string }) {
     const clauses = ["so.status='FULFILLED'", "so.orderDate>=?", "so.orderDate<=?"], params: unknown[] = [query.from, query.to];
