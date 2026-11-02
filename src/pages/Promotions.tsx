@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	CheckCircle2,
@@ -15,6 +15,7 @@ import toast from "../components/ui/toast";
 import { confirm } from "../components/ui/confirm";
 import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
+import { useDocumentShortcuts } from "../hooks/useDocumentShortcuts";
 import { formatDate, formatNumber } from "../lib/utils";
 import type { Product, PromotionProgramV1, Warehouse } from "../types";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
@@ -72,6 +73,7 @@ export default function Promotions() {
 	const [open, setOpen] = useState(false),
 		[editing, setEditing] = useState<PromotionProgramV1 | null>(null),
 		[form, setForm] = useState<Form>(empty());
+	const editorFormRef = useRef<HTMLFormElement>(null);
 
 	useMultiEscapeKey([
 		{ isOpen: open, onClose: () => setOpen(false), priority: 1 },
@@ -220,6 +222,21 @@ export default function Promotions() {
 			});
 			setOpen(true);
 		};
+	useDocumentShortcuts({
+		onSave: () => {
+			if (open) editorFormRef.current?.requestSubmit();
+		},
+		onSaveAndClose: () => {
+			if (open) editorFormRef.current?.requestSubmit();
+		},
+		onDelete: () => {
+			if (!open || !editing) return;
+			void (async () => {
+				if (await confirm(`Xóa chương trình ${editing.code}?`))
+					remove.mutate(editing);
+			})();
+		},
+	});
 	const rows = documents.data?.data || [],
 		meta = documents.data?.meta as any;
 	const filterFields: FilterField[] = [
@@ -520,6 +537,7 @@ export default function Promotions() {
 							</button>
 						</div>
 						<form
+							ref={editorFormRef}
 							onSubmit={e => {
 								e.preventDefault();
 								save.mutate();

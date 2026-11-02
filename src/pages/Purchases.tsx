@@ -32,6 +32,8 @@ import type {
 import { formatDate, formatNumber } from "../lib/utils";
 import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
+import { useDocumentShortcuts } from "../hooks/useDocumentShortcuts";
+import { useLineTableTab } from "../hooks/useLineTableTab";
 import { PurchaseDocumentPrint } from "../components/PurchaseDocumentPrint";
 import { buildCompanyPrintProfile } from "../lib/printTemplate";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
@@ -147,6 +149,10 @@ export default function Purchases() {
 	const [selected, setSelected] = useState<PurchaseDocument | null>(null);
 	const [printTarget, setPrintTarget] = useState<PurchaseDocument | null>(null);
 	const [lines, setLines] = useState<Line[]>([emptyLine()]);
+	const editorFormRef = useRef<HTMLFormElement>(null);
+	const lineTableRef = useLineTableTab(() =>
+		setLines(current => [...current, emptyLine()]),
+	);
 	const [supplierModal, setSupplierModal] = useState(false);
 	const [supplierSaving, setSupplierSaving] = useState(false);
 	const [nextSupplierCode, setNextSupplierCode] = useState("NCC00001");
@@ -504,6 +510,44 @@ export default function Purchases() {
 		});
 		setOpen(true);
 	};
+	useDocumentShortcuts({
+		isBlocked: () => supplierModal,
+		onSave: () => {
+			if (open) editorFormRef.current?.requestSubmit();
+		},
+		onSaveAndClose: () => {
+			if (open) editorFormRef.current?.requestSubmit();
+		},
+		onPrint: () => {
+			if (printTarget) {
+				handlePrintReport();
+				return;
+			}
+			const target = editing || selected;
+			if (target) setPrintTarget(target);
+		},
+		onEdit: () => {
+			if (!open && selected) {
+				setSelected(null);
+				openEdit(selected);
+			}
+		},
+		onDelete: () => {
+			const target = open ? editing : selected;
+			if (!target) return;
+			void (async () => {
+				if (await confirm(`Xóa chứng từ ${target.code}?`))
+					deleteMutation.mutate(target);
+			})();
+		},
+		onDuplicate: () => {
+			const target = open ? editing : selected;
+			if (target) {
+				setSelected(null);
+				duplicate(target);
+			}
+		},
+	});
 	const updateLine = (index: number, patch: Partial<Line>) =>
 		setLines(current =>
 			current.map((line, position) =>
@@ -871,6 +915,7 @@ export default function Purchases() {
 							</button>
 						</div>
 						<form
+							ref={editorFormRef}
 							onSubmit={form.handleSubmit(values =>
 								saveMutation.mutate(values),
 							)}
@@ -968,7 +1013,7 @@ export default function Purchases() {
 									</label>
 								</div>
 								<div className="overflow-x-auto border rounded">
-									<table className="erp-table">
+									<table ref={lineTableRef} className="erp-table">
 										<thead>
 											<tr>
 												<th className="w-12 text-center">STT</th>
@@ -994,6 +1039,7 @@ export default function Purchases() {
 															}
 															placeholder="Nhập tên/SKU để chọn hàng hóa"
 															required
+															autoAdvance
 														/>
 													</td>
 													{type === "DOMESTIC_INVENTORY" && (

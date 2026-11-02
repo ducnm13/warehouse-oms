@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import GuidedTour from './GuidedTour';
@@ -12,6 +13,17 @@ interface LayoutProps {
 
 const Layout = ({ children, user, onLogout }: LayoutProps) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const handleF1 = (event: KeyboardEvent) => {
+      if (event.key !== 'F1' || event.defaultPrevented) return;
+      event.preventDefault();
+      navigate('/user-guide');
+    };
+    document.addEventListener('keydown', handleF1);
+    return () => document.removeEventListener('keydown', handleF1);
+  }, [navigate]);
 
   return (
     <div className="erp-shell flex h-screen overflow-hidden bg-[#f4f7fe]">

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	CheckCircle,
@@ -18,6 +18,8 @@ import { confirm } from "../components/ui/confirm";
 import ExcelImportWizard, { type ExcelImportField } from "../components/ExcelImportWizard";
 import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
+import { useDocumentShortcuts } from "../hooks/useDocumentShortcuts";
+import { useLineTableTab } from "../hooks/useLineTableTab";
 import TableActions from "../components/TableActions";
 import DetailOptionsMenu from "../components/DetailOptionsMenu";
 import { formatDate, formatNumber, formatProductName } from "../lib/utils";
@@ -158,6 +160,11 @@ export default function OpeningInventory() {
 		note: "",
 		lines: [emptyLine()],
 	});
+
+	const editorFormRef = useRef<HTMLFormElement>(null);
+	const lineTableRef = useLineTableTab(() =>
+		setForm(f => ({ ...f, lines: [...f.lines, emptyLine()] })),
+	);
 
 	// Cancel modal
 	const [cancelTarget, setCancelTarget] = useState<OpeningDocument | null>(
@@ -526,6 +533,38 @@ export default function OpeningInventory() {
 	const removeLine = (i: number) =>
 		setForm(f => ({ ...f, lines: f.lines.filter((_, j) => j !== i) }));
 
+	useDocumentShortcuts({
+		onSave: () => {
+			if (open) editorFormRef.current?.requestSubmit();
+		},
+		onSaveAndClose: () => {
+			if (open) editorFormRef.current?.requestSubmit();
+		},
+		onPrint: () => {
+			if (printTarget) {
+				document
+					.querySelector<HTMLButtonElement>("[data-print-button]")
+					?.click();
+				return;
+			}
+			const target = editing || viewDoc;
+			if (target) void openPrint(target);
+		},
+		onEdit: () => {
+			if (!open && viewDoc) {
+				setViewDoc(null);
+				void openEdit(viewDoc);
+			}
+		},
+		onDuplicate: () => {
+			const target = open ? editing : viewDoc;
+			if (target) {
+				setViewDoc(null);
+				void duplicate(target);
+			}
+		},
+	});
+
 	const totalValue = form.lines.reduce(
 		(s, l) => s + l.quantity * l.unitCost,
 		0,
@@ -714,9 +753,9 @@ export default function OpeningInventory() {
 						Chưa có phiếu tồn đầu kỳ nào
 					</div>
 				) : (
-					<div className="overflow-x-auto">
-						<table className="erp-table">
-							<thead>
+									<div className="overflow-x-auto">
+										<table ref={lineTableRef} className="erp-table">
+											<thead>
 								<tr>
 									<th>Số phiếu</th>
 									<th>Ngày</th>
@@ -1023,6 +1062,7 @@ export default function OpeningInventory() {
 							</button>
 						</div>
 						<form
+							ref={editorFormRef}
 							onSubmit={e => {
 								e.preventDefault();
 								save.mutate();
@@ -1122,6 +1162,7 @@ export default function OpeningInventory() {
 															<SearchableSelect
 																value={line.packagingId}
 																options={packagingSearchOptions}
+																autoAdvance
 																disabled={editing?.status === "POSTED"}
 																onChange={packagingId => {
 																	const selected = (

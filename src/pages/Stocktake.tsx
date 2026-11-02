@@ -26,6 +26,7 @@ import {
 import { StocktakeDocument } from "../components/StocktakeDocument";
 import type { InventoryBalanceV1, StocktakeV1, Warehouse } from "../types";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
+import { useDocumentShortcuts } from "../hooks/useDocumentShortcuts";
 import { DateInput } from "../components/DateRangeCalendar";
 import TableActions from "../components/TableActions";
 import DetailOptionsMenu from "../components/DetailOptionsMenu";
@@ -93,6 +94,7 @@ export default function Stocktake() {
 		[note, setNote] = useState(""),
 		[lines, setLines] = useState<CountLine[]>([]),
 		[loadingSnapshot, setLoadingSnapshot] = useState(false);
+	const editorFormRef = useRef<HTMLFormElement>(null);
 
 	useMultiEscapeKey([
 		{ isOpen: open, onClose: () => setOpen(false), priority: 1 },
@@ -385,6 +387,35 @@ export default function Stocktake() {
 		);
 		setOpen(true);
 	};
+	useDocumentShortcuts({
+		onSave: () => {
+			if (open) editorFormRef.current?.requestSubmit();
+		},
+		onSaveAndClose: () => {
+			if (open) editorFormRef.current?.requestSubmit();
+		},
+		onPrint: () => {
+			if (printTarget) {
+				handlePrint();
+				return;
+			}
+			const target = editing || selected;
+			if (target) setPrintTarget(target);
+		},
+		onEdit: () => {
+			if (!open && selected) {
+				setSelected(null);
+				edit(selected);
+			}
+		},
+		onDuplicate: () => {
+			const target = open ? editing : selected;
+			if (target) {
+				setSelected(null);
+				duplicate(target);
+			}
+		},
+	});
 	const rows = documents.data?.data || [],
 		meta = documents.data?.meta || {};
 	const visibleRows = useMemo(() => {
@@ -665,6 +696,7 @@ export default function Stocktake() {
 							</button>
 						</div>
 						<form
+							ref={editorFormRef}
 							onSubmit={event => {
 								event.preventDefault();
 								saveMutation.mutate();

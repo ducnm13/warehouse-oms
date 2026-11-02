@@ -8,6 +8,7 @@ import {
 	Compass,
 	Factory,
 	HelpCircle,
+	Keyboard,
 	LayoutDashboard,
 	MessageCircle,
 	Search,
@@ -63,6 +64,51 @@ const SECTIONS: GuideSection[] = [
 			{
 				title: "Mở lại tour hướng dẫn",
 				body: "Bấm nút la bàn trên header hoặc nút “Bắt đầu tour” trong trang này. Tour sẽ tự chuyển trang và chỉ dẫn từng khu vực chức năng.",
+			},
+		],
+	},
+	{
+		id: "phim-tat",
+		title: "Phím tắt",
+		summary:
+			"Thao tác nhanh trên các màn hình chứng từ mà không cần rời bàn phím.",
+		icon: Keyboard,
+		steps: [
+			{
+				title: "F1",
+				body: "Mở trang hướng dẫn sử dụng (wiki) này từ bất kỳ màn hình nào.",
+			},
+			{
+				title: "Esc",
+				body: "Đóng drawer đang mở. Khi dropdown tìm kiếm đang mở, Esc chỉ đóng dropdown trước.",
+			},
+			{
+				title: "Tab",
+				body: "Di chuyển tới ô nhập kế tiếp. Tại ô cuối cùng của dòng hàng cuối cùng, Tab tự thêm một dòng mới và focus vào ô hàng hóa.",
+			},
+			{
+				title: "Ctrl + S",
+				body: "Lưu chứng từ đang mở. Áp dụng cho phiếu nhập, xuất, chuyển kho, kiểm kê, sản xuất, lắp ráp và các chứng từ bán/mua.",
+			},
+			{
+				title: "Ctrl + Q",
+				body: "Lưu và đóng drawer chứng từ (cất nhanh).",
+			},
+			{
+				title: "Ctrl + P",
+				body: "In chứng từ: đang mở form thì in bản đang sửa, đang xem chi tiết thì in chứng từ đó; nếu bản xem trước đã mở thì in luôn.",
+			},
+			{
+				title: "Ctrl + E",
+				body: "Mở form sửa cho chứng từ đang được chọn trong danh sách.",
+			},
+			{
+				title: "Ctrl + D",
+				body: "Xóa chứng từ đang chọn hoặc đang mở (luôn có hộp thoại xác nhận).",
+			},
+			{
+				title: "Ctrl + Shift + C",
+				body: "Nhân bản chứng từ đang chọn hoặc đang mở thành phiếu nháp mới.",
 			},
 		],
 	},

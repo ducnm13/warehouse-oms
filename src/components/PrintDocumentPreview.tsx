@@ -49,6 +49,7 @@ export default function PrintDocumentPreview({
 						Đóng
 					</button>
 					<button
+						data-print-button
 						onClick={handlePrint}
 						className="erp-btn erp-btn-primary !px-6 text-[10px] uppercase tracking-widest"
 					>

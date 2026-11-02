@@ -19,6 +19,7 @@ import { apiV1, legacyApi } from "../lib/apiV1";
 import { formatDate, formatNumber, formatProductName } from "../lib/utils";
 import { finishedGoodsWarehouseId } from "../lib/warehouse-defaults";
 import SearchableSelect from "../components/SearchableSelect";
+import { useDocumentShortcuts } from "../hooks/useDocumentShortcuts";
 import { useReactToPrint } from "react-to-print";
 import { buildCompanyPrintProfile } from "../lib/printTemplate";
 import { SalesReturnDocument } from "../components/SalesReturnDocument";
@@ -84,6 +85,7 @@ export default function SalesReturns() {
 		[returnDate, setReturnDate] = useState(today()),
 		[reason, setReason] = useState("");
 	const [lines, setLines] = useState<ReturnLineInput[]>([]);
+	const editorFormRef = useRef<HTMLFormElement>(null);
 	const reportRef = useRef<HTMLDivElement>(null);
 	const handlePrint = useReactToPrint({
 		contentRef: reportRef,
@@ -306,6 +308,47 @@ export default function SalesReturns() {
 		setLines(current =>
 			current.filter(row => row.originalSalesOrderLineId !== lineId),
 		);
+	useDocumentShortcuts({
+		onSave: () => {
+			if (open) editorFormRef.current?.requestSubmit();
+		},
+		onSaveAndClose: () => {
+			if (open) editorFormRef.current?.requestSubmit();
+		},
+		onPrint: () => {
+			if (printTarget) {
+				handlePrint();
+				return;
+			}
+			const target = editing || selected;
+			if (target) setPrintTarget(target);
+		},
+		onEdit: () => {
+			if (!open && selected) {
+				setSelected(null);
+				edit(selected);
+			}
+		},
+		onDelete: () => {
+			const target = open ? editing : selected;
+			if (!target) return;
+			void (async () => {
+				if (
+					await confirm(
+						`Xóa phiếu ${target.code}? Thao tác không thể hoàn tác.`,
+					)
+				)
+					action.mutate({ document: target, action: "delete" });
+			})();
+		},
+		onDuplicate: () => {
+			const target = open ? editing : selected;
+			if (target) {
+				setSelected(null);
+				duplicate(target);
+			}
+		},
+	});
 	const rows = documents.data?.data || [],
 		meta = documents.data?.meta as any;
 	const visibleRows = useMemo(() => {
@@ -568,6 +611,7 @@ export default function SalesReturns() {
 							</button>
 						</div>
 						<form
+							ref={editorFormRef}
 							onSubmit={event => {
 								event.preventDefault();
 								save.mutate();

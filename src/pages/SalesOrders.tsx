@@ -34,6 +34,8 @@ import type {
 } from "../types";
 import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
+import { useDocumentShortcuts } from "../hooks/useDocumentShortcuts";
+import { useLineTableTab } from "../hooks/useLineTableTab";
 import TableActions from "../components/TableActions";
 import DetailOptionsMenu from "../components/DetailOptionsMenu";
 import ListToolbar from "../components/ListToolbar";
@@ -224,6 +226,10 @@ export default function SalesOrders() {
 	};
 	const relatedTypeLabel = (type: string) => relatedTypeMeta[type] || type;
 	const [lines, setLines] = useState<Line[]>([emptyLine()]);
+	const editorFormRef = useRef<HTMLFormElement>(null);
+	const lineTableRef = useLineTableTab(() =>
+		setLines(current => [...current, emptyLine()]),
+	);
 	const [promotionModal, setPromotionModal] = useState(false);
 	const [promotionChoices, setPromotionChoices] = useState<
 		Array<GiftPreview & { selected: boolean }>
@@ -1140,6 +1146,41 @@ export default function SalesOrders() {
 			return;
 		actionMutation.mutate({ document, action });
 	};
+	useDocumentShortcuts({
+		isBlocked: () =>
+			!!customerModal || !!promotionModal || !!relatedDetail || !!paymentOrder,
+		onSave: () => {
+			if (open) editorFormRef.current?.requestSubmit();
+		},
+		onSaveAndClose: () => {
+			if (open) editorFormRef.current?.requestSubmit();
+		},
+		onPrint: () => {
+			if (reportOrder) {
+				handlePrintReport();
+				return;
+			}
+			const target = editing || selected;
+			if (target) setReportOrder(target);
+		},
+		onEdit: () => {
+			if (!open && selected) {
+				setSelected(null);
+				openEdit(selected);
+			}
+		},
+		onDelete: () => {
+			const target = open ? editing : selected;
+			if (target) void runAction(target, "delete");
+		},
+		onDuplicate: () => {
+			const target = open ? editing : selected;
+			if (target) {
+				setSelected(null);
+				duplicate(target);
+			}
+		},
+	});
 	const receivePayment = (document: SalesOrder) => {
 		const remaining = document.totalAmount - Number(document.paidAmount || 0);
 		setPaymentOrder(document);
@@ -1655,6 +1696,7 @@ export default function SalesOrders() {
 							</button>
 						</div>
 						<form
+							ref={editorFormRef}
 							onSubmit={form.handleSubmit(input => saveMutation.mutate(input))}
 						>
 							<div className="erp-modal-body space-y-5">
@@ -1797,7 +1839,7 @@ export default function SalesOrders() {
 									</label>
 								</div>
 								<div className="overflow-x-auto border rounded">
-									<table className="erp-table">
+									<table ref={lineTableRef} className="erp-table">
 										<thead>
 											<tr>
 												<th className="w-12 text-center">STT</th>
@@ -1823,6 +1865,7 @@ export default function SalesOrders() {
 															}
 															placeholder="Nhập tên/SKU để chọn hàng hóa"
 															required
+															autoAdvance
 														/>
 													</td>
 													<td>

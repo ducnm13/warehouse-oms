@@ -104,20 +104,22 @@ export default function SearchableSelect({
       setKeyword("");
     };
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpen(false);
-        setKeyword("");
-      }
+      if (!open || event.key !== "Escape") return;
+      // Ưu tiên đóng dropdown trước, không để ESC đóng luôn drawer chứa nó.
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(false);
+      setKeyword("");
     };
     document.addEventListener("mousedown", handlePointerDown);
     window.addEventListener("scroll", handleScrollOrResize, true);
     window.addEventListener("resize", handleScrollOrResize);
-    document.addEventListener("keydown", handleEscape);
+    document.addEventListener("keydown", handleEscape, true);
     return () => {
       document.removeEventListener("mousedown", handlePointerDown);
       window.removeEventListener("scroll", handleScrollOrResize, true);
       window.removeEventListener("resize", handleScrollOrResize);
-      document.removeEventListener("keydown", handleEscape);
+      document.removeEventListener("keydown", handleEscape, true);
     };
   }, [open ]);
 

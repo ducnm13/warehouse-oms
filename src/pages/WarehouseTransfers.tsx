@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	ArrowRight,
@@ -20,6 +20,8 @@ import toast from "../components/ui/toast";
 import { confirm, prompt } from "../components/ui/confirm";
 import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
+import { useDocumentShortcuts } from "../hooks/useDocumentShortcuts";
+import { useLineTableTab } from "../hooks/useLineTableTab";
 import PrintDocumentPreview from "../components/PrintDocumentPreview";
 import { WarehouseTransferDocument } from "../components/WarehouseTransferDocument";
 import { formatDate, formatNumber, formatProductName } from "../lib/utils";
@@ -117,6 +119,10 @@ export default function WarehouseTransfers() {
 	]);
 	const [form, setForm] = useState<TransferForm>(emptyForm()),
 		[lines, setLines] = useState<TransferLine[]>([emptyLine()]);
+	const editorFormRef = useRef<HTMLFormElement>(null);
+	const lineTableRef = useLineTableTab(() =>
+		setLines(rows => [...rows, emptyLine()]),
+	);
 
 	const references = useQuery({
 		queryKey: ["transfer-references"],
@@ -332,6 +338,45 @@ export default function WarehouseTransfers() {
 		);
 		setOpen(true);
 	};
+	useDocumentShortcuts({
+		onSave: () => {
+			if (open) editorFormRef.current?.requestSubmit();
+		},
+		onSaveAndClose: () => {
+			if (open) editorFormRef.current?.requestSubmit();
+		},
+		onPrint: () => {
+			if (printTarget) {
+				document
+					.querySelector<HTMLButtonElement>("[data-print-button]")
+					?.click();
+				return;
+			}
+			const target = editing || selected;
+			if (target) setPrintTarget(target);
+		},
+		onEdit: () => {
+			if (!open && selected) {
+				setSelected(null);
+				edit(selected);
+			}
+		},
+		onDelete: () => {
+			const target = open ? editing : selected;
+			if (!target) return;
+			void (async () => {
+				if (await confirm(`Xóa phiếu ${target.code}?`))
+					deleteMutation.mutate(target);
+			})();
+		},
+		onDuplicate: () => {
+			const target = open ? editing : selected;
+			if (target) {
+				setSelected(null);
+				duplicate(target);
+			}
+		},
+	});
 	const act = async (
 		document: WarehouseTransferV1,
 		action: "ship" | "receive" | "cancel" | "unpost",
@@ -735,6 +780,7 @@ export default function WarehouseTransfers() {
 							</button>
 						</div>
 						<form
+							ref={editorFormRef}
 							onSubmit={event => {
 								event.preventDefault();
 								saveMutation.mutate();
@@ -796,7 +842,7 @@ export default function WarehouseTransfers() {
 										</p>
 									)}
 								<div className="overflow-x-auto rounded border">
-									<table className="erp-table">
+									<table ref={lineTableRef} className="erp-table">
 										<thead>
 											<tr>
 												<th className="w-12 text-center">STT</th>
@@ -819,6 +865,7 @@ export default function WarehouseTransfers() {
 																updateLine(index, { packagingId })
 															}
 															placeholder="Nhập tên/SKU để chọn hàng hóa"
+															autoAdvance
 														/>
 													</td>
 													<td>

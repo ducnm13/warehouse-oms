@@ -5,6 +5,8 @@ import toast from "../components/ui/toast";
 import { confirm, prompt } from "../components/ui/confirm";
 import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
+import { useDocumentShortcuts } from "../hooks/useDocumentShortcuts";
+import { useLineTableTab } from "../hooks/useLineTableTab";
 import RightDrawer from "../components/RightDrawer";
 import DocumentActions from "../components/DocumentActions";
 import TableActions from "../components/TableActions";
@@ -103,6 +105,12 @@ export default function Assembly({ user }: { user: User }) {
 	const [lines, setLines] = useState<OrderLine[]>([
 		{ packagingId: 0, plannedQuantity: 1, note: "" },
 	]);
+	const lineTableRef = useLineTableTab(() =>
+		setLines(current => [
+			...current,
+			{ packagingId: 0, plannedQuantity: 1, note: "" },
+		]),
+	);
 
 	const refs = useQuery({
 		queryKey: ["assembly-refs-v2"],
@@ -601,6 +609,42 @@ export default function Assembly({ user }: { user: User }) {
 		!!printTarget &&
 		(String(printTarget.sourceModule || "").includes("DISASSEMBLY") ||
 			(!!printTarget.sources?.length && !printTarget.outputs?.length));
+	useDocumentShortcuts({
+		onSave: () => {
+			if (open) save.mutate();
+		},
+		onSaveAndClose: () => {
+			if (open) save.mutate();
+		},
+		onPrint: () => {
+			if (printTarget) {
+				document
+					.querySelector<HTMLButtonElement>("[data-print-button]")
+					?.click();
+				return;
+			}
+			const target = editing || selected;
+			if (target) void printOrder(target);
+		},
+		onEdit: () => {
+			if (!open && selected && manage) {
+				setSelected(null);
+				openEditor(selected);
+			}
+		},
+		onDelete: () => {
+			const target = open ? editing : selected;
+			if (target) deleteOrder.mutate(target);
+		},
+		onDuplicate: () => {
+			if (open) return;
+			const target = selected;
+			if (target && manage) {
+				setSelected(null);
+				void duplicateOrder(target);
+			}
+		},
+	});
 	const orderOutputs = (order: any) =>
 		order.outputs?.length
 			? order.outputs
@@ -999,7 +1043,7 @@ export default function Assembly({ user }: { user: User }) {
 						<div className="min-w-0">
 							<b>Thành phẩm ({lines.length})</b>
 							<div className="mt-2 overflow-x-auto rounded-lg border border-slate-200">
-								<table className="erp-table w-full min-w-[720px]">
+									<table ref={lineTableRef} className="erp-table w-full min-w-[720px]">
 									<thead>
 										<tr>
 											<th className="w-9">STT</th>
@@ -1035,6 +1079,7 @@ export default function Assembly({ user }: { user: User }) {
 															}
 															placeholder="Tìm mã/tên"
 															required
+															autoAdvance
 														/>
 													</td>
 													<td

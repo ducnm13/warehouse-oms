@@ -20,6 +20,8 @@ import toast from "../components/ui/toast";
 import { confirm, prompt } from "../components/ui/confirm";
 import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
+import { useDocumentShortcuts } from "../hooks/useDocumentShortcuts";
+import { useLineTableTab } from "../hooks/useLineTableTab";
 import NumberInput from "../components/NumberInput";
 import { ProductionOrderDocument } from "../components/ProductionOrderDocument";
 import { formatDate, formatInteger, formatNumber } from "../lib/utils";
@@ -178,6 +180,13 @@ export default function Production({
 	const [lines, setLines] = useState<OrderLine[]>([
 		{ packagingId: 0, plannedQuantity: 1, note: "" },
 	]);
+	const editorFormRef = useRef<HTMLFormElement>(null);
+	const lineTableRef = useLineTableTab(() =>
+		setLines(current => [
+			...current,
+			{ packagingId: 0, plannedQuantity: 1, note: "" },
+		]),
+	);
 
 	const refs = useQuery({
 		queryKey: ["production-refs"],
@@ -666,6 +675,43 @@ export default function Production({
 		);
 		setOpen(true);
 	};
+	useDocumentShortcuts({
+		onSave: () => {
+			if (open) editorFormRef.current?.requestSubmit();
+		},
+		onSaveAndClose: () => {
+			if (open) editorFormRef.current?.requestSubmit();
+		},
+		onPrint: () => {
+			if (reportOrder) {
+				handlePrintReport();
+				return;
+			}
+			const target = editing || selected;
+			if (target) setReportOrder(target);
+		},
+		onEdit: () => {
+			if (!open && selected) {
+				setSelected(null);
+				edit(selected);
+			}
+		},
+		onDelete: () => {
+			const target = open ? editing : selected;
+			if (!target) return;
+			void (async () => {
+				if (await confirm(`Xóa lệnh ${target.code}?`))
+					deleteMutation.mutate(target);
+			})();
+		},
+		onDuplicate: () => {
+			const target = open ? editing : selected;
+			if (target) {
+				setSelected(null);
+				duplicate(target);
+			}
+		},
+	});
 	const cancel = async (d: ProductionOrderV1) => {
 		const reason = await prompt({
 			title: "Hủy lệnh sản xuất",
@@ -958,6 +1004,7 @@ export default function Production({
 							</button>
 						</div>
 						<form
+							ref={editorFormRef}
 							onSubmit={e => {
 								e.preventDefault();
 								save.mutate();
@@ -1008,6 +1055,7 @@ export default function Production({
 											</button>
 										</div>
 										<table
+											ref={lineTableRef}
 											className="erp-table"
 											style={{ tableLayout: "fixed", width: "100%" }}
 										>
@@ -1050,6 +1098,7 @@ export default function Production({
 																	}
 																	placeholder="Mã"
 																	required
+																	autoAdvance
 																/>
 															</td>
 															<td className="font-medium text-slate-700">

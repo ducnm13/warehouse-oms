@@ -19,6 +19,8 @@ import toast from "../components/ui/toast";
 import { confirm, prompt } from "../components/ui/confirm";
 import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
+import { useDocumentShortcuts } from "../hooks/useDocumentShortcuts";
+import { useLineTableTab } from "../hooks/useLineTableTab";
 import NumberInput from "../components/NumberInput";
 import DocumentActions from "../components/DocumentActions";
 import { InventoryDocument } from "../components/InventoryDocument";
@@ -119,6 +121,10 @@ export default function Transactions({
 		[selected, setSelected] = useState<InventoryDocumentV1 | null>(null);
 	const [form, setForm] = useState<FormState>(emptyForm()),
 		[lines, setLines] = useState<Line[]>([emptyLine()]);
+	const editorFormRef = useRef<HTMLFormElement>(null);
+	const lineTableRef = useLineTableTab(() =>
+		setLines(current => [...current, emptyLine()]),
+	);
 	// Cùng component dùng cho 2 route Nhập/Xuất: đổi sidebar phải theo loại mới
 	React.useEffect(() => {
 		setType(initialType || "");
@@ -596,6 +602,37 @@ export default function Transactions({
 		);
 		setOpen(true);
 	};
+	useDocumentShortcuts({
+		onSave: () => {
+			if (open) editorFormRef.current?.requestSubmit();
+		},
+		onSaveAndClose: () => {
+			if (open) editorFormRef.current?.requestSubmit();
+		},
+		onPrint: () => {
+			if (reportDoc) {
+				handlePrintReport();
+				return;
+			}
+			const target = editing || selected;
+			if (target) setReportDoc(target);
+		},
+		onEdit: () => {
+			if (!open && selected) openEdit(selected);
+		},
+		onDelete: () => {
+			const target = open ? editing : selected;
+			if (!target) return;
+			void (async () => {
+				if (await confirm(`Xóa phiếu ${target.code}?`))
+					deleteMutation.mutate(target);
+			})();
+		},
+		onDuplicate: () => {
+			const target = open ? editing : selected;
+			if (target) duplicate(target);
+		},
+	});
 	const updateLine = (index: number, patch: Partial<Line>) =>
 		setLines(current => {
 			const previous = current[index];
@@ -1328,6 +1365,7 @@ export default function Transactions({
 							</button>
 						</div>
 						<form
+							ref={editorFormRef}
 							onSubmit={event => {
 								event.preventDefault();
 								saveMutation.mutate();
@@ -1401,7 +1439,7 @@ export default function Transactions({
 									</label>
 								</div>
 								<div className="overflow-x-auto border rounded">
-									<table className="erp-table">
+									<table ref={lineTableRef} className="erp-table">
 										<thead>
 											<tr>
 												<th className="w-12 text-center">STT</th>
@@ -1426,6 +1464,7 @@ export default function Transactions({
 																applyPackagingCost(index, packagingId)
 															}
 															placeholder="Nhập tên/SKU để chọn hàng hóa"
+															autoAdvance
 														/>
 													</td>
 													<td>
