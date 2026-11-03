@@ -402,6 +402,7 @@ export default function Assembly({ user }: { user: User }) {
 		order: any;
 		type: "IMPORT" | "EXPORT";
 		warehouseId: number;
+		transactionDate: string;
 		lines: Array<{
 			packagingId: number;
 			sku?: string;
@@ -458,6 +459,7 @@ export default function Assembly({ user }: { user: User }) {
 				defaultWarehouseId ||
 				refs.data?.warehouses[0]?.id ||
 				0,
+			transactionDate: (order.orderDate || today()).slice(0, 10),
 			lines: enriched,
 		});
 	};
@@ -465,9 +467,13 @@ export default function Assembly({ user }: { user: User }) {
 	const [savingVoucher, setSavingVoucher] = useState(false);
 	const confirmDraftToInventory = async () => {
 		if (!voucherDraft || savingVoucher) return;
-		const { order, type, warehouseId, lines } = voucherDraft;
+		const { order, type, warehouseId, lines, transactionDate } = voucherDraft;
 		if (!warehouseId) {
 			toast.error("Chọn kho xuất/nhập trước khi lưu phiếu");
+			return;
+		}
+		if (!transactionDate) {
+			toast.error("Chọn ngày thực hiện trước khi lưu phiếu");
 			return;
 		}
 		const normalized = lines
@@ -488,7 +494,7 @@ export default function Assembly({ user }: { user: User }) {
 				method: "POST",
 				body: JSON.stringify({
 					type,
-					transactionDate: today(),
+					transactionDate,
 					warehouseId,
 					recipient: type === "EXPORT" ? "Tổ lắp ráp" : "Kho thành phẩm",
 					reason: `${
@@ -1463,7 +1469,7 @@ export default function Assembly({ user }: { user: User }) {
 			>
 				{voucherDraft && (
 					<div className="space-y-4">
-						<div className="grid gap-3 md:grid-cols-3">
+						<div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
 							<div className="rounded bg-slate-50 p-3">
 								<small>Kho xuất/nhập</small>
 								<select
@@ -1484,6 +1490,17 @@ export default function Assembly({ user }: { user: User }) {
 										</option>
 									))}
 								</select>
+							</div>
+							<div className="rounded bg-slate-50 p-3">
+								<small>Ngày thực hiện</small>
+								<DateInput
+									value={voucherDraft.transactionDate}
+									onChange={value =>
+										setVoucherDraft(current =>
+											current ? { ...current, transactionDate: value } : current,
+										)
+									}
+								/>
 							</div>
 							<div className="rounded bg-slate-50 p-3">
 								<small>Loại phiếu</small>
