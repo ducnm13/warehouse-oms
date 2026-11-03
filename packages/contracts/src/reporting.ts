@@ -47,6 +47,7 @@ export const productionVarianceReportQuerySchema = dateRange.safeExtend({
 
 export const salesByCustomerReportQuerySchema = dateRange.safeExtend({
   warehouseId: z.coerce.number().int().positive().optional(),
+  customerId: z.coerce.number().int().positive().optional(),
   groupId: z.coerce.number().int().positive().optional(),
   search: z.string().trim().max(255).optional(),
 });

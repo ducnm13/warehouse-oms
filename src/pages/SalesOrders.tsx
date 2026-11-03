@@ -27,6 +27,7 @@ import toast from "../components/ui/toast";
 import { confirm, prompt } from "../components/ui/confirm";
 import type {
 	Customer,
+	InventoryBalanceV1,
 	Product,
 	SalesOrder,
 	SalesOrderDetail,
@@ -438,6 +439,22 @@ export default function SalesOrders() {
 			return true;
 		});
 	}, [orders, filters]);
+	const selectedWarehouseId = form.watch("warehouseId");
+	const stockQuery = useQuery({
+		queryKey: ["sales-order-stock", selectedWarehouseId],
+		enabled: !!selectedWarehouseId,
+		queryFn: () =>
+			apiV1<InventoryBalanceV1[]>(
+				`/api/v1/inventory/balances?warehouseId=${selectedWarehouseId}`,
+			),
+		staleTime: 30_000,
+	});
+	const stockByPackaging = useMemo(() => {
+		const map = new Map<number, number>();
+		for (const row of stockQuery.data?.data || [])
+			map.set(row.packagingId, Number(row.quantity || 0));
+		return map;
+	}, [stockQuery.data]);
 	const finishedGoodsWarehouseId = useMemo(() => {
 		const warehouses = references.data?.warehouses || [];
 		const byName = warehouses.find(warehouse =>
@@ -468,21 +485,26 @@ export default function SalesOrders() {
 		() =>
 			packagingOptions.map(item => {
 				const comboCount = item.isCombo ? comboBoms(item.boms).length : 0;
+				const baseLabel = item.isCombo
+					? `Combo gồm ${comboCount} thành phẩm${item.sku ? ` | SKU: ${item.sku}` : ""}`
+					: item.name !== item.productName
+						? `${item.name}${item.sku ? ` | SKU: ${item.sku}` : ""}`
+						: item.sku
+							? `SKU: ${item.sku}`
+							: "";
+				const stock = stockByPackaging.get(item.id);
 				return {
 					value: item.id,
 					label: item.isCombo
 						? comboOptionLabel(item.productName)
 						: item.productName,
-					subLabel: item.isCombo
-						? `Combo gồm ${comboCount} thành phẩm${item.sku ? ` | SKU: ${item.sku}` : ""}`
-						: item.name !== item.productName
-							? `${item.name}${item.sku ? ` | SKU: ${item.sku}` : ""}`
-							: item.sku
-								? `SKU: ${item.sku}`
-								: undefined,
+					subLabel:
+						[baseLabel, stock !== undefined ? `Tồn kho: ${formatNumber(stock)}` : ""]
+							.filter(Boolean)
+							.join(" | ") || undefined,
 				};
 			}),
-		[packagingOptions],
+		[packagingOptions, stockByPackaging],
 	);
 	const customerSearchOptions = useMemo(() => {
 		const groups = references.data?.customerGroups || [];
@@ -1867,6 +1889,29 @@ export default function SalesOrders() {
 															required
 															autoAdvance
 														/>
+														{(() => {
+															const stock = stockByPackaging.get(
+																line.packagingId,
+															);
+															if (stock === undefined) return null;
+															const insufficient =
+																Number(line.quantity || 0) > stock;
+															return (
+																<div
+																	className={`mt-1 text-[11px] ${
+																		insufficient
+																			? "font-semibold text-red-600"
+																			: "text-slate-500"
+																	}`}
+																>
+																	Tồn kho đã chọn:{" "}
+																	{formatNumber(stock)}
+																	{insufficient
+																		? " — không đủ cho số lượng này"
+																		: ""}
+																</div>
+															);
+														})()}
 													</td>
 													<td>
 														<input

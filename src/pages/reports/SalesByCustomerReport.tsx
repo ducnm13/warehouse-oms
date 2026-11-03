@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search } from "lucide-react";
 import ReportPeriodFilter from "../../components/ReportPeriodFilter";
+import SearchableSelect from "../../components/SearchableSelect";
 import { apiV1 } from "../../lib/apiV1";
 import {
 	ExportButton,
@@ -19,7 +19,11 @@ import {
 } from "../../components/reports/ReportKit";
 
 const today = () => new Date().toISOString().slice(0, 10);
-const monthStart = () => `${today().slice(0, 7)}-01`;
+const daysAgo = (days: number) => {
+	const date = new Date();
+	date.setDate(date.getDate() - days);
+	return date.toISOString().slice(0, 10);
+};
 
 interface Row {
 	customerId: number;
@@ -41,18 +45,36 @@ interface Result {
 }
 
 export default function SalesByCustomerReport() {
-	const [from, setFrom] = useState(monthStart());
+	const [from, setFrom] = useState(daysAgo(29));
 	const [to, setTo] = useState(today());
 	const [warehouseId, setWarehouseId] = useState(0);
-	const [search, setSearch] = useState("");
+	const [customerId, setCustomerId] = useState(0);
+	const [groupId, setGroupId] = useState(0);
 	const refs = useReportRefs();
 	const params = new URLSearchParams({ from, to });
 	if (warehouseId) params.set("warehouseId", String(warehouseId));
-	if (search.trim()) params.set("search", search.trim());
+	if (customerId) params.set("customerId", String(customerId));
+	if (groupId) params.set("groupId", String(groupId));
 	const query = useQuery({
-		queryKey: ["report-sales-customer", from, to, warehouseId, search],
+		queryKey: [
+			"report-sales-customer",
+			from,
+			to,
+			warehouseId,
+			customerId,
+			groupId,
+		],
 		queryFn: () => apiV1<Result>(`/api/v1/reports/sales-by-customer?${params.toString()}`),
 	});
+	const customerOptions = useMemo(
+		() =>
+			(refs.data?.customers || []).map(customer => ({
+				value: customer.id,
+				label: customer.name,
+				subLabel: customer.code,
+			})),
+		[refs.data?.customers],
+	);
 	const data = query.data?.data;
 	const rows = data?.rows || [];
 	const summary = data?.summary;
@@ -79,11 +101,24 @@ export default function SalesByCustomerReport() {
 				</div>
 				<WarehouseSelect value={warehouseId} onChange={setWarehouseId} warehouses={refs.data?.warehouses || []} />
 				<label>
-					Tìm kiếm
-					<div className="erp-search mt-1 w-full max-w-none">
-						<Search size={16} />
-						<input value={search} onChange={e => setSearch(e.target.value)} placeholder="Khách hàng..." />
-					</div>
+					Nhóm khách hàng
+					<select value={groupId} onChange={e => setGroupId(Number(e.target.value))}>
+						<option value={0}>Tất cả nhóm</option>
+						{(refs.data?.customerGroups || []).map(group => (
+							<option key={group.id} value={group.id}>
+								{group.name}
+							</option>
+						))}
+					</select>
+				</label>
+				<label>
+					Khách hàng
+					<SearchableSelect
+						value={customerId}
+						options={customerOptions}
+						onChange={setCustomerId}
+						placeholder="Tìm theo tên hoặc mã khách hàng"
+					/>
 				</label>
 			</FilterBar>
 

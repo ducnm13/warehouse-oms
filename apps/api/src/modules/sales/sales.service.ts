@@ -307,9 +307,11 @@ export const salesService = {
           "SELECT stock_quantity FROM productwarehouses WHERE packagingId=? AND warehouseId=? FOR UPDATE",
           packagingId, document.warehouseId,
         );
-        if (Number(balances[0]?.stock_quantity || 0) < requiredQuantity) {
+        const availableQuantity = Number(balances[0]?.stock_quantity || 0);
+        if (availableQuantity < requiredQuantity) {
           const item = document.sales_order_details.find(line => line.packagingId === packagingId);
-          throw new HttpError(409, "INSUFFICIENT_STOCK", `Không đủ tồn kho cho ${item?.productpackagings?.name || packagingId}`);
+          const warehouseName = document.warehouses?.name || `kho #${document.warehouseId}`;
+          throw new HttpError(409, "INSUFFICIENT_STOCK", `Không đủ tồn kho cho ${item?.productpackagings?.name || packagingId} tại ${warehouseName}: còn ${availableQuantity}, cần ${requiredQuantity}`);
         }
       }
 

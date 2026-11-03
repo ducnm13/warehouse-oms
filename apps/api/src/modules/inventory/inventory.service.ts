@@ -179,7 +179,7 @@ export const inventoryService = {
         if (!line.packagingId) throw new HttpError(409, "MISSING_ITEM", "Dòng chứng từ thiếu hàng hóa");
         const quantity = Number(line.quantity), balance = await lockBalance(tx, line.packagingId, document.warehouseId);
         await ensureOpening(tx, line.packagingId, document.warehouseId, balance);
-        if (document.type === "EXPORT" && balance < quantity) throw new HttpError(409, "NEGATIVE_STOCK", `Không đủ tồn cho ${line.productpackagings?.sku || line.packagingId}`);
+        if (document.type === "EXPORT" && balance < quantity) throw new HttpError(409, "NEGATIVE_STOCK", `Không đủ tồn cho ${line.productpackagings?.sku || line.packagingId} tại ${document.warehouses?.name || `kho #${document.warehouseId}`}: còn ${balance}, cần ${quantity}`);
         const unitCost = document.type === "EXPORT" ? await averageCost(tx, line.packagingId, document.warehouseId) : Number(line.unitCost || 0);
         await tx.inventorytransactiondetails.update({ where: { id: line.id }, data: { unitCost: decimal(unitCost), totalValue: money(quantity * unitCost) } });
         await tx.productwarehouses.update({ where: { packagingId_warehouseId: { packagingId: line.packagingId, warehouseId: document.warehouseId } }, data: {

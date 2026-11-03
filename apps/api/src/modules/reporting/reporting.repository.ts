@@ -219,9 +219,10 @@ export const reportingRepository = {
       LEFT JOIN (SELECT pd.orderId,SUM(pd.quantity*COALESCE(pp.packCount,1)) plannedOutput,SUM(pd.actual_quantity*COALESCE(pp.packCount,1)) actualOutput FROM productiondetails pd JOIN productpackagings pp ON pp.id=pd.packagingId GROUP BY pd.orderId) outputs ON outputs.orderId=po.id
       WHERE ${clauses.join(" AND ")} ORDER BY po.completedAt,po.id,mp.name,mpp.name`, ...params);
   },
-  salesByCustomer(query: { from: string; to: string; warehouseId?: number; groupId?: number; search?: string }) {
+  salesByCustomer(query: { from: string; to: string; warehouseId?: number; customerId?: number; groupId?: number; search?: string }) {
     const inner: string[] = ["so.status='FULFILLED'", "so.orderDate>=?", "so.orderDate<=?"], innerParams: unknown[] = [query.from, query.to];
     if (query.warehouseId) { inner.push("so.warehouseId=?"); innerParams.push(query.warehouseId); }
+    if (query.customerId) { inner.push("so.customerId=?"); innerParams.push(query.customerId); }
     const outer: string[] = [], outerParams: unknown[] = [];
     if (query.groupId) { outer.push("cg.id=?"); outerParams.push(query.groupId); }
     if (query.search) { outer.push("(c.name LIKE ? OR c.code LIKE ?)"); const value = `%${query.search}%`; outerParams.push(value, value); }

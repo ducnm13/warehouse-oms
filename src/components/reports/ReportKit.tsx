@@ -233,6 +233,7 @@ export type ReportRefs = {
 	warehouses: Array<{ id: number; name: string }>;
 	customers: Array<{ id: number; code?: string; name: string }>;
 	suppliers: Array<{ id: number; code?: string; name: string }>;
+	customerGroups: Array<{ id: number; name: string }>;
 };
 
 export function useReportRefs() {
@@ -240,15 +241,29 @@ export function useReportRefs() {
 		queryKey: ["report-refs"],
 		staleTime: 5 * 60 * 1000,
 		queryFn: async (): Promise<ReportRefs> => {
-			const [warehouses, customers, suppliers] = await Promise.all([
-				legacyApi<any[]>("/api/warehouses").catch(() => []),
-				legacyApi<any[]>("/api/customers").catch(() => []),
-				legacyApi<any[]>("/api/suppliers").catch(() => []),
+			const [warehouses, customers, suppliers, customerGroups] =
+				await Promise.all([
+					legacyApi<any[]>("/api/warehouses").catch(() => []),
+					legacyApi<any[]>("/api/customers").catch(() => []),
+					legacyApi<any[]>("/api/suppliers").catch(() => []),
+					legacyApi<any>("/api/v1/customer-groups").catch(() => []),
+				]);
+			const rawGroups: any[] = Array.isArray(customerGroups?.data)
+				? customerGroups.data
+				: Array.isArray(customerGroups)
+					? customerGroups
+					: [];
+			const flatGroups = rawGroups.flatMap(group => [
+				group,
+				...(Array.isArray(group.children) ? group.children : []),
 			]);
 			return {
 				warehouses: warehouses || [],
 				customers: customers || [],
 				suppliers: suppliers || [],
+				customerGroups: Array.from(
+					new Map(flatGroups.map(group => [group.id, group])).values(),
+				).map(group => ({ id: group.id, name: group.name })),
 			};
 		},
 	});
