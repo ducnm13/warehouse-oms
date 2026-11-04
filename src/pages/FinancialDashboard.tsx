@@ -28,7 +28,7 @@ import {
 	CardTitle,
 } from "../components/ui/card";
 import Badge from "../components/ui/badge";
-import { formatNumber } from "../lib/utils";
+import { currentMonthKey, formatNumber } from "../lib/utils";
 
 type Data = {
 	revenue: number;
@@ -67,22 +67,22 @@ const initial: Data = {
 export default function FinancialDashboard() {
 	console.debug("[FinancialDashboard] component rendered");
 	const [data, setData] = useState<Data>(initial),
-		[loading, setLoading] = useState(true);
+		[loading, setLoading] = useState(true),
+		[month, setMonth] = useState(currentMonthKey());
 	useEffect(() => {
 		const token = localStorage.getItem("token");
-		console.debug("[FinancialDashboard] token from localStorage:", token);
-		fetch("/api/dashboard/financial", {
+		setLoading(true);
+		fetch(`/api/dashboard/financial?month=${encodeURIComponent(month)}`, {
 			headers: { Authorization: `Bearer ${token}` },
 		})
 			.then(async r => {
-				console.debug("[FinancialDashboard] response status:", r.status);
 				const d = await r.json();
 				if (!r.ok) throw new Error(d.error);
 				setData(d);
 			})
 			.catch(e => toast.error(e.message))
 			.finally(() => setLoading(false));
-	}, []);
+	}, [month]);
 	const cards = [
 		["Doanh thu", data.revenue, ArrowUpCircle, "text-emerald-600"],
 		["Chi phí", data.expense, ArrowDownCircle, "text-red-500"],
@@ -125,10 +125,20 @@ export default function FinancialDashboard() {
 				<div>
 					<h1>Tổng quan tài chính</h1>
 					<p>
-						Doanh thu, chi phí tháng {new Date().getMonth() + 1}/
-						{new Date().getFullYear()}; công nợ và tồn kho hiện tại
+						Doanh thu, chi phí tháng {Number(month.slice(5))}/
+						{month.slice(0, 4)}; công nợ và tồn kho hiện tại
 					</p>
 				</div>
+				<input
+					type="month"
+					className="erp-month-input"
+					value={month}
+					onChange={event =>
+						setMonth(event.target.value || currentMonthKey())
+					}
+					aria-label="Chọn tháng"
+					title="Chọn tháng"
+				/>
 			</div>
 			{loading ? (
 				<div className="erp-card p-10 text-center">

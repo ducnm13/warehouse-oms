@@ -26,7 +26,7 @@ import SearchableSelect from "../components/SearchableSelect";
 import TableActions from "../components/TableActions";
 import DetailOptionsMenu from "../components/DetailOptionsMenu";
 import { formatNumber, formatDate, formatProductName } from "../lib/utils";
-import { currentMonthRange } from "../lib/utils";
+import { useMonthFilter } from "../hooks/useMonthFilter";
 import type { Product } from "../types";
 import ListToolbar from "../components/ListToolbar";
 import type { FilterField, FilterValues } from "../components/FilterDrawer";
@@ -142,6 +142,7 @@ const OnlineOrders = () => {
 	// Bộ lọc đơn
 	const [searchTerm, setSearchTerm] = useState("");
 	const [filters, setFilters] = useState<FilterValues>({});
+	const { month, setMonth, range } = useMonthFilter();
 	const statusFilter = filters.status || "ALL";
 	const [page, setPage] = useState(1);
 	const [totalPages, setTotalPages] = useState(1);
@@ -707,15 +708,15 @@ const OnlineOrders = () => {
 		? Math.max(...revenueSeries.map(d => d.revenue), 1)
 		: 1;
 	const visibleOrders = useMemo(() => {
-		const from = filters.dateFrom || currentMonthRange().dateFrom;
-		const to = filters.dateTo || currentMonthRange().dateTo;
+		const from = filters.dateFrom || range.dateFrom;
+		const to = filters.dateTo || range.dateTo;
 		return orders.filter(order => {
 			const date = (order.orderDate || "").slice(0, 10);
 			if (from && date < from) return false;
 			if (to && date > to) return false;
 			return true;
 		});
-	}, [orders, filters]);
+	}, [orders, filters, range]);
 	const exportOrders = () =>
 		exportExcelFile(
 			"don-hang-online.xlsx",
@@ -1078,7 +1079,7 @@ const OnlineOrders = () => {
 
 			{tab === "orders" && (
 				<div className="erp-card overflow-hidden">
-					<ListToolbar
+					<ListToolbar month={month} onMonthChange={value => { setMonth(value); setFilters(current => { const next = { ...current }; delete next.dateFrom; delete next.dateTo; return next; }); }}
 						className="flex-wrap"
 						fields={ORDER_FILTER_FIELDS}
 						values={filters}

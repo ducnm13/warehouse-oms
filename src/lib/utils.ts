@@ -33,15 +33,25 @@ export function formatDate(dateString: string) {
   return new Date(dateString).toLocaleDateString('vi-VN');
 }
 
-export function currentMonthRange() {
+export function currentMonthKey() {
   const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+export function monthRange(month: string) {
+  const [year, monthNumber] = month.split('-').map(Number);
+  const lastDay = new Date(year, monthNumber, 0).getDate();
+  const isCurrent = month === currentMonthKey();
   return {
-    dateFrom: `${year}-${month}-01`,
-    dateTo: `${year}-${month}-${day}`,
+    dateFrom: `${month}-01`,
+    dateTo: isCurrent
+      ? new Date().toISOString().slice(0, 10)
+      : `${month}-${String(lastDay).padStart(2, '0')}`,
   };
+}
+
+export function currentMonthRange() {
+  return monthRange(currentMonthKey());
 }
 
 function normalizeProductPart(value?: string | null) {

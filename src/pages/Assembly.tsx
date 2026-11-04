@@ -17,7 +17,7 @@ import PrintDocumentPreview from "../components/PrintDocumentPreview";
 import { AssemblyDocument } from "../components/AssemblyDocument";
 import NumberInput from "../components/NumberInput";
 import { formatDate, formatNumber, formatProductName } from "../lib/utils";
-import { currentMonthRange } from "../lib/utils";
+import { useMonthFilter } from "../hooks/useMonthFilter";
 import { hasPermission } from "../lib/permissions";
 import {
 	buildCompanyPrintProfile,
@@ -94,6 +94,7 @@ export default function Assembly({ user }: { user: User }) {
 	const [tab, setTab] = useState<Tab>("ASSEMBLY");
 	const [search, setSearch] = useState("");
 	const [filters, setFilters] = useState<FilterValues>({});
+	const { month, setMonth, range } = useMonthFilter();
 	const [open, setOpen] = useState(false);
 	const [editing, setEditing] = useState<
 		AssemblyOrderV1 | DisassemblyOrderV1 | null
@@ -507,6 +508,30 @@ export default function Assembly({ user }: { user: User }) {
 					details: normalized,
 				}),
 			});
+			try {
+				await apiV1(
+					`/api/v1/inventory/documents/${created.data.id}/post`,
+					{
+						method: "POST",
+						body: JSON.stringify({ version: created.data.version }),
+					},
+				);
+			} catch (postError) {
+				try {
+					await apiV1(
+						`/api/v1/inventory/documents/${created.data.id}/delete`,
+						{
+							method: "POST",
+							body: JSON.stringify({
+								version: created.data.version,
+							}),
+						},
+					);
+				} catch {
+					// keep original post error
+				}
+				throw postError;
+			}
 			const base =
 				tab === "ASSEMBLY"
 					? "/api/v1/assembly/orders"
@@ -520,7 +545,7 @@ export default function Assembly({ user }: { user: User }) {
 				}),
 			});
 			toast.success(
-				`Đã lưu ${type === "EXPORT" ? "phiếu xuất" : "phiếu nhập"} ${created.data.code} ngay trong lệnh ${order.code}`,
+				`Đã lưu vào kho phiếu ${created.data.code} ngay trong lệnh ${order.code}`,
 			);
 			setVoucherDraft(null);
 			await viewOrder({ ...order, id: order.id } as any);
@@ -718,7 +743,6 @@ export default function Assembly({ user }: { user: User }) {
 				return false;
 		}
 		const date = String(row.orderDate || "").slice(0, 10);
-		const range = currentMonthRange();
 		const from = filters.dateFrom || range.dateFrom;
 		const to = filters.dateTo || range.dateTo;
 		if (!date || date < from || date > to) return false;
@@ -846,7 +870,7 @@ export default function Assembly({ user }: { user: User }) {
 			</div>
 
 			<div className="erp-card overflow-hidden">
-				<ListToolbar
+				<ListToolbar month={month} onMonthChange={value => { setMonth(value); setFilters(current => { const next = { ...current }; delete next.dateFrom; delete next.dateTo; return next; }); }}
 					fields={ASSEMBLY_FILTER_FIELDS}
 					values={filters}
 					onChange={setFilters}

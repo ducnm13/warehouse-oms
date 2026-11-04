@@ -25,7 +25,7 @@ import { apiV1, legacyApi } from "../lib/apiV1";
 import { ProductionDocument } from "../components/ProductionDocument";
 import { buildCompanyPrintProfile } from "../lib/printTemplate";
 import { formatDate, formatNumber } from "../lib/utils";
-import { currentMonthRange } from "../lib/utils";
+import { useMonthFilter } from "../hooks/useMonthFilter";
 import type { Product, ProductionOrderV1, User, Warehouse } from "../types";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
@@ -136,9 +136,9 @@ export default function ProductionManagement({
 		(user.permissions || []).includes("production.manage");
 	const [search, setSearch] = useState("");
 	const [filters, setFilters] = useState<FilterValues>({});
-	const monthRange = currentMonthRange();
-	const fromDate = filters.dateFrom || monthRange.dateFrom;
-	const toDate = filters.dateTo || monthRange.dateTo;
+	const { month, setMonth, range } = useMonthFilter();
+	const fromDate = filters.dateFrom || range.dateFrom;
+	const toDate = filters.dateTo || range.dateTo;
 	const status = filters.status || "";
 	const [selected, setSelected] = useState<ProductionOrderV1 | null>(null);
 	const [reportOrder, setReportOrder] = useState<ProductionOrderV1 | null>(
@@ -759,7 +759,7 @@ export default function ProductionManagement({
 			</div>
 
 			<div className="erp-card overflow-hidden">
-				<ListToolbar
+				<ListToolbar month={month} onMonthChange={value => { setMonth(value); setFilters(current => { const next = { ...current }; delete next.dateFrom; delete next.dateTo; return next; }); }}
 					fields={PRODUCTION_MGMT_FILTER_FIELDS}
 					values={filters}
 					onChange={setFilters}

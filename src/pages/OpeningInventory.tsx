@@ -23,7 +23,7 @@ import { useLineTableTab } from "../hooks/useLineTableTab";
 import TableActions from "../components/TableActions";
 import DetailOptionsMenu from "../components/DetailOptionsMenu";
 import { formatDate, formatNumber, formatProductName } from "../lib/utils";
-import { currentMonthRange } from "../lib/utils";
+import { useMonthFilter } from "../hooks/useMonthFilter";
 import PrintDocumentPreview from "../components/PrintDocumentPreview";
 import { OpeningInventoryDocument } from "../components/OpeningInventoryDocument";
 import {
@@ -140,6 +140,7 @@ export default function OpeningInventory() {
 	const [page, setPage] = useState(1);
 	const [search, setSearch] = useState("");
 	const [filters, setFilters] = useState<FilterValues>({});
+	const { month, setMonth, range } = useMonthFilter();
 	const statusFilter = filters.status || "";
 	const [warehouseFilter, setWarehouseFilter] = useState("");
 
@@ -278,15 +279,15 @@ export default function OpeningInventory() {
 
 	const rows = (data?.data as unknown as OpeningDocument[]) ?? [];
 	const visibleRows = useMemo(() => {
-		const from = filters.dateFrom || currentMonthRange().dateFrom;
-		const to = filters.dateTo || currentMonthRange().dateTo;
+		const from = filters.dateFrom || range.dateFrom;
+		const to = filters.dateTo || range.dateTo;
 		return rows.filter(doc => {
 			const date = (doc.documentDate || "").slice(0, 10);
 			if (from && date < from) return false;
 			if (to && date > to) return false;
 			return true;
 		});
-	}, [rows, filters]);
+	}, [rows, filters, range]);
 	const exportOpeningList = () =>
 		exportExcelFile(
 			"ton-dau-ky.xlsx",
@@ -703,7 +704,7 @@ export default function OpeningInventory() {
 
 			{/* Table */}
 			<div className="erp-card overflow-hidden">
-				<ListToolbar
+				<ListToolbar month={month} onMonthChange={value => { setMonth(value); setFilters(current => { const next = { ...current }; delete next.dateFrom; delete next.dateTo; return next; }); }}
 					className="flex-wrap"
 					fields={OPENING_FILTER_FIELDS}
 					values={filters}

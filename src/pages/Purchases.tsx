@@ -30,7 +30,7 @@ import type {
 	Warehouse,
 } from "../types";
 import { formatDate, formatNumber } from "../lib/utils";
-import { currentMonthRange } from "../lib/utils";
+import { useMonthFilter } from "../hooks/useMonthFilter";
 import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
 import { useDocumentShortcuts } from "../hooks/useDocumentShortcuts";
@@ -143,6 +143,7 @@ export default function Purchases() {
 	const queryClient = useQueryClient();
 	const [search, setSearch] = useState("");
 	const [filters, setFilters] = useState<FilterValues>({});
+	const { month, setMonth, range } = useMonthFilter();
 	const status = (filters.status || "") as "" | keyof typeof statusMeta;
 	const [page, setPage] = useState(1);
 	const [open, setOpen] = useState(false);
@@ -570,8 +571,8 @@ export default function Purchases() {
 	const rows = documents.data?.data || [];
 	const meta = documents.data?.meta as any;
 	const visibleRows = useMemo(() => {
-		const from = filters.dateFrom || currentMonthRange().dateFrom;
-		const to = filters.dateTo || currentMonthRange().dateTo;
+		const from = filters.dateFrom || range.dateFrom;
+		const to = filters.dateTo || range.dateTo;
 		return rows.filter(document => {
 			if (filters.paymentStatus) {
 				if (filters.paymentStatus === "UNPAID") {
@@ -589,7 +590,7 @@ export default function Purchases() {
 			if (to && date > to) return false;
 			return true;
 		});
-	}, [rows, filters]);
+	}, [rows, filters, range]);
 
 	const exportPurchaseList = () =>
 		exportExcelFile(
@@ -689,7 +690,7 @@ export default function Purchases() {
 				</div>
 			</div>
 			<div className="erp-card overflow-hidden">
-				<ListToolbar
+				<ListToolbar month={month} onMonthChange={value => { setMonth(value); setFilters(current => { const next = { ...current }; delete next.dateFrom; delete next.dateTo; return next; }); }}
 					fields={PURCHASE_FILTER_FIELDS}
 					values={filters}
 					onChange={next => {

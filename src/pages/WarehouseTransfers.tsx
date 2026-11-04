@@ -25,7 +25,7 @@ import { useLineTableTab } from "../hooks/useLineTableTab";
 import PrintDocumentPreview from "../components/PrintDocumentPreview";
 import { WarehouseTransferDocument } from "../components/WarehouseTransferDocument";
 import { formatDate, formatNumber, formatProductName } from "../lib/utils";
-import { currentMonthRange } from "../lib/utils";
+import { useMonthFilter } from "../hooks/useMonthFilter";
 import {
 	buildCompanyPrintProfile,
 	type CompanyPrintProfile,
@@ -104,6 +104,7 @@ export default function WarehouseTransfers() {
 	const [page, setPage] = useState(1),
 		[search, setSearch] = useState("");
 	const [filters, setFilters] = useState<FilterValues>({});
+	const { month, setMonth, range } = useMonthFilter();
 	const status = filters.status || "";
 	const [fromFilter, setFromFilter] = useState(0),
 		[toFilter, setToFilter] = useState(0);
@@ -424,15 +425,15 @@ export default function WarehouseTransfers() {
 		meta = documents.data?.meta;
 	const inTransit = rows.filter(row => row.status === "IN_TRANSIT").length;
 	const visibleRows = useMemo(() => {
-		const from = filters.dateFrom || currentMonthRange().dateFrom;
-		const to = filters.dateTo || currentMonthRange().dateTo;
+		const from = filters.dateFrom || range.dateFrom;
+		const to = filters.dateTo || range.dateTo;
 		return rows.filter(document => {
 			const date = (document.transferDate || "").slice(0, 10);
 			if (from && date < from) return false;
 			if (to && date > to) return false;
 			return true;
 		});
-	}, [rows, filters]);
+	}, [rows, filters, range]);
 
 	const exportTransferList = () =>
 		exportExcelFile(
@@ -525,7 +526,7 @@ export default function WarehouseTransfers() {
 				</div>
 			)}
 			<div className="erp-card overflow-hidden">
-				<ListToolbar
+				<ListToolbar month={month} onMonthChange={value => { setMonth(value); setFilters(current => { const next = { ...current }; delete next.dateFrom; delete next.dateTo; return next; }); }}
 					className="flex-wrap"
 					fields={TRANSFER_FILTER_FIELDS}
 					values={filters}

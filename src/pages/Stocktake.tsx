@@ -19,7 +19,7 @@ import toast from "../components/ui/toast";
 import { confirm, prompt } from "../components/ui/confirm";
 import { apiV1, legacyApi } from "../lib/apiV1";
 import { formatDate, formatNumber, formatProductName } from "../lib/utils";
-import { currentMonthRange } from "../lib/utils";
+import { useMonthFilter } from "../hooks/useMonthFilter";
 import {
 	buildCompanyPrintProfile,
 	type CompanyPrintProfile,
@@ -76,6 +76,7 @@ export default function Stocktake() {
 	const [page, setPage] = useState(1),
 		[warehouseFilter, setWarehouseFilter] = useState(0);
 	const [filters, setFilters] = useState<FilterValues>({});
+	const { month, setMonth, range } = useMonthFilter();
 	const status = filters.status || "";
 	const [open, setOpen] = useState(false),
 		[editing, setEditing] = useState<StocktakeV1 | null>(null),
@@ -420,15 +421,15 @@ export default function Stocktake() {
 	const rows = documents.data?.data || [],
 		meta = documents.data?.meta || {};
 	const visibleRows = useMemo(() => {
-		const from = filters.dateFrom || currentMonthRange().dateFrom;
-		const to = filters.dateTo || currentMonthRange().dateTo;
+		const from = filters.dateFrom || range.dateFrom;
+		const to = filters.dateTo || range.dateTo;
 		return rows.filter(document => {
 			const date = (document.date || "").slice(0, 10);
 			if (from && date < from) return false;
 			if (to && date > to) return false;
 			return true;
 		});
-	}, [rows, filters]);
+	}, [rows, filters, range]);
 	const exportStocktakeList = () =>
 		exportExcelFile(
 			"phieu-kiem-ke.xlsx",
@@ -501,7 +502,7 @@ export default function Stocktake() {
 				</div>
 			</div>
 			<div className="erp-card">
-				<ListToolbar
+				<ListToolbar month={month} onMonthChange={value => { setMonth(value); setFilters(current => { const next = { ...current }; delete next.dateFrom; delete next.dateTo; return next; }); }}
 					className="flex-wrap"
 					fields={STOCKTAKE_FILTER_FIELDS}
 					values={filters}

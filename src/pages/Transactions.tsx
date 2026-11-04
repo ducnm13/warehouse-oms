@@ -33,7 +33,7 @@ import {
 	formatProductName,
 	quantityAllowsDecimal,
 } from "../lib/utils";
-import { currentMonthRange } from "../lib/utils";
+import { useMonthFilter } from "../hooks/useMonthFilter";
 import type {
 	InventoryBalanceV1,
 	InventoryDocumentV1,
@@ -112,6 +112,7 @@ export default function Transactions({
 	const [view, setView] = useState<View>("documents");
 	const [search, setSearch] = useState("");
 	const [filters, setFilters] = useState<FilterValues>({});
+	const { month, setMonth, range } = useMonthFilter();
 	const status = filters.status || "";
 	const [type, setType] = useState<string>(initialType || ""),
 		[warehouseId, setWarehouseId] = useState(0),
@@ -729,15 +730,15 @@ export default function Transactions({
 		reconciliations = reconciliationQuery.data?.data || [],
 		meta = documents.data?.meta || {};
 	const visibleRows = useMemo(() => {
-		const from = filters.dateFrom || currentMonthRange().dateFrom;
-		const to = filters.dateTo || currentMonthRange().dateTo;
+		const from = filters.dateFrom || range.dateFrom;
+		const to = filters.dateTo || range.dateTo;
 		return rows.filter(document => {
 			const date = (document.transactionDate || "").slice(0, 10);
 			if (from && date < from) return false;
 			if (to && date > to) return false;
 			return true;
 		});
-	}, [rows, filters]);
+	}, [rows, filters, range]);
 
 	const exportInventoryList = () => {
 		if (view === "balances") {
@@ -942,7 +943,7 @@ export default function Transactions({
 				</button>
 			</div>
 			<div className="erp-card">
-				<ListToolbar
+				<ListToolbar month={month} onMonthChange={value => { setMonth(value); setFilters(current => { const next = { ...current }; delete next.dateFrom; delete next.dateTo; return next; }); }}
 					className="flex-wrap"
 					fields={view === "documents" ? INVENTORY_FILTER_FIELDS : []}
 					values={filters}

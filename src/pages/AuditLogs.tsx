@@ -16,7 +16,7 @@ import { apiV1, legacyApi } from "../lib/apiV1";
 import ListToolbar from "../components/ListToolbar";
 import type { FilterField, FilterValues } from "../components/FilterDrawer";
 import { exportExcelFile } from "../lib/excelExport";
-import { currentMonthRange } from "../lib/utils";
+import { useMonthFilter } from "../hooks/useMonthFilter";
 
 interface AuditLog {
 	id: number;
@@ -97,10 +97,11 @@ const AuditLogs = () => {
 	const [search, setSearch] = useState("");
 	const [debouncedSearch, setDebouncedSearch] = useState("");
 	const [filters, setFilters] = useState<FilterValues>({});
+	const { month, setMonth, range } = useMonthFilter();
 	const actionFilter = filters.action || "";
 	const userFilter = filters.userId || "";
-	const fromDate = filters.dateFrom || currentMonthRange().dateFrom;
-	const toDate = filters.dateTo || currentMonthRange().dateTo;
+	const fromDate = filters.dateFrom || range.dateFrom;
+	const toDate = filters.dateTo || range.dateTo;
 	const [page, setPage] = useState(1);
 	const [limit, setLimit] = useState(50);
 	const [detail, setDetail] = useState<AuditLog | null>(null);
@@ -225,7 +226,7 @@ const AuditLogs = () => {
 			</div>
 
 			<div className="erp-card">
-				<ListToolbar
+				<ListToolbar month={month} onMonthChange={value => { setMonth(value); setFilters(current => { const next = { ...current }; delete next.dateFrom; delete next.dateTo; return next; }); }}
 					className="flex-wrap"
 					fields={filterFields}
 					values={filters}

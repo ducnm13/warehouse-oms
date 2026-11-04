@@ -19,7 +19,7 @@ import toast from "../components/ui/toast";
 import { confirm } from "../components/ui/confirm";
 import { apiV1 } from "../lib/apiV1";
 import { formatDate, formatNumber, formatProductName } from "../lib/utils";
-import { currentMonthRange } from "../lib/utils";
+import { useMonthFilter } from "../hooks/useMonthFilter";
 import { hasPermission } from "../lib/permissions";
 import PrintPreview from "../components/PrintPreview";
 import TableActions from "../components/TableActions";
@@ -118,6 +118,7 @@ export default function Debt() {
 	const [view, setView] = useState<View>("receivables"),
 		[search, setSearch] = useState("");
 	const [filters, setFilters] = useState<FilterValues>({});
+	const { month, setMonth, range } = useMonthFilter();
 	const status = filters.status || "";
 	const [open, setOpen] = useState(false),
 		[editing, setEditing] = useState<DebtPaymentV1 | null>(null),
@@ -370,7 +371,6 @@ export default function Debt() {
 		view === "receivables" ? receivables.data?.data : payables.data?.data;
 	const inDateRange = (date: string) => {
 		const day = (date || "").slice(0, 10);
-		const range = currentMonthRange();
 		const from = filters.dateFrom || range.dateFrom;
 		const to = filters.dateTo || range.dateTo;
 		if (!day || day < from || day > to) return false;
@@ -533,7 +533,7 @@ export default function Debt() {
 						</div>
 					</div>
 					<div className="erp-card overflow-hidden">
-						<ListToolbar
+						<ListToolbar month={month} onMonthChange={value => { setMonth(value); setFilters(current => { const next = { ...current }; delete next.dateFrom; delete next.dateTo; return next; }); }}
 							fields={AGING_FILTER_FIELDS}
 							values={filters}
 							onChange={setFilters}
@@ -607,7 +607,7 @@ export default function Debt() {
 			)}
 			{(view === "receipts" || view === "vouchers") && (
 				<div className="erp-card overflow-hidden">
-					<ListToolbar
+					<ListToolbar month={month} onMonthChange={value => { setMonth(value); setFilters(current => { const next = { ...current }; delete next.dateFrom; delete next.dateTo; return next; }); }}
 						className="flex-wrap"
 						fields={PAYMENT_FILTER_FIELDS}
 						values={filters}

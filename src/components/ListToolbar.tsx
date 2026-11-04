@@ -18,6 +18,8 @@ interface ListToolbarProps {
 	exportTitle?: string;
 	filterTitle?: string;
 	className?: string;
+	month?: string;
+	onMonthChange?: (month: string) => void;
 }
 
 export default function ListToolbar({
@@ -31,6 +33,8 @@ export default function ListToolbar({
 	exportTitle = "Xuất danh sách ra Excel",
 	filterTitle = "Bộ lọc",
 	className = "",
+	month,
+	onMonthChange,
 }: ListToolbarProps) {
 	const [open, setOpen] = useState(false);
 	const activeCount = useMemo(
@@ -61,6 +65,16 @@ export default function ListToolbar({
 							<X size={14} />
 						</button>
 					</div>
+				)}
+				{onMonthChange && (
+					<input
+						type="month"
+						className="erp-month-input"
+						value={month || ""}
+						onChange={event => onMonthChange(event.target.value)}
+						aria-label="Chọn tháng"
+						title="Chọn tháng"
+					/>
 				)}
 				{search}
 				{extra}

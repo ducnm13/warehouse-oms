@@ -17,7 +17,7 @@ import toast from "../components/ui/toast";
 import { confirm, prompt } from "../components/ui/confirm";
 import { apiV1, legacyApi } from "../lib/apiV1";
 import { formatDate, formatNumber, formatProductName } from "../lib/utils";
-import { currentMonthRange } from "../lib/utils";
+import { useMonthFilter } from "../hooks/useMonthFilter";
 import { finishedGoodsWarehouseId } from "../lib/warehouse-defaults";
 import SearchableSelect from "../components/SearchableSelect";
 import { useDocumentShortcuts } from "../hooks/useDocumentShortcuts";
@@ -75,6 +75,7 @@ export default function SalesReturns() {
 	const [page, setPage] = useState(1),
 		[search, setSearch] = useState("");
 	const [filters, setFilters] = useState<FilterValues>({});
+	const { month, setMonth, range } = useMonthFilter();
 	const status = filters.status || "";
 	const [open, setOpen] = useState(false),
 		[editing, setEditing] = useState<SalesReturnV1 | null>(null),
@@ -353,15 +354,15 @@ export default function SalesReturns() {
 	const rows = documents.data?.data || [],
 		meta = documents.data?.meta as any;
 	const visibleRows = useMemo(() => {
-		const from = filters.dateFrom || currentMonthRange().dateFrom;
-		const to = filters.dateTo || currentMonthRange().dateTo;
+		const from = filters.dateFrom || range.dateFrom;
+		const to = filters.dateTo || range.dateTo;
 		return rows.filter(document => {
 			const date = (document.returnDate || "").slice(0, 10);
 			if (from && date < from) return false;
 			if (to && date > to) return false;
 			return true;
 		});
-	}, [rows, filters]);
+	}, [rows, filters, range]);
 
 	const exportSalesReturnList = () =>
 		exportExcelFile(
@@ -419,7 +420,7 @@ export default function SalesReturns() {
 				</button>
 			</div>
 			<div className="erp-card overflow-hidden">
-				<ListToolbar
+				<ListToolbar month={month} onMonthChange={value => { setMonth(value); setFilters(current => { const next = { ...current }; delete next.dateFrom; delete next.dateTo; return next; }); }}
 					fields={SALES_RETURN_FILTER_FIELDS}
 					values={filters}
 					onChange={next => {

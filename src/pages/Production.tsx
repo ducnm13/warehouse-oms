@@ -25,7 +25,7 @@ import { useLineTableTab } from "../hooks/useLineTableTab";
 import NumberInput from "../components/NumberInput";
 import { ProductionOrderDocument } from "../components/ProductionOrderDocument";
 import { formatDate, formatInteger, formatNumber } from "../lib/utils";
-import { currentMonthRange } from "../lib/utils";
+import { useMonthFilter } from "../hooks/useMonthFilter";
 import { buildCompanyPrintProfile } from "../lib/printTemplate";
 import {
 	finishedGoodsWarehouseId,
@@ -136,9 +136,9 @@ export default function Production({
 		(user.permissions || []).includes("production.manage");
 	const [search, setSearch] = useState("");
 	const [filters, setFilters] = useState<FilterValues>({});
-	const monthRange = currentMonthRange();
-	const fromDate = filters.dateFrom || monthRange.dateFrom;
-	const toDate = filters.dateTo || monthRange.dateTo;
+	const { month, setMonth, range } = useMonthFilter();
+	const fromDate = filters.dateFrom || range.dateFrom;
+	const toDate = filters.dateTo || range.dateTo;
 	const status = filters.status || "";
 	const [open, setOpen] = useState(false);
 	const [editing, setEditing] = useState<ProductionOrderV1 | null>(null);
@@ -810,7 +810,7 @@ export default function Production({
 				</div>
 			</div>
 			<div className="erp-card overflow-hidden">
-				<ListToolbar
+				<ListToolbar month={month} onMonthChange={value => { setMonth(value); setFilters(current => { const next = { ...current }; delete next.dateFrom; delete next.dateTo; return next; }); }}
 					fields={PRODUCTION_FILTER_FIELDS}
 					values={filters}
 					onChange={setFilters}

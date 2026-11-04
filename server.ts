@@ -3701,15 +3701,20 @@ async function startServer() {
 	app.get("/api/dashboard/financial", authenticate, async (req: any, res) => {
 		if (!userCan(req.user, "dashboard.view")) return res.status(403).json({ error: "Bạn không có quyền xem tổng quan" });
 		try {
+			const now = new Date();
+			const fallbackMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+			const requestedMonth = typeof req.query.month === "string" ? req.query.month : "";
+			const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(requestedMonth) ? requestedMonth : fallbackMonth;
+			const monthStart = `${month}-01`;
 			const sales = await db.get(`SELECT COALESCE(SUM(totalAmount),0) revenue
         FROM sales_orders WHERE status='FULFILLED'
-          AND DATE_FORMAT(orderDate,'%Y-%m') = DATE_FORMAT(CURDATE(),'%Y-%m')`);
+          AND DATE_FORMAT(orderDate,'%Y-%m') = ?`, [month]);
 			const receivables = await db.get(`SELECT COALESCE(SUM(GREATEST(totalAmount-paidAmount,0)),0) receivables
         FROM sales_orders WHERE status='FULFILLED'`);
 			const purchases =
 				await db.get(`SELECT COALESCE(SUM(totalAmount),0) expense FROM purchase_documents
         WHERE COALESCE(documentStatus, 'POSTED') = 'POSTED'
-          AND DATE_FORMAT(documentDate,'%Y-%m') = DATE_FORMAT(CURDATE(),'%Y-%m')`);
+          AND DATE_FORMAT(documentDate,'%Y-%m') = ?`, [month]);
 			const payables = await db.get(`SELECT COALESCE(SUM(GREATEST(totalAmount-paidAmount,0)),0) payables
         FROM purchase_documents WHERE COALESCE(documentStatus, 'POSTED') = 'POSTED'`);
 			const inventory = await db.get(`
@@ -3722,13 +3727,15 @@ async function startServer() {
 			const monthly = await db.all(`
         SELECT monthKey, SUM(revenue) revenue, SUM(expense) expense FROM (
           SELECT DATE_FORMAT(orderDate,'%Y-%m') monthKey, SUM(totalAmount) revenue, 0 expense
-          FROM sales_orders WHERE status='FULFILLED' AND orderDate >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+          FROM sales_orders WHERE status='FULFILLED' AND orderDate >= DATE_SUB(?, INTERVAL 6 MONTH)
+            AND orderDate < DATE_ADD(?, INTERVAL 1 MONTH)
           GROUP BY DATE_FORMAT(orderDate,'%Y-%m')
           UNION ALL
           SELECT DATE_FORMAT(documentDate,'%Y-%m') monthKey, 0 revenue, SUM(totalAmount) expense
-          FROM purchase_documents WHERE COALESCE(documentStatus, 'POSTED') = 'POSTED' AND documentDate >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+          FROM purchase_documents WHERE COALESCE(documentStatus, 'POSTED') = 'POSTED' AND documentDate >= DATE_SUB(?, INTERVAL 6 MONTH)
+            AND documentDate < DATE_ADD(?, INTERVAL 1 MONTH)
           GROUP BY DATE_FORMAT(documentDate,'%Y-%m')
-        ) data GROUP BY monthKey ORDER BY monthKey`);
+        ) data GROUP BY monthKey ORDER BY monthKey`, [monthStart, monthStart, monthStart, monthStart]);
 			const customerDebts = await db.all(`
         SELECT c.id, c.code, c.name, SUM(so.totalAmount-so.paidAmount) debt
         FROM customers c JOIN sales_orders so ON so.customerId=c.id

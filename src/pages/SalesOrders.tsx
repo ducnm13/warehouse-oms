@@ -54,7 +54,7 @@ import {
 	formatProductName,
 	parseNumberWithSeparators,
 } from "../lib/utils";
-import { currentMonthRange } from "../lib/utils";
+import { useMonthFilter } from "../hooks/useMonthFilter";
 import {
 	applyCompanyHeader,
 	buildCompanyPrintProfile,
@@ -200,6 +200,7 @@ export default function SalesOrders() {
 	const queryClient = useQueryClient();
 	const [search, setSearch] = useState("");
 	const [filters, setFilters] = useState<FilterValues>({});
+	const { month, setMonth, range } = useMonthFilter();
 	const status = (filters.status || "") as "" | V1Status;
 	const [page, setPage] = useState(1);
 	const [open, setOpen] = useState(false);
@@ -420,8 +421,8 @@ export default function SalesOrders() {
 	const orders = documents.data?.data || [];
 	const meta = documents.data?.meta as any;
 	const visibleOrders = useMemo(() => {
-		const from = filters.dateFrom || currentMonthRange().dateFrom;
-		const to = filters.dateTo || currentMonthRange().dateTo;
+		const from = filters.dateFrom || range.dateFrom;
+		const to = filters.dateTo || range.dateTo;
 		return orders.filter(order => {
 			if (filters.paymentStatus) {
 				if (filters.paymentStatus === "UNPAID") {
@@ -439,7 +440,7 @@ export default function SalesOrders() {
 			if (to && date > to) return false;
 			return true;
 		});
-	}, [orders, filters]);
+	}, [orders, filters, range]);
 	const selectedWarehouseId = form.watch("warehouseId");
 	const stockQuery = useQuery({
 		queryKey: ["sales-order-stock", selectedWarehouseId],
@@ -1451,7 +1452,7 @@ export default function SalesOrders() {
 				</div>
 			</div>
 			<Card className="overflow-hidden !p-0">
-				<ListToolbar
+				<ListToolbar month={month} onMonthChange={value => { setMonth(value); setFilters(current => { const next = { ...current }; delete next.dateFrom; delete next.dateTo; return next; }); }}
 					fields={SALES_FILTER_FIELDS}
 					values={filters}
 					onChange={next => {
