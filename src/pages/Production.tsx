@@ -25,6 +25,7 @@ import { useLineTableTab } from "../hooks/useLineTableTab";
 import NumberInput from "../components/NumberInput";
 import { ProductionOrderDocument } from "../components/ProductionOrderDocument";
 import { formatDate, formatInteger, formatNumber } from "../lib/utils";
+import { currentMonthRange } from "../lib/utils";
 import { buildCompanyPrintProfile } from "../lib/printTemplate";
 import {
 	finishedGoodsWarehouseId,
@@ -135,6 +136,9 @@ export default function Production({
 		(user.permissions || []).includes("production.manage");
 	const [search, setSearch] = useState("");
 	const [filters, setFilters] = useState<FilterValues>({});
+	const monthRange = currentMonthRange();
+	const fromDate = filters.dateFrom || monthRange.dateFrom;
+	const toDate = filters.dateTo || monthRange.dateTo;
 	const status = filters.status || "";
 	const [open, setOpen] = useState(false);
 	const [editing, setEditing] = useState<ProductionOrderV1 | null>(null);
@@ -211,12 +215,12 @@ export default function Production({
 		},
 	});
 	const docs = useQuery({
-		queryKey: ["production-v1", filters.dateFrom, filters.dateTo, search],
+		queryKey: ["production-v1", fromDate, toDate, search],
 		queryFn: () => {
 			const params = new URLSearchParams({ page: "1", limit: "100" });
 			if (search) params.set("search", search);
-			if (filters.dateFrom) params.set("from", filters.dateFrom);
-			if (filters.dateTo) params.set("to", filters.dateTo);
+			params.set("from", fromDate);
+			params.set("to", toDate);
 			return apiV1<ProductionOrderV1[]>(
 				`/api/v1/production-orders?${params.toString()}`,
 			);

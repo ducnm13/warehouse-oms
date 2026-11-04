@@ -25,6 +25,7 @@ import { useLineTableTab } from "../hooks/useLineTableTab";
 import PrintDocumentPreview from "../components/PrintDocumentPreview";
 import { WarehouseTransferDocument } from "../components/WarehouseTransferDocument";
 import { formatDate, formatNumber, formatProductName } from "../lib/utils";
+import { currentMonthRange } from "../lib/utils";
 import {
 	buildCompanyPrintProfile,
 	type CompanyPrintProfile,
@@ -423,8 +424,8 @@ export default function WarehouseTransfers() {
 		meta = documents.data?.meta;
 	const inTransit = rows.filter(row => row.status === "IN_TRANSIT").length;
 	const visibleRows = useMemo(() => {
-		const from = filters.dateFrom || "";
-		const to = filters.dateTo || "";
+		const from = filters.dateFrom || currentMonthRange().dateFrom;
+		const to = filters.dateTo || currentMonthRange().dateTo;
 		return rows.filter(document => {
 			const date = (document.transferDate || "").slice(0, 10);
 			if (from && date < from) return false;

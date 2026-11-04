@@ -17,6 +17,7 @@ import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
 import { useDocumentShortcuts } from "../hooks/useDocumentShortcuts";
 import { formatDate, formatNumber } from "../lib/utils";
+import { currentMonthRange } from "../lib/utils";
 import type { Product, PromotionProgramV1, Warehouse } from "../types";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
@@ -271,8 +272,10 @@ export default function Promotions() {
 		() =>
 			rows.filter(row => {
 				const date = (row.startDate || "").slice(0, 10);
-				if (filters.dateFrom && date < filters.dateFrom) return false;
-				if (filters.dateTo && date > filters.dateTo) return false;
+				const range = currentMonthRange();
+				const from = filters.dateFrom || range.dateFrom;
+				const to = filters.dateTo || range.dateTo;
+				if (!date || date < from || date > to) return false;
 				if (filters.scope && row.customerScope !== filters.scope) return false;
 				return true;
 			}),

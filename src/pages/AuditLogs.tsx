@@ -16,6 +16,7 @@ import { apiV1, legacyApi } from "../lib/apiV1";
 import ListToolbar from "../components/ListToolbar";
 import type { FilterField, FilterValues } from "../components/FilterDrawer";
 import { exportExcelFile } from "../lib/excelExport";
+import { currentMonthRange } from "../lib/utils";
 
 interface AuditLog {
 	id: number;
@@ -98,8 +99,8 @@ const AuditLogs = () => {
 	const [filters, setFilters] = useState<FilterValues>({});
 	const actionFilter = filters.action || "";
 	const userFilter = filters.userId || "";
-	const fromDate = filters.dateFrom || "";
-	const toDate = filters.dateTo || "";
+	const fromDate = filters.dateFrom || currentMonthRange().dateFrom;
+	const toDate = filters.dateTo || currentMonthRange().dateTo;
 	const [page, setPage] = useState(1);
 	const [limit, setLimit] = useState(50);
 	const [detail, setDetail] = useState<AuditLog | null>(null);

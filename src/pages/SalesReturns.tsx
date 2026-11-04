@@ -17,6 +17,7 @@ import toast from "../components/ui/toast";
 import { confirm, prompt } from "../components/ui/confirm";
 import { apiV1, legacyApi } from "../lib/apiV1";
 import { formatDate, formatNumber, formatProductName } from "../lib/utils";
+import { currentMonthRange } from "../lib/utils";
 import { finishedGoodsWarehouseId } from "../lib/warehouse-defaults";
 import SearchableSelect from "../components/SearchableSelect";
 import { useDocumentShortcuts } from "../hooks/useDocumentShortcuts";
@@ -352,8 +353,8 @@ export default function SalesReturns() {
 	const rows = documents.data?.data || [],
 		meta = documents.data?.meta as any;
 	const visibleRows = useMemo(() => {
-		const from = filters.dateFrom || "";
-		const to = filters.dateTo || "";
+		const from = filters.dateFrom || currentMonthRange().dateFrom;
+		const to = filters.dateTo || currentMonthRange().dateTo;
 		return rows.filter(document => {
 			const date = (document.returnDate || "").slice(0, 10);
 			if (from && date < from) return false;

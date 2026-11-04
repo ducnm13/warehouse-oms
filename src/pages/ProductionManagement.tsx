@@ -25,6 +25,7 @@ import { apiV1, legacyApi } from "../lib/apiV1";
 import { ProductionDocument } from "../components/ProductionDocument";
 import { buildCompanyPrintProfile } from "../lib/printTemplate";
 import { formatDate, formatNumber } from "../lib/utils";
+import { currentMonthRange } from "../lib/utils";
 import type { Product, ProductionOrderV1, User, Warehouse } from "../types";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
@@ -135,6 +136,9 @@ export default function ProductionManagement({
 		(user.permissions || []).includes("production.manage");
 	const [search, setSearch] = useState("");
 	const [filters, setFilters] = useState<FilterValues>({});
+	const monthRange = currentMonthRange();
+	const fromDate = filters.dateFrom || monthRange.dateFrom;
+	const toDate = filters.dateTo || monthRange.dateTo;
 	const status = filters.status || "";
 	const [selected, setSelected] = useState<ProductionOrderV1 | null>(null);
 	const [reportOrder, setReportOrder] = useState<ProductionOrderV1 | null>(
@@ -207,8 +211,8 @@ export default function ProductionManagement({
 	const docs = useQuery({
 		queryKey: [
 			"production-v1-mgmt",
-			filters.dateFrom,
-			filters.dateTo,
+			fromDate,
+			toDate,
 			status,
 			search,
 		],
@@ -216,8 +220,8 @@ export default function ProductionManagement({
 			const params = new URLSearchParams({ page: "1", limit: "100" });
 			if (search) params.set("search", search);
 			if (status) params.set("status", status);
-			if (filters.dateFrom) params.set("from", filters.dateFrom);
-			if (filters.dateTo) params.set("to", filters.dateTo);
+			params.set("from", fromDate);
+			params.set("to", toDate);
 			return apiV1<ProductionOrderV1[]>(
 				`/api/v1/production-orders?${params.toString()}`,
 			);

@@ -33,6 +33,7 @@ import {
 	formatProductName,
 	quantityAllowsDecimal,
 } from "../lib/utils";
+import { currentMonthRange } from "../lib/utils";
 import type {
 	InventoryBalanceV1,
 	InventoryDocumentV1,
@@ -728,8 +729,8 @@ export default function Transactions({
 		reconciliations = reconciliationQuery.data?.data || [],
 		meta = documents.data?.meta || {};
 	const visibleRows = useMemo(() => {
-		const from = filters.dateFrom || "";
-		const to = filters.dateTo || "";
+		const from = filters.dateFrom || currentMonthRange().dateFrom;
+		const to = filters.dateTo || currentMonthRange().dateTo;
 		return rows.filter(document => {
 			const date = (document.transactionDate || "").slice(0, 10);
 			if (from && date < from) return false;

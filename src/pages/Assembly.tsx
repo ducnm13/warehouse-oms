@@ -17,6 +17,7 @@ import PrintDocumentPreview from "../components/PrintDocumentPreview";
 import { AssemblyDocument } from "../components/AssemblyDocument";
 import NumberInput from "../components/NumberInput";
 import { formatDate, formatNumber, formatProductName } from "../lib/utils";
+import { currentMonthRange } from "../lib/utils";
 import { hasPermission } from "../lib/permissions";
 import {
 	buildCompanyPrintProfile,
@@ -717,8 +718,10 @@ export default function Assembly({ user }: { user: User }) {
 				return false;
 		}
 		const date = String(row.orderDate || "").slice(0, 10);
-		if (filters.dateFrom && date < filters.dateFrom) return false;
-		if (filters.dateTo && date > filters.dateTo) return false;
+		const range = currentMonthRange();
+		const from = filters.dateFrom || range.dateFrom;
+		const to = filters.dateTo || range.dateTo;
+		if (!date || date < from || date > to) return false;
 		if (!keyword) return true;
 		const haystack = [
 			row.code,

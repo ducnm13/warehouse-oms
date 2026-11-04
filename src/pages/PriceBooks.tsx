@@ -19,6 +19,7 @@ import Button from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { apiV1 } from "../lib/apiV1";
 import { formatNumber, formatNumberInput, parseNumberWithSeparators } from "../lib/utils";
+import { currentMonthRange } from "../lib/utils";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import ListToolbar from "../components/ListToolbar";
@@ -276,8 +277,10 @@ const isExpanded = (bookId: number) => !!expandedBooks[bookId];
 					return false;
 				}
 				const date = (book.validFrom || "").slice(0, 10);
-				if (filters.dateFrom && (!date || date < filters.dateFrom)) return false;
-				if (filters.dateTo && (!date || date > filters.dateTo)) return false;
+				const range = currentMonthRange();
+				const from = filters.dateFrom || range.dateFrom;
+				const to = filters.dateTo || range.dateTo;
+				if (!date || date < from || date > to) return false;
 				return true;
 			}),
 		[rows, filters],

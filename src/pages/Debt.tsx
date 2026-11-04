@@ -19,6 +19,7 @@ import toast from "../components/ui/toast";
 import { confirm } from "../components/ui/confirm";
 import { apiV1 } from "../lib/apiV1";
 import { formatDate, formatNumber, formatProductName } from "../lib/utils";
+import { currentMonthRange } from "../lib/utils";
 import { hasPermission } from "../lib/permissions";
 import PrintPreview from "../components/PrintPreview";
 import TableActions from "../components/TableActions";
@@ -369,8 +370,10 @@ export default function Debt() {
 		view === "receivables" ? receivables.data?.data : payables.data?.data;
 	const inDateRange = (date: string) => {
 		const day = (date || "").slice(0, 10);
-		if (filters.dateFrom && day < filters.dateFrom) return false;
-		if (filters.dateTo && day > filters.dateTo) return false;
+		const range = currentMonthRange();
+		const from = filters.dateFrom || range.dateFrom;
+		const to = filters.dateTo || range.dateTo;
+		if (!day || day < from || day > to) return false;
 		return true;
 	};
 	const visibleAgingRows = (agingView?.rows || []).filter(row =>

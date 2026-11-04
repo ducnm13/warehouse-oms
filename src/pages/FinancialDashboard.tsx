@@ -124,7 +124,10 @@ export default function FinancialDashboard() {
 			<div className="erp-page-header">
 				<div>
 					<h1>Tổng quan tài chính</h1>
-					<p>Doanh thu, chi phí, công nợ và tồn kho theo dữ liệu vận hành</p>
+					<p>
+						Doanh thu, chi phí tháng {new Date().getMonth() + 1}/
+						{new Date().getFullYear()}; công nợ và tồn kho hiện tại
+					</p>
 				</div>
 			</div>
 			{loading ? (

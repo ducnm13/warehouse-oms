@@ -19,11 +19,6 @@ import {
 } from "../../components/reports/ReportKit";
 
 const today = () => new Date().toISOString().slice(0, 10);
-const daysAgo = (days: number) => {
-	const date = new Date();
-	date.setDate(date.getDate() - days);
-	return date.toISOString().slice(0, 10);
-};
 
 interface Row {
 	customerId: number;
@@ -45,7 +40,7 @@ interface Result {
 }
 
 export default function SalesByCustomerReport() {
-	const [from, setFrom] = useState(daysAgo(29));
+	const [from, setFrom] = useState(`${today().slice(0, 7)}-01`);
 	const [to, setTo] = useState(today());
 	const [warehouseId, setWarehouseId] = useState(0);
 	const [customerId, setCustomerId] = useState(0);

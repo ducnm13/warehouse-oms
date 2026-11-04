@@ -23,6 +23,7 @@ import { useLineTableTab } from "../hooks/useLineTableTab";
 import TableActions from "../components/TableActions";
 import DetailOptionsMenu from "../components/DetailOptionsMenu";
 import { formatDate, formatNumber, formatProductName } from "../lib/utils";
+import { currentMonthRange } from "../lib/utils";
 import PrintDocumentPreview from "../components/PrintDocumentPreview";
 import { OpeningInventoryDocument } from "../components/OpeningInventoryDocument";
 import {
@@ -277,8 +278,8 @@ export default function OpeningInventory() {
 
 	const rows = (data?.data as unknown as OpeningDocument[]) ?? [];
 	const visibleRows = useMemo(() => {
-		const from = filters.dateFrom || "";
-		const to = filters.dateTo || "";
+		const from = filters.dateFrom || currentMonthRange().dateFrom;
+		const to = filters.dateTo || currentMonthRange().dateTo;
 		return rows.filter(doc => {
 			const date = (doc.documentDate || "").slice(0, 10);
 			if (from && date < from) return false;

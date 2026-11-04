@@ -26,6 +26,7 @@ import SearchableSelect from "../components/SearchableSelect";
 import TableActions from "../components/TableActions";
 import DetailOptionsMenu from "../components/DetailOptionsMenu";
 import { formatNumber, formatDate, formatProductName } from "../lib/utils";
+import { currentMonthRange } from "../lib/utils";
 import type { Product } from "../types";
 import ListToolbar from "../components/ListToolbar";
 import type { FilterField, FilterValues } from "../components/FilterDrawer";
@@ -706,8 +707,8 @@ const OnlineOrders = () => {
 		? Math.max(...revenueSeries.map(d => d.revenue), 1)
 		: 1;
 	const visibleOrders = useMemo(() => {
-		const from = filters.dateFrom || "";
-		const to = filters.dateTo || "";
+		const from = filters.dateFrom || currentMonthRange().dateFrom;
+		const to = filters.dateTo || currentMonthRange().dateTo;
 		return orders.filter(order => {
 			const date = (order.orderDate || "").slice(0, 10);
 			if (from && date < from) return false;

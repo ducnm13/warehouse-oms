@@ -33,6 +33,17 @@ export function formatDate(dateString: string) {
   return new Date(dateString).toLocaleDateString('vi-VN');
 }
 
+export function currentMonthRange() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return {
+    dateFrom: `${year}-${month}-01`,
+    dateTo: `${year}-${month}-${day}`,
+  };
+}
+
 function normalizeProductPart(value?: string | null) {
   return (value || '').replace(/\s+/g, ' ').trim();
 }

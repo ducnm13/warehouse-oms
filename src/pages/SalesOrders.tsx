@@ -54,6 +54,7 @@ import {
 	formatProductName,
 	parseNumberWithSeparators,
 } from "../lib/utils";
+import { currentMonthRange } from "../lib/utils";
 import {
 	applyCompanyHeader,
 	buildCompanyPrintProfile,
@@ -419,8 +420,8 @@ export default function SalesOrders() {
 	const orders = documents.data?.data || [];
 	const meta = documents.data?.meta as any;
 	const visibleOrders = useMemo(() => {
-		const from = filters.dateFrom || "";
-		const to = filters.dateTo || "";
+		const from = filters.dateFrom || currentMonthRange().dateFrom;
+		const to = filters.dateTo || currentMonthRange().dateTo;
 		return orders.filter(order => {
 			if (filters.paymentStatus) {
 				if (filters.paymentStatus === "UNPAID") {

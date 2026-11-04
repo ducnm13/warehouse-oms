@@ -3701,12 +3701,17 @@ async function startServer() {
 	app.get("/api/dashboard/financial", authenticate, async (req: any, res) => {
 		if (!userCan(req.user, "dashboard.view")) return res.status(403).json({ error: "Bạn không có quyền xem tổng quan" });
 		try {
-			const sales = await db.get(`SELECT COALESCE(SUM(totalAmount),0) revenue,
-        COALESCE(SUM(GREATEST(totalAmount-paidAmount,0)),0) receivables
+			const sales = await db.get(`SELECT COALESCE(SUM(totalAmount),0) revenue
+        FROM sales_orders WHERE status='FULFILLED'
+          AND DATE_FORMAT(orderDate,'%Y-%m') = DATE_FORMAT(CURDATE(),'%Y-%m')`);
+			const receivables = await db.get(`SELECT COALESCE(SUM(GREATEST(totalAmount-paidAmount,0)),0) receivables
         FROM sales_orders WHERE status='FULFILLED'`);
 			const purchases =
-				await db.get(`SELECT COALESCE(SUM(totalAmount),0) expense,
-        COALESCE(SUM(GREATEST(totalAmount-paidAmount,0)),0) payables FROM purchase_documents WHERE COALESCE(documentStatus, 'POSTED') = 'POSTED'`);
+				await db.get(`SELECT COALESCE(SUM(totalAmount),0) expense FROM purchase_documents
+        WHERE COALESCE(documentStatus, 'POSTED') = 'POSTED'
+          AND DATE_FORMAT(documentDate,'%Y-%m') = DATE_FORMAT(CURDATE(),'%Y-%m')`);
+			const payables = await db.get(`SELECT COALESCE(SUM(GREATEST(totalAmount-paidAmount,0)),0) payables
+        FROM purchase_documents WHERE COALESCE(documentStatus, 'POSTED') = 'POSTED'`);
 			const inventory = await db.get(`
         SELECT COALESCE(SUM(pw.stock_quantity * COALESCE(price.lastPrice,0)),0) inventoryValue
         FROM productwarehouses pw LEFT JOIN (
@@ -3716,9 +3721,9 @@ async function startServer() {
         ) price ON price.packagingId=pw.packagingId`);
 			const monthly = await db.all(`
         SELECT monthKey, SUM(revenue) revenue, SUM(expense) expense FROM (
-          SELECT DATE_FORMAT(fulfilledAt,'%Y-%m') monthKey, SUM(totalAmount) revenue, 0 expense
-          FROM sales_orders WHERE status='FULFILLED' AND fulfilledAt >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
-          GROUP BY DATE_FORMAT(fulfilledAt,'%Y-%m')
+          SELECT DATE_FORMAT(orderDate,'%Y-%m') monthKey, SUM(totalAmount) revenue, 0 expense
+          FROM sales_orders WHERE status='FULFILLED' AND orderDate >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+          GROUP BY DATE_FORMAT(orderDate,'%Y-%m')
           UNION ALL
           SELECT DATE_FORMAT(documentDate,'%Y-%m') monthKey, 0 revenue, SUM(totalAmount) expense
           FROM purchase_documents WHERE COALESCE(documentStatus, 'POSTED') = 'POSTED' AND documentDate >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
@@ -3749,8 +3754,8 @@ async function startServer() {
 				revenue,
 				expense,
 				profit: revenue - expense,
-				receivables: Number(sales?.receivables || 0),
-				payables: Number(purchases?.payables || 0),
+				receivables: Number(receivables?.receivables || 0),
+				payables: Number(payables?.payables || 0),
 				inventoryValue: Number(inventory?.inventoryValue || 0),
 				monthly,
 				customerDebts,

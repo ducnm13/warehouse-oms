@@ -30,6 +30,7 @@ import type {
 	Warehouse,
 } from "../types";
 import { formatDate, formatNumber } from "../lib/utils";
+import { currentMonthRange } from "../lib/utils";
 import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
 import { useDocumentShortcuts } from "../hooks/useDocumentShortcuts";
@@ -569,8 +570,8 @@ export default function Purchases() {
 	const rows = documents.data?.data || [];
 	const meta = documents.data?.meta as any;
 	const visibleRows = useMemo(() => {
-		const from = filters.dateFrom || "";
-		const to = filters.dateTo || "";
+		const from = filters.dateFrom || currentMonthRange().dateFrom;
+		const to = filters.dateTo || currentMonthRange().dateTo;
 		return rows.filter(document => {
 			if (filters.paymentStatus) {
 				if (filters.paymentStatus === "UNPAID") {
