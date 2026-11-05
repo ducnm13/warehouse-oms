@@ -197,6 +197,8 @@ const isExpanded = (bookId: number) => !!expandedBooks[bookId];
 	const [itemForm, setItemForm] = useState(emptyItemForm());
 	const [editingItem, setEditingItem] = useState<PriceBookItem | null>(null);
 	const [itemSearch, setItemSearch] = useState("");
+	const [itemOpen, setItemOpen] = useState(false);
+	const [itemBook, setItemBook] = useState<PriceBook | null>(null);
 
 	const [allPackagings, setAllPackagings] = useState<PackagingOption[]>([]);
 	const [allPriceBooks, setAllPriceBooks] = useState<PriceBook[]>([]);
@@ -209,8 +211,11 @@ const isExpanded = (bookId: number) => !!expandedBooks[bookId];
 	}, [search]);
 
 	const loadPackagings = useCallback(async () => {
-		const response = await apiV1<{ data: any }>("/api/v1/catalog/packagings?limit=500");
-		const packagings = (response.data?.data || [])
+		const response = await apiV1<any>("/api/v1/catalog/packagings?limit=500");
+		const list = Array.isArray(response.data)
+			? response.data
+			: response.data?.data || [];
+		const packagings = list
 			.map((pk: any) => {
 				const costPrice = pk.prices?.find((p: any) => p.priceType === "COST")?.price || 0;
 				return {
@@ -302,6 +307,24 @@ const isExpanded = (bookId: number) => !!expandedBooks[bookId];
 	// Mutations
 	const invalidate = () => qc.invalidateQueries({ queryKey: ["price-books"] });
 
+	const refreshExpandedBook = async (bookId: number) => {
+		if (!expandedBooks[bookId]) return;
+		try {
+			const res = await apiV1<PriceBook>(
+				`/api/v1/catalog/price-books/${bookId}?_t=${Date.now()}`,
+			);
+			if (res.data) {
+				setExpandedBooks(current =>
+					current[bookId]
+						? { ...current, [bookId]: res.data! }
+						: current,
+				);
+			}
+		} catch (error) {
+			console.error("Refresh price book error:", error);
+		}
+	};
+
 	const createPriceBook = useMutation({
 		mutationFn: async () => {
 			const response = await apiV1<PriceBook & { message?: string }>("/api/v1/catalog/price-books", {
@@ -390,48 +413,30 @@ const isExpanded = (bookId: number) => !!expandedBooks[bookId];
 			);
 			return response.data;
 		},
-		onSuccess: (r) => {
-			toast.success(r?.message || `Đã thêm ${r.added} sản phẩm vào bảng giá`);
+		onSuccess: async (r) => {
+			toast.success(
+				r?.message ||
+					(r.added > 0
+						? `Đã thêm ${r.added} sản phẩm mới vào bảng giá`
+						: "Các sản phẩm đã có trong bảng giá, không có gì thay đổi"),
+			);
+			const bookId = bulkAddBook?.id;
 			setBulkAddOpen(false);
 			setBulkAddForm(emptyBulkAddForm());
 			invalidate();
+			if (bookId) await refreshExpandedBook(bookId);
 		},
 		onError: (e: Error) => toast.error(e.message),
 	});
 
 	const savePriceBookItem = useMutation({
 		mutationFn: async () => {
-			const response = await apiV1<PriceBookItem & { message?: string }>("/api/v1/catalog/price-books/items", {
-				method: "POST",
-				body: JSON.stringify({
-					priceBookId: bulkAddBook?.id ?? 0,
-					packagingId: itemForm.packagingId,
-					costPrice: itemForm.costPrice,
-					salePrice: itemForm.salePrice,
-					currency: itemForm.currency,
-					validFrom: itemForm.validFrom || null,
-					validTo: itemForm.validTo || null,
-				}),
-			});
-			return response.data;
-		},
-		onSuccess: (r) => {
-			toast.success(r?.message || "Lưu giá thành công");
-			setEditingItem(null);
-			setItemForm(emptyItemForm());
-			invalidate();
-		},
-		onError: (e: Error) => toast.error(e.message),
-	});
-
-	const updatePriceBookItem = useMutation({
-		mutationFn: async () => {
+			if (!itemBook?.id) throw new Error("Chưa chọn bảng giá");
 			const response = await apiV1<PriceBookItem & { message?: string }>(
-				`/api/v1/catalog/price-books/items/${editingItem!.id}`,
+				`/api/v1/catalog/price-books/${itemBook.id}/items`,
 				{
-					method: "PUT",
+					method: "POST",
 					body: JSON.stringify({
-						priceBookId: bulkAddBook?.id ?? 0,
 						packagingId: itemForm.packagingId,
 						costPrice: itemForm.costPrice,
 						salePrice: itemForm.salePrice,
@@ -443,25 +448,64 @@ const isExpanded = (bookId: number) => !!expandedBooks[bookId];
 			);
 			return response.data;
 		},
-		onSuccess: (r) => {
+		onSuccess: async (r) => {
+			toast.success(r?.message || "Lưu giá thành công");
+			const bookId = itemBook?.id;
+			setItemOpen(false);
+			setItemBook(null);
+			setEditingItem(null);
+			setItemForm(emptyItemForm());
+			setItemSearch("");
+			invalidate();
+			if (bookId) await refreshExpandedBook(bookId);
+		},
+		onError: (e: Error) => toast.error(e.message),
+	});
+
+	const updatePriceBookItem = useMutation({
+		mutationFn: async () => {
+			if (!editingItem) throw new Error("Chưa chọn sản phẩm");
+			const response = await apiV1<PriceBookItem & { message?: string }>(
+				`/api/v1/catalog/price-books/${editingItem.priceBookId}/items`,
+				{
+					method: "POST",
+					body: JSON.stringify({
+						packagingId: itemForm.packagingId,
+						costPrice: itemForm.costPrice,
+						salePrice: itemForm.salePrice,
+						currency: itemForm.currency,
+						validFrom: itemForm.validFrom || null,
+						validTo: itemForm.validTo || null,
+					}),
+				},
+			);
+			return response.data;
+		},
+		onSuccess: async (r) => {
 			toast.success(r?.message || "Cập nhật giá thành công");
+			const bookId = editingItem?.priceBookId;
+			setItemOpen(false);
+			setItemBook(null);
 			setEditingItem(null);
 			setItemForm(emptyItemForm());
 			invalidate();
+			if (bookId) await refreshExpandedBook(bookId);
 		},
 		onError: (e: Error) => toast.error(e.message),
 	});
 
 	const deletePriceBookItem = useMutation({
-		mutationFn: async (id: number) => {
-			const response = await apiV1<{ message: string }>(`/api/v1/catalog/price-books/items/${id}`, {
-				method: "DELETE",
-			});
+		mutationFn: async (input: { bookId: number; packagingId: number }) => {
+			const response = await apiV1<{ message: string }>(
+				`/api/v1/catalog/price-books/${input.bookId}/items/${input.packagingId}`,
+				{ method: "DELETE" },
+			);
 			return response.data;
 		},
-		onSuccess: (r) => {
+		onSuccess: async (r, input) => {
 			toast.success(r.message || "Xóa giá thành công");
 			invalidate();
+			await refreshExpandedBook(input.bookId);
 		},
 		onError: (e: Error) => toast.error(e.message),
 	});
@@ -500,14 +544,35 @@ const isExpanded = (bookId: number) => !!expandedBooks[bookId];
 		setBulkAddOpen(true);
 	};
 
-	const openAddItem = () => {
+	const openAddItem = (book: PriceBook) => {
+		setItemBook(book);
 		setEditingItem(null);
-		setItemForm(emptyItemForm());
+		setItemSearch("");
+		setItemForm({
+			...emptyItemForm(),
+			validFrom: book.validFrom ? book.validFrom.slice(0, 10) : "",
+			validTo: book.validTo ? book.validTo.slice(0, 10) : "",
+		});
+		setItemOpen(true);
+	};
+
+	const choosePackaging = (pkg: PackagingOption) => {
+		setItemForm(current => ({
+			...current,
+			packagingId: pkg.id,
+			costPrice: pkg.costPrice ?? 0,
+			validFrom:
+				current.validFrom ||
+				(itemBook?.validFrom ? itemBook.validFrom.slice(0, 10) : ""),
+			validTo:
+				current.validTo ||
+				(itemBook?.validTo ? itemBook.validTo.slice(0, 10) : ""),
+		}));
 	};
 
 	const openEditItem = (item: PriceBookItem) => {
 		setEditingItem(item);
-		const pkg = allPackagings.find((p) => p.id === item.packagingId);
+		setItemSearch("");
 		setItemForm({
 			packagingId: item.packagingId,
 			costPrice: item.costPrice,
@@ -526,9 +591,12 @@ const isExpanded = (bookId: number) => !!expandedBooks[bookId];
 		}
 	};
 
-	const handleDeleteItem = async (id: number) => {
+	const handleDeleteItem = async (item: PriceBookItem) => {
 		if (await confirm("Bạn có chắc chắn muốn xóa sản phẩm này khỏi bảng giá?")) {
-			deletePriceBookItem.mutate(id);
+			deletePriceBookItem.mutate({
+				bookId: item.priceBookId,
+				packagingId: item.packagingId,
+			});
 		}
 	};
 
@@ -653,6 +721,16 @@ const isExpanded = (bookId: number) => !!expandedBooks[bookId];
 										</div>
 										<div className="flex items-center gap-2">
 											<button
+												title="Thêm sản phẩm"
+												className="erp-icon-btn text-emerald-600"
+												onClick={(e) => {
+													e.stopPropagation();
+													openAddItem(book);
+												}}
+											>
+												<PackagePlus size={14} />
+											</button>
+											<button
 												title="Thêm hàng loạt sản phẩm"
 												className="erp-icon-btn text-blue-600"
 												onClick={(e) => {
@@ -737,7 +815,7 @@ const isExpanded = (bookId: number) => !!expandedBooks[bookId];
 																				className="erp-icon-btn text-red-500"
 																				onClick={(e) => {
 																					e.stopPropagation();
-																					handleDeleteItem(item.id!);
+																					handleDeleteItem(item);
 																				}}
 																			>
 																				<Trash2 size={13} />
@@ -777,7 +855,7 @@ const isExpanded = (bookId: number) => !!expandedBooks[bookId];
 														+ Thêm hàng loạt sản phẩm
 													</button>
 													{" hoặc "}
-													<button className="mt-2 text-sm font-semibold text-[#422afb] hover:underline" onClick={(e) => { e.stopPropagation(); openAddItem(); }}>
+													<button className="mt-2 text-sm font-semibold text-[#422afb] hover:underline" onClick={(e) => { e.stopPropagation(); openAddItem(expandedBook || book); }}>
 														Thêm từng sản phẩm
 													</button>
 												</div>
@@ -943,6 +1021,137 @@ const isExpanded = (bookId: number) => !!expandedBooks[bookId];
 								</button>
 							</div>
 						</form>
+					</div>
+				</div>
+			)}
+
+			{/* ── Drawer: Thêm một sản phẩm ── */}
+			{itemOpen && itemBook && (
+				<div className="fixed inset-0 z-50 flex justify-end bg-slate-900/55">
+					<div className="flex h-full w-full max-w-xl flex-col bg-white shadow-2xl">
+						<div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-4">
+							<div>
+								<h2 className="text-lg font-bold text-slate-900">
+									Thêm sản phẩm vào bảng giá
+								</h2>
+								<p className="text-sm text-slate-500">
+									{itemBook.name} ({itemBook.code})
+								</p>
+							</div>
+							<button
+								type="button"
+								title="Đóng"
+								onClick={() => setItemOpen(false)}
+								className="erp-icon-btn"
+							>
+								<X size={18} />
+							</button>
+						</div>
+						<div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+							<div className="erp-search">
+								<Search size={15} />
+								<input
+									value={itemSearch}
+									onChange={event => setItemSearch(event.target.value)}
+									placeholder="Tìm sản phẩm theo tên, SKU..."
+								/>
+							</div>
+							<div className="max-h-72 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200">
+								{filteredPackagings.map(pkg => {
+									const selected = itemForm.packagingId === pkg.id;
+									return (
+										<button
+											type="button"
+											key={pkg.id}
+											onClick={() => choosePackaging(pkg)}
+											className={`flex w-full items-center gap-3 px-3 py-2 text-left transition-colors ${
+												selected
+													? "bg-emerald-50"
+													: "hover:bg-slate-50"
+											}`}
+										>
+											<div className="min-w-0 flex-1">
+												<div className="truncate text-sm font-medium text-slate-800">
+													{pkg.name}
+												</div>
+												<div className="truncate text-xs text-slate-500">
+													{pkg.productName}
+													{pkg.sku ? ` · SKU: ${pkg.sku}` : ""}
+													{pkg.unit ? ` · ${pkg.unit}` : ""}
+												</div>
+											</div>
+											{selected && (
+												<span className="text-xs font-semibold text-emerald-600">
+													Đã chọn
+												</span>
+											)}
+										</button>
+									);
+								})}
+								{!filteredPackagings.length && (
+									<div className="px-3 py-6 text-center text-sm text-slate-400">
+										Không tìm thấy sản phẩm phù hợp
+									</div>
+								)}
+							</div>
+							<div className="grid gap-3 sm:grid-cols-2">
+								<label className="block text-sm font-medium text-slate-700">
+									Giá vốn
+									<input
+										type="text"
+										value={formatNumberInput(itemForm.costPrice)}
+										onChange={event =>
+											setItemForm({
+												...itemForm,
+												costPrice: parseNumberWithSeparators(
+													event.target.value,
+												),
+											})
+										}
+										className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+									/>
+								</label>
+								<label className="block text-sm font-medium text-slate-700">
+									Giá bán
+									<input
+										type="text"
+										value={formatNumberInput(itemForm.salePrice)}
+										onChange={event =>
+											setItemForm({
+												...itemForm,
+												salePrice: parseNumberWithSeparators(
+													event.target.value,
+												),
+											})
+										}
+										className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+									/>
+								</label>
+							</div>
+						</div>
+						<div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-6 py-4">
+							<button
+								type="button"
+								onClick={() => setItemOpen(false)}
+								className="erp-btn"
+							>
+								Hủy
+							</button>
+							<button
+								type="button"
+								onClick={handleSaveItem}
+								disabled={
+									itemForm.packagingId <= 0 ||
+									savePriceBookItem.isPending
+								}
+								className="erp-btn erp-btn-primary"
+							>
+								<Save size={14} />{" "}
+								{savePriceBookItem.isPending
+									? "Đang lưu..."
+									: "Lưu sản phẩm"}
+							</button>
+						</div>
 					</div>
 				</div>
 			)}

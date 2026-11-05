@@ -534,17 +534,15 @@ export const catalogService = {
       }
     }
 
-    // Bulk upsert
-    const results = [];
-    for (const pkg of packagings) {
-      const item = await prisma.price_book_items.upsert({
-        where: { priceBookId_packagingId: { priceBookId, packagingId: pkg.packagingId } },
-        create: { priceBookId, ...pkg },
-        update: { costPrice: pkg.costPrice, salePrice: pkg.salePrice, currency: pkg.currency, validFrom: pkg.validFrom, validTo: pkg.validTo },
-      });
-      results.push(item);
-    }
+    if (!packagings.length) return { added: 0 };
 
-    return { added: results.length, items: results };
+    // Only add packagings that are not already in the book, so existing
+    // manually entered prices are never overwritten.
+    const result = await prisma.price_book_items.createMany({
+      data: packagings.map(pkg => ({ priceBookId, ...pkg })),
+      skipDuplicates: true,
+    });
+
+    return { added: result.count };
   },
 };

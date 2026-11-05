@@ -119,6 +119,7 @@ export const catalogRepository = {
       include: {
         products: { select: { id: true, name: true, category: true, sku: true } },
         warehouse: { select: { id: true, name: true } },
+        prices: true,
       },
     }),
 
