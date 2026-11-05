@@ -19,7 +19,7 @@ import Button from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { apiV1 } from "../lib/apiV1";
 import { formatNumber, formatNumberInput, parseNumberWithSeparators } from "../lib/utils";
-import { useMonthFilter } from "../hooks/useMonthFilter";
+
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import ListToolbar from "../components/ListToolbar";
@@ -123,7 +123,6 @@ function PriceBooks() {
 	const [page, setPage] = useState(1);
 	const [search, setSearch] = useState("");
 	const [filters, setFilters] = useState<FilterValues>({});
-	const { month, setMonth, range } = useMonthFilter();
 	const [expandedBooks, setExpandedBooks] = useState<Record<number, PriceBook>>({});
 	const [editedPrices, setEditedPrices] = useState<Record<number, { salePrice: number }>>({});
 
@@ -278,12 +277,11 @@ const isExpanded = (bookId: number) => !!expandedBooks[bookId];
 					return false;
 				}
 				const date = (book.validFrom || "").slice(0, 10);
-				const from = filters.dateFrom || range.dateFrom;
-				const to = filters.dateTo || range.dateTo;
-				if (!date || date < from || date > to) return false;
+				if (filters.dateFrom && date < filters.dateFrom) return false;
+				if (filters.dateTo && date > filters.dateTo) return false;
 				return true;
 			}),
-		[rows, filters, range],
+		[rows, filters],
 	);
 	const exportPriceBooks = () =>
 		exportExcelFile(
@@ -575,7 +573,7 @@ const isExpanded = (bookId: number) => !!expandedBooks[bookId];
 
 			{/* Price Books List */}
 			<Card className="overflow-hidden !p-0">
-				<ListToolbar month={month} onMonthChange={value => { setMonth(value); setFilters(current => { const next = { ...current }; delete next.dateFrom; delete next.dateTo; return next; }); }}
+				<ListToolbar
 					fields={filterFields}
 					values={filters}
 					onChange={next => {

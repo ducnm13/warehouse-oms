@@ -17,7 +17,7 @@ import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
 import { useDocumentShortcuts } from "../hooks/useDocumentShortcuts";
 import { formatDate, formatNumber } from "../lib/utils";
-import { useMonthFilter } from "../hooks/useMonthFilter";
+
 import type { Product, PromotionProgramV1, Warehouse } from "../types";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
@@ -70,7 +70,6 @@ export default function Promotions() {
 		[page, setPage] = useState(1),
 		[search, setSearch] = useState("");
 	const [filters, setFilters] = useState<FilterValues>({});
-	const { month, setMonth, range } = useMonthFilter();
 	const status = filters.status || "";
 	const [open, setOpen] = useState(false),
 		[editing, setEditing] = useState<PromotionProgramV1 | null>(null),
@@ -273,13 +272,12 @@ export default function Promotions() {
 		() =>
 			rows.filter(row => {
 				const date = (row.startDate || "").slice(0, 10);
-				const from = filters.dateFrom || range.dateFrom;
-				const to = filters.dateTo || range.dateTo;
-				if (!date || date < from || date > to) return false;
+				if (filters.dateFrom && date < filters.dateFrom) return false;
+				if (filters.dateTo && date > filters.dateTo) return false;
 				if (filters.scope && row.customerScope !== filters.scope) return false;
 				return true;
 			}),
-		[rows, filters, range],
+		[rows, filters],
 	);
 	const exportPromotions = () =>
 		exportExcelFile(
@@ -362,7 +360,7 @@ export default function Promotions() {
 				</div>
 			</div>
 			<div className="erp-card overflow-hidden">
-				<ListToolbar month={month} onMonthChange={value => { setMonth(value); setFilters(current => { const next = { ...current }; delete next.dateFrom; delete next.dateTo; return next; }); }}
+				<ListToolbar
 					fields={filterFields}
 					values={filters}
 					onChange={next => {
