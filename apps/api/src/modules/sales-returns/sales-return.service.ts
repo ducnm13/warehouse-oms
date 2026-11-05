@@ -176,9 +176,13 @@ export const salesReturnService = {
           throw new HttpError(409, "RETURN_QUANTITY_EXCEEDED", "Số lượng trả vượt số lượng đã bán");
         }
       }
-      const now = nowIso(), occurredAt = new Date();
+      const now = nowIso();
+      // occurredAt theo ngày trả hàng (returnDate), không phải ngày xử lý
+      const occurredAt = document.returnDate instanceof Date
+        ? document.returnDate
+        : new Date(`${String(document.returnDate).slice(0, 10)}T12:00:00.000Z`);
       const inventory = await tx.inventorytransactions.create({ data: {
-        code: `PN-${document.code}`, type: "IMPORT", transaction_date: now.slice(0, 10), entry_date: now.slice(0, 10),
+        code: `PN-${document.code}`, type: "IMPORT", transaction_date: String(document.returnDate instanceof Date ? document.returnDate.toISOString() : document.returnDate).slice(0, 10), entry_date: String(document.returnDate instanceof Date ? document.returnDate.toISOString() : document.returnDate).slice(0, 10),
         warehouseId: document.warehouseId, note: `Nhập trả hàng ${document.code}`, reason: document.reason,
         customerId: document.customerId, createdBy: userId, createdAt: now, updatedAt: now,
         documentStatus: "POSTED", postedAt: occurredAt, postedBy: userId, sourceModule: "SALES_RETURN_V1",

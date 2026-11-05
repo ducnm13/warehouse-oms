@@ -446,6 +446,22 @@ header.sticky {
 	font-weight: 700;
 	letter-spacing: -0.5px;
 }
+/* Badge tháng hiển thị bên trong erp-stat, dùng class erp-stat-month */
+.erp-stat-month {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	margin-top: 5px;
+	padding: 2px 8px;
+	border-radius: 20px;
+	background: #f4f7fe;
+	color: var(--color-primary);
+	font-size: 11px;
+	font-weight: 650;
+	font-variant-numeric: tabular-nums;
+	letter-spacing: 0;
+	white-space: nowrap;
+}
 
 /* ─── Buttons ────────────────────────────────────────────────────────────────── */
 .erp-btn {
@@ -808,7 +824,8 @@ input.erp-month-input,
 	color: #2b3674;
 	font-family: inherit;
 	font-size: 13.5px;
-	font-weight: 500;
+	font-weight: 600;             /* u030-trigger: 600 */
+	font-variant-numeric: tabular-nums;
 	outline: none;
 	cursor: pointer;
 	appearance: none;
@@ -823,7 +840,7 @@ input.erp-month-input,
 }
 input.erp-month-input:hover,
 .erp-toolbar input.erp-month-input:hover {
-	border-color: #a3aed0;
+	border-color: #a3aed0;        /* u030-trigger:hover */
 }
 input.erp-month-input:focus,
 .erp-toolbar input.erp-month-input:focus {
@@ -845,7 +862,7 @@ input.erp-month-input::-webkit-calendar-picker-indicator,
 input.erp-month-input::-webkit-datetime-edit,
 .erp-toolbar input.erp-month-input::-webkit-datetime-edit {
 	color: #2b3674;
-	font-weight: 500;
+	font-weight: 600;             /* đồng bộ với font-weight trên */
 }
 
 /* ─── Table ──────────────────────────────────────────────────────────────────── */

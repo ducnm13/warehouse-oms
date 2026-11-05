@@ -13,6 +13,16 @@ export const purchaseController = {
     const result = await purchaseService.list(req.query as any);
     res.json({ success: true, message: "Lấy danh sách chứng từ thành công", data: result.data, meta: result.meta });
   },
+  async suggestions(req: Request, res: Response) {
+    const supplierId = req.query.supplierId ? Number(req.query.supplierId) : undefined;
+    const search = typeof req.query.search === "string" ? req.query.search.trim() : undefined;
+    const limit = req.query.limit ? Number(req.query.limit) : undefined;
+    res.json({
+      success: true,
+      message: "OK",
+      data: await purchaseService.suggestions({ supplierId, search, limit }),
+    });
+  },
   async get(req: Request, res: Response) {
     res.json({ success: true, message: "Lấy chứng từ thành công", data: await purchaseService.get(id(req)) });
   },

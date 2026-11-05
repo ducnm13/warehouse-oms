@@ -10,6 +10,7 @@ salesRouter.use(authenticateV1);
 salesRouter.get("/", requirePermission("sales.view"), validateQuery(salesListQuerySchema), asyncHandler(salesController.list));
 // Lưu ý: route cụ thể phải đứng TRƯỚC "/:id", nếu không Express nuốt "packaging-prices" thành id
 salesRouter.get("/packaging-prices", requirePermission("sales.view"), asyncHandler(salesController.packagingPrices));
+salesRouter.get("/suggestions", requirePermission("sales.view"), asyncHandler(salesController.suggestions));
 salesRouter.get("/:id", requirePermission("sales.view"), validateParams(numericIdParamsSchema), asyncHandler(salesController.get));
 salesRouter.post("/", requirePermission("sales.create"), validateBody(salesDraftSchema), asyncHandler(salesController.create));
 salesRouter.put("/:id", requirePermission("sales.create"), validateParams(numericIdParamsSchema), validateBody(salesUpdateSchema), asyncHandler(salesController.update));

@@ -36,6 +36,44 @@ export const salesRepository = {
       select: { packagingId: true, priceType: true, price: true },
     });
   },
+  suggestions(customerId: number | undefined, search: string | undefined, limit: number) {
+    const conditions = [
+      "so.deletedAt IS NULL",
+      "so.status = 'FULFILLED'",
+      "d.lineType = 'SALE'",
+      "pp.deletedAt IS NULL",
+    ];
+    const params: any[] = [];
+    if (customerId) {
+      conditions.push("so.customerId = ?");
+      params.push(customerId);
+    }
+    if (search) {
+      conditions.push("(pp.name LIKE ? OR pp.sku LIKE ? OR p.name LIKE ?)");
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    }
+    params.push(limit);
+    return prisma.$queryRawUnsafe<any[]>(
+      `SELECT d.packagingId, pp.name, pp.sku, pp.unit, p.name AS productName,
+        CAST(COUNT(DISTINCT d.orderId) AS SIGNED) AS times,
+        CAST(COALESCE(SUM(d.quantity), 0) AS DECIMAL(18,4)) AS totalQuantity,
+        CAST(SUBSTRING_INDEX(GROUP_CONCAT(COALESCE(d.unitPrice, 0) ORDER BY so.orderDate DESC, so.id DESC), ',', 1) AS DECIMAL(18,4)) AS lastPrice,
+        CAST(COALESCE(MAX(st.stockQuantity), 0) AS DECIMAL(18,4)) AS stockQuantity
+      FROM sales_order_details d
+      JOIN sales_orders so ON so.id = d.orderId
+      JOIN productpackagings pp ON pp.id = d.packagingId
+      LEFT JOIN products p ON p.id = pp.productId
+      LEFT JOIN (
+        SELECT packagingId, SUM(COALESCE(stock_quantity, 0)) AS stockQuantity
+        FROM productwarehouses GROUP BY packagingId
+      ) st ON st.packagingId = pp.id
+      WHERE ${conditions.join(" AND ")}
+      GROUP BY d.packagingId, pp.name, pp.sku, pp.unit, p.name
+      ORDER BY times DESC, totalQuantity DESC, pp.name ASC
+      LIMIT ?`,
+      ...params,
+    );
+  },
 };
 
 export { prisma, Prisma };

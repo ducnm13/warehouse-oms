@@ -8,6 +8,7 @@ import { purchaseController } from "./purchase.controller";
 export const purchaseRouter = Router();
 purchaseRouter.use(authenticateV1);
 purchaseRouter.get("/", requirePermission("purchase.view"), validateQuery(purchaseListQuerySchema), asyncHandler(purchaseController.list));
+purchaseRouter.get("/suggestions", requirePermission("purchase.view"), asyncHandler(purchaseController.suggestions));
 purchaseRouter.get("/:id", requirePermission("purchase.view"), validateParams(numericIdParamsSchema), asyncHandler(purchaseController.get));
 purchaseRouter.post("/", requirePermission("purchase.create"), validateBody(purchaseDraftSchema), asyncHandler(purchaseController.create));
 purchaseRouter.put("/:id", requirePermission("purchase.create"), validateParams(numericIdParamsSchema), validateBody(purchaseUpdateSchema), asyncHandler(purchaseController.update));

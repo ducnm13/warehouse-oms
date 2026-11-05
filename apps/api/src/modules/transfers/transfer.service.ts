@@ -147,7 +147,8 @@ export const transferService = {
         code: exportCode, type: "EXPORT", date: document.transferDate, warehouseId: document.fromWarehouseId,
         note: `Xuất chuyển kho ${document.code}`, reason: "Giao hàng chuyển kho v1", userId, sourceModule: "TRANSFER_SHIPMENT_V1",
       });
-      const occurredAt = new Date(), now = nowIso();
+      // occurredAt theo ngày chứng từ (transferDate), không phải ngày xử lý
+      const occurredAt = new Date(`${document.transferDate}T12:00:00.000Z`), now = nowIso();
       for (const line of document.warehouse_transfer_details) {
         const quantity = Number(line.quantity), balance = await lockBalance(tx, line.packagingId, document.fromWarehouseId);
         await ensureOpening(tx, line.packagingId, document.fromWarehouseId, balance);
@@ -169,8 +170,7 @@ export const transferService = {
       await tx.warehouse_transfer_document_links_v1.create({ data: { transferId: id, linkType: "SHIPMENT_EXPORT", linkedId: BigInt(header.id), linkedCode: exportCode } });
       const row = await tx.warehouse_transfers.update({ where: { id }, data: {
         status: "IN_TRANSIT", exportTransactionId: header.id, shippedAt: occurredAt, shippedBy: userId, version: { increment: 1 },
-      }, include: transferInclude });
-      await tx.audit_logs.create({ data: { action: "Xuất hàng chuyển kho v1", details: row.code, userId, userName: String(userId), createdAt: now } });
+      }, include: transferInclude });      await tx.audit_logs.create({ data: { action: "Xuất hàng chuyển kho v1", details: row.code, userId, userName: String(userId), createdAt: now } });
       return mapTransfer(row);
     }, { timeout: 30_000 });
   },
@@ -183,10 +183,11 @@ export const transferService = {
       if (!document) throw new HttpError(404, "TRANSFER_NOT_FOUND", "Không tìm thấy phiếu chuyển kho");
       const importCode = `PN-${document.code}`;
       const header = await createInventoryDocument(tx, {
-        code: importCode, type: "IMPORT", date: nowIso().slice(0, 10), warehouseId: document.toWarehouseId,
+        code: importCode, type: "IMPORT", date: document.transferDate, warehouseId: document.toWarehouseId,
         note: `Nhận chuyển kho ${document.code}`, reason: "Nhận hàng chuyển kho v1", userId, sourceModule: "TRANSFER_RECEIPT_V1",
       });
-      const occurredAt = new Date(), now = nowIso();
+      // occurredAt theo ngày chứng từ (transferDate), không phải ngày xử lý
+      const occurredAt = new Date(`${document.transferDate}T12:00:00.000Z`), now = nowIso();
       for (const line of document.warehouse_transfer_details) {
         const quantity = Number(line.quantity), unitCost = Number(line.unitCost);
         const balance = await lockBalance(tx, line.packagingId, document.toWarehouseId);

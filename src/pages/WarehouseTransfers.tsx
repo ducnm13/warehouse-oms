@@ -24,7 +24,7 @@ import { useDocumentShortcuts } from "../hooks/useDocumentShortcuts";
 import { useLineTableTab } from "../hooks/useLineTableTab";
 import PrintDocumentPreview from "../components/PrintDocumentPreview";
 import { WarehouseTransferDocument } from "../components/WarehouseTransferDocument";
-import { formatDate, formatNumber, formatProductName } from "../lib/utils";
+import { formatDate, formatNumber, formatProductName, formatMonthLabel } from "../lib/utils";
 import { useMonthFilter } from "../hooks/useMonthFilter";
 import {
 	buildCompanyPrintProfile,
@@ -501,8 +501,9 @@ export default function WarehouseTransfers() {
 				<div className="erp-stat">
 					<ArrowRightLeft size={20} />
 					<div>
-						<span>Tổng phiếu</span>
+						<span>Tổng phiếu tháng này</span>
 						<strong>{formatNumber(meta?.total || 0)}</strong>
+						<em className="erp-stat-month">{formatMonthLabel(month)}</em>
 					</div>
 				</div>
 				<div className="erp-stat">

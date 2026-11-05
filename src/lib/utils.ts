@@ -54,6 +54,12 @@ export function currentMonthRange() {
   return monthRange(currentMonthKey());
 }
 
+/** Trả về chuỗi hiển thị tháng ngắn gọn, ví dụ "T11/2026" */
+export function formatMonthLabel(month: string): string {
+  const [year, m] = month.split('-');
+  return `T${Number(m)}/${year}`;
+}
+
 function normalizeProductPart(value?: string | null) {
   return (value || '').replace(/\s+/g, ' ').trim();
 }

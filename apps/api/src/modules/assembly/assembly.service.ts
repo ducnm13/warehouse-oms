@@ -482,8 +482,11 @@ export const assemblyService = {
 					throw new HttpError(404, "ORDER_NOT_FOUND", "Không tìm thấy lệnh");
 				verifyLinePayload(order.lines, input.lines);
 				const timestamp = nowIso(),
-					occurredAt = new Date(),
-					day = timestamp.slice(0, 10);
+					// occurredAt theo ngày lệnh lắp ráp (orderDate), không phải ngày xử lý
+					occurredAt = order.orderDate instanceof Date
+						? order.orderDate
+						: new Date(`${String(order.orderDate).slice(0, 10)}T12:00:00.000Z`),
+					day = (occurredAt as Date).toISOString().slice(0, 10);
 				const issue = await inventoryDocument(tx, {
 					code: `PX-${order.code}`,
 					type: "EXPORT",
@@ -903,8 +906,11 @@ export const assemblyService = {
 					throw new HttpError(404, "ORDER_NOT_FOUND", "Không tìm thấy lệnh");
 				verifyLinePayload(order.lines, input.lines);
 				const timestamp = nowIso(),
-					occurredAt = new Date(),
-					day = timestamp.slice(0, 10),
+					// occurredAt theo ngày lệnh tháo dỡ (orderDate), không phải ngày xử lý
+					occurredAt = order.orderDate instanceof Date
+						? order.orderDate
+						: new Date(`${String(order.orderDate).slice(0, 10)}T12:00:00.000Z`),
+					day = (occurredAt as Date).toISOString().slice(0, 10),
 					sourceBalance = await lockBalance(
 						tx,
 						order.sourcePackagingId,

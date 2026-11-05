@@ -162,9 +162,14 @@ async function restoreSaleCredit(tx: any, document: any, userId: number, occurre
 }
 
 export const salesService = {
-  async list(query: { page: number; limit: number; search?: string; status?: string }) {
+  async list(query: { page: number; limit: number; search?: string; status?: string; dateFrom?: string; dateTo?: string }) {
     const where: any = { deletedAt: null };
     if (query.status) where.status = query.status === "POSTED" ? "FULFILLED" : query.status;
+    if (query.dateFrom || query.dateTo) {
+      where.orderDate = {};
+      if (query.dateFrom) where.orderDate.gte = query.dateFrom;
+      if (query.dateTo) where.orderDate.lte = query.dateTo;
+    }
     if (query.search) where.OR = [{ code: { contains: query.search } }, { customers: { name: { contains: query.search } } }];
     const [rows, total] = await Promise.all([
       salesRepository.list(where, (query.page - 1) * query.limit, query.limit), salesRepository.count(where),
@@ -298,7 +303,8 @@ export const salesService = {
       const document = await tx.sales_orders.findUnique({ where: { id }, include: salesInclude });
       if (!document) throw new HttpError(404, "SALES_NOT_FOUND", "Không tìm thấy chứng từ bán hàng");
       const now = nowIso();
-      const postedAt = new Date();
+      // occurredAt theo ngày đơn hàng (orderDate), không phải ngày xử lý
+      const postedAt = new Date(`${document.orderDate}T12:00:00.000Z`);
 
       const requiredByPackaging = new Map<number, number>();
       for (const line of document.sales_order_details) requiredByPackaging.set(line.packagingId, (requiredByPackaging.get(line.packagingId) || 0) + Number(line.quantity));
@@ -573,5 +579,20 @@ export const salesService = {
       await tx.audit_logs.create({ data: { action: "Hủy lưu bán hàng v1", details: `${document.code}: khôi phục tồn kho`, userId, userName: String(userId), createdAt: now } });
       return mapSalesDocument(updated);
     }, { timeout: 30_000 });
+  },
+  async suggestions(query: { customerId?: number; search?: string; limit?: number }) {
+    const limit = Math.min(Math.max(query.limit || 12, 1), 50);
+    const rows = await salesRepository.suggestions(query.customerId, query.search, limit);
+    return rows.map(row => ({
+      packagingId: Number(row.packagingId),
+      name: row.name,
+      sku: row.sku,
+      unit: row.unit,
+      productName: row.productName,
+      times: Number(row.times || 0),
+      totalQuantity: Number(row.totalQuantity || 0),
+      lastPrice: Number(row.lastPrice || 0),
+      stockQuantity: Number(row.stockQuantity || 0),
+    }));
   },
 };

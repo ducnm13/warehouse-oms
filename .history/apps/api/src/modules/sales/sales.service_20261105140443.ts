@@ -1,0 +1,597 @@
+import { Prisma } from "@challenge/database";
+import type { SalesCancelInput, SalesDraftInput, SalesPaymentInput, SalesUpdateInput } from "@challenge/contracts";
+import { HttpError } from "../../common/http-error";
+import { mapSalesDocument } from "./sales.mapper";
+import { prisma, salesInclude, salesRepository } from "./sales.repository";
+import { normalizeCodeInput, resolveDocumentCode } from "../../common/document-code";
+
+const decimal = (value: number) => new Prisma.Decimal(value.toFixed(4));
+const money = (value: number) => new Prisma.Decimal(value.toFixed(2));
+const dateAtNoon = (date: string) => new Date(`${date}T12:00:00.000Z`);
+const nowIso = () => new Date().toISOString();
+
+type CalculatedInput = Omit<SalesDraftInput, "details"> & { details: Array<SalesDraftInput["details"][number] & { lineType?: "SALE" | "PROMOTION"; promotionProgramId?: number; promotionCode?: string; promotionName?: string }> };
+const orderDiscountFromNote = (note?: string | null) => {
+  const match = String(note || "").match(/(?:^|\n)Chiết khấu đơn\s+([\d.,]+)\s*%\s*(?:\n|$)/i);
+  const rate = Number(match?.[1]?.replace(",", ".") || 0);
+  return Number.isFinite(rate) ? Math.min(Math.max(rate, 0), 100) : 0;
+};
+function calculate(input: CalculatedInput) {
+  const details = input.details.map(line => {
+    const gross = line.quantity * line.unitPrice;
+    const lineTotal = gross * (1 - line.discountRate / 100);
+    return { ...line, gross, lineTotal };
+  });
+  const gross = details.reduce((sum, line) => sum + line.gross, 0);
+  const subtotal = details.reduce((sum, line) => sum + line.lineTotal, 0);
+  const lineDiscountAmount = gross - subtotal;
+  const orderDiscountAmount = subtotal * orderDiscountFromNote(input.note) / 100;
+  const taxableAmount = subtotal - orderDiscountAmount;
+  const taxAmount = taxableAmount * input.taxRate / 100;
+  return { details, subtotal, discountAmount: lineDiscountAmount + orderDiscountAmount, taxAmount, totalAmount: taxableAmount + taxAmount };
+}
+
+async function validateMasterData(input: SalesDraftInput) {
+  const [customer, warehouse, packagingIds] = await Promise.all([
+    salesRepository.customerExists(input.customerId),
+    salesRepository.warehouseExists(input.warehouseId),
+    salesRepository.packagingIds(input.details.map(line => line.packagingId)),
+  ]);
+  if (!customer) throw new HttpError(422, "CUSTOMER_NOT_FOUND", "Khách hàng không tồn tại");
+  if (!warehouse) throw new HttpError(422, "WAREHOUSE_NOT_FOUND", "Kho xuất không tồn tại");
+  input.details.forEach((line, index) => {
+    if (!packagingIds.has(line.packagingId)) throw new HttpError(422, "ITEM_NOT_FOUND", `Hàng hóa dòng ${index + 1} không tồn tại`);
+  });
+  return customer;
+}
+
+const lineData = (line: ReturnType<typeof calculate>["details"][number]) => ({
+  packagingId: line.packagingId,
+  quantity: line.quantity,
+  unitPrice: line.unitPrice,
+  discountRate: line.discountRate,
+  lineTotal: line.lineTotal,
+  note: line.note || "",
+  lineType: line.lineType || "SALE",
+  promotionProgramId: line.promotionProgramId || null,
+  promotionCode: line.promotionCode || null,
+  promotionName: line.promotionName || null,
+});
+
+async function lockOrder(tx: any, id: number) {
+  const rows = await tx.$queryRawUnsafe("SELECT id,code,status,version FROM sales_orders WHERE id=? FOR UPDATE", id) as any[];
+  if (!rows[0]) throw new HttpError(404, "SALES_NOT_FOUND", "Không tìm thấy chứng từ bán hàng");
+  return rows[0];
+}
+
+function assertVersion(current: any, version: number) {
+  if (Number(current.version) !== version) throw new HttpError(409, "VERSION_CONFLICT", "Chứng từ đã được người khác cập nhật");
+}
+
+async function averageCosts(tx: any, packagingIds: number[], warehouseId: number) {
+  const uniqueIds = [...new Set(packagingIds)];
+  const costs = new Map<number, number>();
+  if (!uniqueIds.length) return costs;
+  const placeholders = uniqueIds.map(() => "?").join(",");
+  const rows = await tx.$queryRawUnsafe(
+    `SELECT packagingId,
+            COALESCE(SUM(CASE WHEN direction='IN' THEN quantity ELSE -quantity END),0) quantity,
+            COALESCE(SUM(totalValue),0) totalValue
+     FROM inventory_ledger
+     WHERE warehouseId=? AND packagingId IN (${placeholders})
+     GROUP BY packagingId`,
+    warehouseId, ...uniqueIds,
+  ) as Array<{ packagingId: unknown; quantity: unknown; totalValue: unknown }>;
+  for (const row of rows) {
+    const ledgerQuantity = Number(row.quantity || 0);
+    const ledgerValue = Number(row.totalValue || 0);
+    if (ledgerQuantity > 0 && ledgerValue > 0) costs.set(Number(row.packagingId), ledgerValue / ledgerQuantity);
+  }
+  for (const packagingId of uniqueIds) {
+    if (costs.has(packagingId)) continue;
+    const latestPurchase = await tx.purchase_document_details.findFirst({
+      where: { packagingId, purchase_documents: { documentStatus: "POSTED" } },
+      orderBy: { id: "desc" }, select: { unitPrice: true },
+    });
+    costs.set(packagingId, Number(latestPurchase?.unitPrice || 0));
+  }
+  return costs;
+}
+
+async function applyCustomerCredit(tx: any, document: any, userId: number, occurredAt: Date) {
+  const total = Number(document.totalAmount || 0);
+  if (total <= 0.005) return 0;
+  await tx.$queryRawUnsafe("SELECT id FROM receivable_transactions WHERE customerId=? FOR UPDATE", document.customerId);
+  const sources = await tx.$queryRawUnsafe(
+    `SELECT s.id orderId, s.code orderCode, COALESCE(SUM(r.amount),0) balance
+     FROM sales_orders s
+     JOIN receivable_transactions r ON r.sourceId=s.id AND r.customerId=s.customerId
+     WHERE s.customerId=? AND s.status IN ('POSTED','FULFILLED')
+     GROUP BY s.id, s.code
+     HAVING COALESCE(SUM(r.amount),0) < -0.005
+     ORDER BY s.id`,
+    document.customerId,
+  );
+  let remaining = total, applied = 0;
+  for (const source of sources) {
+    if (remaining <= 0.005) break;
+    const take = Math.min(remaining, -Number(source.balance));
+    if (take <= 0.005) continue;
+    await tx.receivable_transactions.create({ data: {
+      customerId: document.customerId, sourceType: "CREDIT_TRANSFER", sourceId: Number(source.orderId),
+      sourceCode: document.code, entryType: "CREDIT_OUT", amount: money(take), occurredAt, createdBy: userId,
+    } });
+    await tx.receivable_transactions.create({ data: {
+      customerId: document.customerId, sourceType: "SALE_CREDIT", sourceId: document.id,
+      sourceCode: String(source.orderCode), entryType: "CREDIT_IN", amount: money(-take), occurredAt, createdBy: userId,
+    } });
+    await tx.sales_document_links_v1.create({ data: {
+      salesOrderId: document.id, linkType: "CREDIT_APPLIED",
+      linkedId: BigInt(source.orderId), linkedCode: String(source.orderCode),
+    } });
+    applied += take;
+    remaining -= take;
+  }
+  return applied;
+}
+
+async function restoreSaleCredit(tx: any, document: any, userId: number, occurredAt: Date) {
+  const links = await tx.sales_document_links_v1.findMany({
+    where: { salesOrderId: document.id, linkType: "CREDIT_APPLIED" },
+  });
+  for (const link of links) {
+    const entry = await tx.receivable_transactions.findFirst({
+      where: {
+        customerId: document.customerId, sourceType: "SALE_CREDIT", sourceId: document.id,
+        sourceCode: String(link.linkedCode || ""), entryType: "CREDIT_IN",
+      },
+    });
+    if (!entry) continue;
+    const amount = Math.abs(Number(entry.amount));
+    await tx.receivable_transactions.create({ data: {
+      customerId: document.customerId, sourceType: "SALE_CREDIT_CANCEL", sourceId: document.id,
+      sourceCode: String(link.linkedCode || ""), entryType: "CREDIT_IN_REVERSAL",
+      amount: money(amount), reversalOfId: entry.id, occurredAt, createdBy: userId,
+    } });
+    await tx.receivable_transactions.create({ data: {
+      customerId: document.customerId, sourceType: "CREDIT_RESTORE", sourceId: Number(link.linkedId),
+      sourceCode: document.code, entryType: "CREDIT_OUT_REVERSAL",
+      amount: money(-amount), reversalOfId: entry.id, occurredAt, createdBy: userId,
+    } });
+  }
+}
+
+export const salesService = {
+  async list(query: { page: number; limit: number; search?: string; status?: string; dateFrom?: string; dateTo?: string }) {
+    const where: any = { deletedAt: null };
+    if (query.status) where.status = query.status === "POSTED" ? "FULFILLED" : query.status;
+    if (query.dateFrom || query.dateTo) {
+      where.orderDate = {};
+      if (query.dateFrom) where.orderDate.gte = new Date(`${query.dateFrom}T00:00:00.000Z`);
+      if (query.dateTo) where.orderDate.lte = new Date(`${query.dateTo}T23:59:59.999Z`);
+    }
+    if (query.search) where.OR = [{ code: { contains: query.search } }, { customers: { name: { contains: query.search } } }];
+    const [rows, total] = await Promise.all([
+      salesRepository.list(where, (query.page - 1) * query.limit, query.limit), salesRepository.count(where),
+    ]);
+    return { data: rows.map(mapSalesDocument), meta: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) } };
+  },
+
+  async get(id: number) {
+    const row = await salesRepository.findById(id);
+    if (!row || row.deletedAt) throw new HttpError(404, "SALES_NOT_FOUND", "Không tìm thấy chứng từ bán hàng");
+    return mapSalesDocument(row);
+  },
+
+  async packagingPrices(ids: number[], customerId?: number) {
+    if (!ids.length) return [];
+    let priceType = "SALE_3";
+    if (customerId) {
+      const customer = await prisma.customers.findUnique({
+        where: { id: customerId },
+        select: { groupId: true },
+      });
+      if (customer?.groupId) {
+        const groupPrice = await prisma.customer_group_prices.findUnique({
+          where: { customerGroupId: customer.groupId },
+          select: { priceType: true },
+        });
+        if (groupPrice) priceType = groupPrice.priceType;
+      }
+    }
+    const rows = await salesRepository.packagingPricesByType(ids, priceType);
+    return rows.map((row) => ({ packagingId: row.packagingId, priceType: row.priceType, price: Number(row.price || 0) }));
+  },
+
+  async deleteDraft(id: number, version: number, userId: number) {
+    return prisma.$transaction(async (tx) => {
+      const current = await lockOrder(tx, id);
+      assertVersion(current, version);
+      if (current.status !== "DRAFT") {
+        throw new HttpError(409, "SALES_NOT_DELETABLE", "Đơn đã lưu phải hủy và đảo, không được xóa trực tiếp");
+      }
+      const [returnCount, paymentCount] = await Promise.all([
+        tx.sales_returns.count({ where: { originalSalesOrderId: id } }),
+        tx.customer_payments.count({ where: { salesOrderId: id } }),
+      ]);
+      if (returnCount > 0) {
+        throw new HttpError(409, "SALES_RETURN_EXISTS", "Đơn hàng đã có phiếu trả hàng, không thể xóa. Hãy xóa phiếu trả hàng trước.");
+      }
+      if (paymentCount > 0) {
+        throw new HttpError(409, "SALES_PAYMENT_EXISTS", "Đơn hàng đã có lịch sử thanh toán, không thể xóa. Hãy hủy các khoản thu liên quan trước.");
+      }
+      try {
+        await tx.sales_document_links_v1.deleteMany({ where: { salesOrderId: id } });
+        await tx.promotion_usage_logs.deleteMany({ where: { salesOrderId: id } });
+        await tx.sales_order_details.deleteMany({ where: { orderId: id } });
+        await tx.sales_orders.delete({ where: { id } });
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
+          throw new HttpError(409, "SALES_DELETE_CONFLICT", "Không thể xóa đơn hàng vì còn dữ liệu liên quan.");
+        }
+        throw error;
+      }
+      await tx.audit_logs.create({ data: { action: "Xóa chứng từ bán hàng v1", details: `Sales order ${id}`, userId, userName: String(userId), createdAt: nowIso() } });
+      return { id };
+    });
+  },
+
+  async createDraft(input: SalesDraftInput, userId: number) {
+    await validateMasterData(input);
+    const totals = calculate(input);
+    const code = await resolveDocumentCode("sales", (input as { code?: string }).code);
+    const now = nowIso();
+    return prisma.$transaction(async tx => {
+      const created = await tx.sales_orders.create({
+        data: {
+          code, orderDate: input.orderDate, deliveryDate: input.deliveryDate || null, dueDate: input.dueDate || null,
+          customerId: input.customerId, warehouseId: input.warehouseId, status: "DRAFT", note: input.note,
+          subtotal: totals.subtotal, discountAmount: totals.discountAmount, taxAmount: totals.taxAmount,
+          totalAmount: totals.totalAmount, paidAmount: 0, paymentStatus: "UNPAID", paymentIntent: input.paymentIntent,
+          paymentMethod: input.paymentMethod, createdBy: userId, createdAt: now, updatedAt: now,
+        },
+        select: { id: true },
+      });
+      await tx.sales_order_details.createMany({
+        data: totals.details.map(line => ({ ...lineData(line), orderId: created.id })),
+      });
+      await tx.audit_logs.create({ data: { action: "Tạo nháp bán hàng v1", details: code, userId, userName: String(userId), createdAt: now } });
+      const row = await tx.sales_orders.findUnique({ where: { id: created.id }, include: salesInclude });
+      if (!row) throw new HttpError(500, "SALES_CREATE_FAILED", "Không thể tạo chứng từ bán hàng");
+      return mapSalesDocument(row);
+    }, { timeout: 15_000 });
+  },
+
+  async updateDraft(id: number, input: SalesUpdateInput, userId: number) {
+    await validateMasterData(input);
+    const totals = calculate(input);
+    return prisma.$transaction(async tx => {
+      const current = await lockOrder(tx, id);
+      if (current.status !== "DRAFT") throw new HttpError(409, "SALES_NOT_EDITABLE", "Đơn đã lưu phải hủy lưu trước khi sửa");
+      assertVersion(current, input.version);
+      const normalizedCode = normalizeCodeInput(input.code);
+      const code = normalizedCode && normalizedCode !== current.code
+        ? await resolveDocumentCode("sales", normalizedCode)
+        : current.code;
+      const updatedAt = nowIso();
+      await tx.sales_order_details.deleteMany({ where: { orderId: id } });
+      await tx.sales_orders.update({
+        where: { id }, data: {
+          code,
+          orderDate: input.orderDate, deliveryDate: input.deliveryDate || null, dueDate: input.dueDate || null,
+          customerId: input.customerId, warehouseId: input.warehouseId, note: input.note,
+          subtotal: totals.subtotal, discountAmount: totals.discountAmount, taxAmount: totals.taxAmount,
+          totalAmount: totals.totalAmount, paymentIntent: input.paymentIntent, paymentMethod: input.paymentMethod,
+          rejectionReason: null, version: { increment: 1 }, updatedAt,
+        },
+      });
+      await tx.sales_order_details.createMany({
+        data: totals.details.map(line => ({ ...lineData(line), orderId: id })),
+      });
+      await tx.audit_logs.create({ data: { action: "Cập nhật nháp bán hàng v1", details: code, userId, userName: String(userId), createdAt: updatedAt } });
+      const row = await tx.sales_orders.findUnique({ where: { id }, include: salesInclude });
+      if (!row) throw new HttpError(404, "SALES_NOT_FOUND", "Không tìm thấy chứng từ bán hàng");
+      return mapSalesDocument(row);
+    }, { timeout: 15_000 });
+  },
+
+  async post(id: number, version: number, userId: number) {
+    return prisma.$transaction(async tx => {
+      const current = await lockOrder(tx, id);
+      if (current.status !== "DRAFT") throw new HttpError(409, "SALES_NOT_DRAFT", "Chỉ được lưu đơn nháp");
+      assertVersion(current, version);
+      const document = await tx.sales_orders.findUnique({ where: { id }, include: salesInclude });
+      if (!document) throw new HttpError(404, "SALES_NOT_FOUND", "Không tìm thấy chứng từ bán hàng");
+      const now = nowIso();
+      const postedAt = new Date();
+
+      const requiredByPackaging = new Map<number, number>();
+      for (const line of document.sales_order_details) requiredByPackaging.set(line.packagingId, (requiredByPackaging.get(line.packagingId) || 0) + Number(line.quantity));
+      for (const [packagingId, requiredQuantity] of [...requiredByPackaging.entries()].sort((a, b) => a[0] - b[0])) {
+        const balances = await tx.$queryRawUnsafe<any[]>(
+          "SELECT stock_quantity FROM productwarehouses WHERE packagingId=? AND warehouseId=? FOR UPDATE",
+          packagingId, document.warehouseId,
+        );
+        const availableQuantity = Number(balances[0]?.stock_quantity || 0);
+        if (availableQuantity < requiredQuantity) {
+          const item = document.sales_order_details.find(line => line.packagingId === packagingId);
+          const warehouseName = document.warehouses?.name || `kho #${document.warehouseId}`;
+          throw new HttpError(409, "INSUFFICIENT_STOCK", `Không đủ tồn kho cho ${item?.productpackagings?.name || packagingId} tại ${warehouseName}: còn ${availableQuantity}, cần ${requiredQuantity}`);
+        }
+      }
+
+      const transactionCode = `PX-${document.code}`;
+      const inventoryTransaction = await tx.inventorytransactions.create({
+        data: {
+          code: transactionCode, type: "EXPORT", transaction_date: document.orderDate, exit_date: document.orderDate,
+          warehouseId: document.warehouseId, note: `Xuất bán theo ${document.code}`, reason: "Bán hàng",
+          recipient: document.customers?.name || "Khách hàng", customerId: document.customerId,
+          createdBy: userId, createdAt: now, updatedAt: now, documentStatus: "POSTED", sourceModule: "SALE_V1",
+          postedAt: postedAt, postedBy: userId,
+        },
+      });
+
+      const costs = await averageCosts(
+        tx,
+        document.sales_order_details.map(line => line.packagingId),
+        document.warehouseId,
+      );
+      const costByLine = document.sales_order_details.map(line => {
+        const quantity = Number(line.quantity);
+        const unitCost = costs.get(line.packagingId) || 0;
+        return { line, quantity, unitCost, costAmount: quantity * unitCost };
+      });
+      await tx.inventorytransactiondetails.createMany({
+        data: costByLine.map(({ line, quantity, unitCost, costAmount }) => ({
+          transactionId: inventoryTransaction.id, packagingId: line.packagingId,
+          quantity, unitCost: decimal(unitCost), totalValue: money(costAmount),
+          note: document.code, createdAt: now, updatedAt: now,
+        })),
+      });
+      for (const [packagingId, quantity] of requiredByPackaging) {
+        await tx.productwarehouses.update({
+          where: { packagingId_warehouseId: { packagingId, warehouseId: document.warehouseId } },
+          data: { stock_quantity: { decrement: quantity }, updatedAt: now },
+        });
+      }
+      await tx.inventory_ledger.createMany({
+        data: costByLine.map(({ line, quantity, unitCost, costAmount }) => ({
+          sourceType: "SALE", sourceId: id, sourceLineId: line.id, documentCode: document.code, direction: "OUT",
+          packagingId: line.packagingId, warehouseId: document.warehouseId, quantity: decimal(quantity),
+          unitCost: decimal(unitCost), totalValue: money(-costAmount), occurredAt: postedAt, createdBy: userId,
+        })),
+      });
+      for (const { line, unitCost, costAmount } of costByLine) {
+        await tx.sales_order_details.update({
+          where: { id: line.id },
+          data: { unitCost: decimal(unitCost), costAmount: money(costAmount) },
+        });
+      }
+      const promotionLines = costByLine.filter(({ line }) => line.lineType === "PROMOTION" && line.promotionProgramId);
+      if (promotionLines.length) {
+        await tx.promotion_usage_logs.createMany({
+          data: promotionLines.map(({ line, quantity }) => ({
+            programId: line.promotionProgramId!, salesOrderId: document.id, salesOrderLineId: line.id,
+            rewardPackagingId: line.packagingId, rewardQuantity: decimal(quantity),
+            programCode: line.promotionCode || "", programName: line.promotionName || "",
+          })),
+        });
+      }
+
+      const charge = await tx.receivable_transactions.create({ data: {
+        customerId: document.customerId, sourceType: "SALE", sourceId: id, sourceCode: document.code,
+        entryType: "CHARGE", amount: money(Number(document.totalAmount || 0)),
+        dueDate: document.dueDate ? dateAtNoon(document.dueDate) : dateAtNoon(document.orderDate), occurredAt: postedAt, createdBy: userId,
+      } });
+      await tx.sales_document_links_v1.create({ data: { salesOrderId: id, linkType: "INVENTORY_ISSUE", linkedId: BigInt(inventoryTransaction.id), linkedCode: transactionCode } });
+      await tx.sales_document_links_v1.create({ data: { salesOrderId: id, linkType: "RECEIVABLE_CHARGE", linkedId: charge.id, linkedCode: document.code } });
+
+      const creditApplied = await applyCustomerCredit(tx, document, userId, postedAt);
+      let paidAmount = creditApplied;
+      let paymentStatus = creditApplied >= Number(document.totalAmount || 0) - 0.001 ? "PAID" : creditApplied > 0.005 ? "PARTIAL" : "UNPAID";
+      if (document.paymentIntent === "PAID") {
+        const cashAmount = Math.max(0, Number(document.totalAmount || 0) - creditApplied);
+        if (cashAmount > 0.005)
+          await this.createPaymentInTransaction(tx, document, cashAmount, document.orderDate, document.paymentMethod || "CASH", `Thu ngay ${document.code}`, userId);
+        paidAmount = creditApplied + cashAmount;
+        paymentStatus = "PAID";
+      }
+      const updated = await tx.sales_orders.update({ where: { id }, data: {
+        status: "FULFILLED", fulfilledAt: now, postedAt, postedBy: userId, inventoryTransactionId: inventoryTransaction.id,
+        dueDate: document.dueDate || document.orderDate, paidAmount, paymentStatus, version: { increment: 1 }, updatedAt: now,
+      }, include: salesInclude });
+      await tx.audit_logs.create({ data: { action: "Lưu bán hàng v1", details: document.code, userId, userName: String(userId), createdAt: now } });
+      return mapSalesDocument(updated);
+    }, { timeout: 30_000 });
+  },
+
+  async createPaymentInTransaction(tx: any, document: any, amount: number, paymentDate: string, method: string, note: string, userId: number) {
+    const code = `PT-${document.code}-${Date.now().toString().slice(-6)}`;
+    const receipt = await tx.payment_receipts.create({ data: {
+      code, customerId: document.customerId, receiptDate: dateAtNoon(paymentDate), method, amount: money(amount),
+      direction: "RECEIPT", note, status: "POSTED", createdBy: userId,
+    } });
+    await tx.payment_receipt_allocations.create({ data: { paymentReceiptId: receipt.id, salesOrderId: document.id, amount: money(amount) } });
+    const debtEntry = await tx.receivable_transactions.create({ data: {
+      customerId: document.customerId, sourceType: "SALE_PAYMENT", sourceId: document.id, sourceCode: document.code,
+      entryType: "PAYMENT", amount: money(-amount), occurredAt: new Date(), createdBy: userId,
+    } });
+    await tx.customer_payments.create({ data: {
+      customerId: document.customerId, salesOrderId: document.id, paymentDate, amount, method, note,
+      createdBy: userId, createdAt: nowIso(),
+    } });
+    await tx.sales_document_links_v1.create({ data: { salesOrderId: document.id, linkType: "PAYMENT_RECEIPT", linkedId: receipt.id, linkedCode: code } });
+    await tx.sales_document_links_v1.create({ data: { salesOrderId: document.id, linkType: "RECEIVABLE_PAYMENT", linkedId: debtEntry.id, linkedCode: document.code } });
+    return receipt;
+  },
+
+  async receivePayment(id: number, input: SalesPaymentInput, userId: number) {
+    return prisma.$transaction(async tx => {
+      const current = await lockOrder(tx, id);
+      if (!["POSTED", "FULFILLED"].includes(current.status)) throw new HttpError(409, "SALES_NOT_POSTED", "Chỉ được thu tiền chứng từ đã lưu");
+      assertVersion(current, input.version);
+      const document = await tx.sales_orders.findUnique({ where: { id }, include: salesInclude });
+      if (!document) throw new HttpError(404, "SALES_NOT_FOUND", "Không tìm thấy chứng từ bán hàng");
+      const outstandingRows = await tx.$queryRawUnsafe<any[]>("SELECT COALESCE(SUM(amount),0) outstanding FROM receivable_transactions WHERE sourceId=? AND customerId=?", id, document.customerId);
+      const remaining = Number(outstandingRows[0]?.outstanding || 0);
+      if (input.amount > remaining + 0.001) throw new HttpError(409, "PAYMENT_EXCEEDS_DEBT", "Số tiền thu vượt quá công nợ còn lại");
+      await this.createPaymentInTransaction(tx, document, input.amount, input.paymentDate, input.method, input.note || `Thu tiền ${document.code}`, userId);
+      const paidAmount = Number(document.paidAmount || 0) + input.amount;
+      const paymentStatus = paidAmount >= Number(document.totalAmount || 0) - 0.001 ? "PAID" : "PARTIAL";
+      const updated = await tx.sales_orders.update({ where: { id }, data: { paidAmount, paymentStatus, version: { increment: 1 }, updatedAt: nowIso() }, include: salesInclude });
+      await tx.audit_logs.create({ data: { action: "Thu tiền bán hàng v1", details: `${document.code}: ${input.amount}`, userId, userName: String(userId), createdAt: nowIso() } });
+      return mapSalesDocument(updated);
+    });
+  },
+
+  async cancel(id: number, input: SalesCancelInput, userId: number) {
+    return prisma.$transaction(async tx => {
+      const current = await lockOrder(tx, id);
+      if (!["POSTED", "FULFILLED"].includes(current.status)) throw new HttpError(409, "SALES_NOT_POSTED", "Chỉ được hủy chứng từ đã lưu");
+      assertVersion(current, input.version);
+      const document = await tx.sales_orders.findUnique({ where: { id }, include: salesInclude });
+      if (!document) throw new HttpError(404, "SALES_NOT_FOUND", "Không tìm thấy chứng từ bán hàng");
+      if (await tx.sales_returns.count({ where: { originalSalesOrderId: id, status: "POSTED" } })) throw new HttpError(409, "POSTED_RETURN_EXISTS", "Hãy hủy phiếu trả hàng đã lưu trước khi hủy đơn bán");
+      const debtPayments = await tx.$queryRawUnsafe<any[]>(`SELECT COUNT(*) count
+        FROM payment_receipt_allocations a JOIN payment_receipts r ON r.id=a.paymentReceiptId
+        WHERE a.salesOrderId=? AND r.sourceModule='DEBT_V1' AND r.status='POSTED'`, id);
+      if (Number(debtPayments[0]?.count || 0) > 0) throw new HttpError(409, "DEBT_PAYMENT_EXISTS", "Hãy hủy phiếu thu công nợ V1 trước khi hủy chứng từ bán hàng");
+      const links = document.sales_document_links_v1;
+      if (!links.some(link => link.linkType === "RECEIVABLE_CHARGE")) {
+        throw new HttpError(409, "LEGACY_SALE_NOT_REVERSIBLE", "Chứng từ legacy chưa có ledger v1; không thể hủy tự động");
+      }
+      const now = nowIso();
+      const cancelledAt = new Date();
+      for (const line of document.sales_order_details) {
+        const original = await tx.inventory_ledger.findFirst({ where: { sourceType: "SALE", sourceId: id, sourceLineId: line.id, direction: "OUT" } });
+        await tx.productwarehouses.upsert({
+          where: { packagingId_warehouseId: { packagingId: line.packagingId, warehouseId: document.warehouseId } },
+          create: { packagingId: line.packagingId, warehouseId: document.warehouseId, stock_quantity: Number(line.quantity), updatedAt: now },
+          update: { stock_quantity: { increment: Number(line.quantity) }, updatedAt: now },
+        });
+        await tx.inventory_ledger.create({ data: {
+          sourceType: "SALE_CANCEL", sourceId: id, sourceLineId: line.id, documentCode: document.code, direction: "IN",
+          packagingId: line.packagingId, warehouseId: document.warehouseId, quantity: decimal(Number(line.quantity)),
+          unitCost: original?.unitCost || line.unitCost, totalValue: money(Math.abs(Number(original?.totalValue || line.costAmount || 0))),
+          reversalOfId: original?.id, occurredAt: cancelledAt, createdBy: userId,
+        } });
+      }
+      const charge = await tx.receivable_transactions.findFirst({ where: { sourceType: "SALE", sourceId: id, entryType: "CHARGE" } });
+      const reversal = await tx.receivable_transactions.create({ data: {
+        customerId: document.customerId, sourceType: "SALE_CANCEL", sourceId: id, sourceCode: document.code,
+        entryType: "REVERSAL", amount: money(-Number(document.totalAmount || 0)), occurredAt: cancelledAt,
+        reversalOfId: charge?.id, createdBy: userId,
+      } });
+      await tx.sales_document_links_v1.create({ data: { salesOrderId: id, linkType: "RECEIVABLE_REVERSAL", linkedId: reversal.id, linkedCode: document.code } });
+
+      const creditAppliedRows = await tx.$queryRawUnsafe<any[]>(
+        "SELECT COALESCE(SUM(-amount),0) applied FROM receivable_transactions WHERE sourceId=? AND customerId=? AND sourceType='SALE_CREDIT' AND entryType='CREDIT_IN'",
+        id, document.customerId,
+      );
+      const creditApplied = Number(creditAppliedRows[0]?.applied || 0);
+      const cashPaid = Math.max(0, Number(document.paidAmount || 0) - creditApplied);
+      if (cashPaid > 0.005) {
+        await tx.payment_receipts.updateMany({
+          where: { id: { in: links.filter(link => link.linkType === "PAYMENT_RECEIPT").map(link => link.linkedId) } }, data: { status: "CANCELLED" },
+        });
+        const reversalReceiptCode = `H-PT-${document.code}`;
+        const reversalReceipt = await tx.payment_receipts.create({ data: {
+          code: reversalReceiptCode, customerId: document.customerId, receiptDate: dateAtNoon(now.slice(0, 10)),
+          method: document.paymentMethod || "BANK", amount: money(cashPaid), direction: "REVERSAL",
+          note: `Hoàn nguyên thanh toán ${document.code}`, status: "POSTED", createdBy: userId,
+        } });
+        await tx.payment_receipt_allocations.create({ data: {
+          paymentReceiptId: reversalReceipt.id, salesOrderId: id, amount: money(-cashPaid),
+        } });
+        await tx.sales_document_links_v1.create({ data: {
+          salesOrderId: id, linkType: "PAYMENT_REVERSAL", linkedId: reversalReceipt.id, linkedCode: reversalReceiptCode,
+        } });
+        const paymentEntries = await tx.receivable_transactions.findMany({ where: { sourceType: "SALE_PAYMENT", sourceId: id, entryType: "PAYMENT" } });
+        for (const entry of paymentEntries) await tx.receivable_transactions.create({ data: {
+          customerId: document.customerId, sourceType: "SALE_PAYMENT_CANCEL", sourceId: id, sourceCode: document.code,
+          entryType: "PAYMENT_REVERSAL", amount: money(Math.abs(Number(entry.amount))), occurredAt: cancelledAt,
+          reversalOfId: entry.id, createdBy: userId,
+        } });
+        await tx.customer_payments.create({ data: {
+          customerId: document.customerId, salesOrderId: id, paymentDate: now.slice(0, 10), amount: -cashPaid,
+          method: document.paymentMethod || "BANK", note: `Hoàn nguyên thanh toán ${document.code}`, createdBy: userId, createdAt: now,
+        } });
+      }
+      await restoreSaleCredit(tx, document, userId, cancelledAt);
+      const updated = await tx.sales_orders.update({ where: { id }, data: {
+        status: "CANCELLED", cancelledAt, cancelledBy: userId, cancelReason: input.reason,
+        paidAmount: 0, paymentStatus: "UNPAID", version: { increment: 1 }, updatedAt: now,
+      }, include: salesInclude });
+      await tx.audit_logs.create({ data: { action: "Hủy bán hàng v1", details: `${document.code}: ${input.reason}`, userId, userName: String(userId), createdAt: now } });
+      return mapSalesDocument(updated);
+    }, { timeout: 30_000 });
+  },
+
+  async unpost(id: number, version: number, userId: number) {
+    return prisma.$transaction(async tx => {
+      const current = await lockOrder(tx, id);
+      if (!["POSTED", "FULFILLED"].includes(current.status)) throw new HttpError(409, "SALES_NOT_POSTED", "Chỉ được hủy lưu chứng từ đã lưu");
+      assertVersion(current, version);
+      const document = await tx.sales_orders.findUnique({ where: { id }, include: salesInclude });
+      if (!document) throw new HttpError(404, "SALES_NOT_FOUND", "Không tìm thấy chứng từ bán hàng");
+      if (await tx.sales_returns.count({ where: { originalSalesOrderId: id, status: "POSTED" } })) throw new HttpError(409, "POSTED_RETURN_EXISTS", "Hãy hủy phiếu trả hàng đã lưu trước khi hủy lưu");
+      const creditAppliedRows = await tx.$queryRawUnsafe<any[]>(
+        "SELECT COALESCE(SUM(-amount),0) applied FROM receivable_transactions WHERE sourceId=? AND customerId=? AND sourceType='SALE_CREDIT' AND entryType='CREDIT_IN'",
+        id, document.customerId,
+      );
+      const creditApplied = Number(creditAppliedRows[0]?.applied || 0);
+      if (Number(document.paidAmount || 0) > creditApplied + 0.001) throw new HttpError(409, "PAYMENT_EXISTS", "Hãy hủy các khoản thu tiền trước khi hủy lưu");
+      const now = nowIso();
+      const cancelledAt = new Date();
+      const links = document.sales_document_links_v1;
+      const issueLink = links.find(link => link.linkType === "INVENTORY_ISSUE");
+      if (issueLink) {
+        const issueTransaction = await tx.inventorytransactions.findUnique({ where: { id: Number(issueLink.linkedId) }, include: { inventorytransactiondetails: true } });
+        for (const line of document.sales_order_details) {
+          const original = await tx.inventory_ledger.findFirst({ where: { sourceType: "SALE", sourceId: id, sourceLineId: line.id, direction: "OUT" } });
+          await tx.productwarehouses.upsert({
+            where: { packagingId_warehouseId: { packagingId: line.packagingId, warehouseId: document.warehouseId } },
+            create: { packagingId: line.packagingId, warehouseId: document.warehouseId, stock_quantity: Number(line.quantity), updatedAt: now },
+            update: { stock_quantity: { increment: Number(line.quantity) }, updatedAt: now },
+          });
+          await tx.inventory_ledger.create({ data: {
+            sourceType: "SALE_UNPOST", sourceId: id, sourceLineId: line.id, documentCode: document.code, direction: "IN",
+            packagingId: line.packagingId, warehouseId: document.warehouseId, quantity: decimal(Number(line.quantity)),
+            unitCost: original?.unitCost || line.unitCost, totalValue: money(Math.abs(Number(original?.totalValue || line.costAmount || 0))),
+            reversalOfId: original?.id, occurredAt: cancelledAt, createdBy: userId,
+          } });
+        }
+        if (issueTransaction) {
+          await tx.inventorytransactiondetails.deleteMany({ where: { transactionId: issueTransaction.id } });
+          await tx.inventorytransactions.delete({ where: { id: issueTransaction.id } });
+        }
+      }
+      await restoreSaleCredit(tx, document, userId, cancelledAt);
+      await tx.receivable_transactions.deleteMany({ where: { sourceType: "SALE", sourceId: id, entryType: "CHARGE" } });
+      await tx.sales_document_links_v1.deleteMany({ where: { salesOrderId: id, linkType: { in: ["INVENTORY_ISSUE", "RECEIVABLE_CHARGE", "CREDIT_APPLIED"] } } });
+      await tx.promotion_usage_logs.deleteMany({ where: { salesOrderId: id } });
+      const updated = await tx.sales_orders.update({ where: { id }, data: {
+        status: "DRAFT", postedAt: null, postedBy: null, fulfilledAt: null,
+        inventoryTransactionId: null, paidAmount: 0, paymentStatus: "UNPAID",
+        version: { increment: 1 }, updatedAt: now,
+      }, include: salesInclude });
+      await tx.audit_logs.create({ data: { action: "Hủy lưu bán hàng v1", details: `${document.code}: khôi phục tồn kho`, userId, userName: String(userId), createdAt: now } });
+      return mapSalesDocument(updated);
+    }, { timeout: 30_000 });
+  },
+  async suggestions(query: { customerId?: number; search?: string; limit?: number }) {
+    const limit = Math.min(Math.max(query.limit || 12, 1), 50);
+    const rows = await salesRepository.suggestions(query.customerId, query.search, limit);
+    return rows.map(row => ({
+      packagingId: Number(row.packagingId),
+      name: row.name,
+      sku: row.sku,
+      unit: row.unit,
+      productName: row.productName,
+      times: Number(row.times || 0),
+      totalQuantity: Number(row.totalQuantity || 0),
+      lastPrice: Number(row.lastPrice || 0),
+      stockQuantity: Number(row.stockQuantity || 0),
+    }));
+  },
+};

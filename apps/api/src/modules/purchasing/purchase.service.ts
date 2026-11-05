@@ -45,9 +45,14 @@ const lineData = (line: ReturnType<typeof calculate>["details"][number]) => ({
 });
 
 export const purchaseService = {
-  async list(query: { page: number; limit: number; search?: string; status?: string }) {
+  async list(query: { page: number; limit: number; search?: string; status?: string; dateFrom?: string; dateTo?: string }) {
     const where: any = { deletedAt: null };
     if (query.status) where.documentStatus = query.status;
+    if (query.dateFrom || query.dateTo) {
+      where.documentDate = {};
+      if (query.dateFrom) where.documentDate.gte = query.dateFrom;
+      if (query.dateTo) where.documentDate.lte = query.dateTo;
+    }
     if (query.search) where.OR = [{ code: { contains: query.search } }, { suppliers: { name: { contains: query.search } } }];
     const [rows, total] = await Promise.all([
       purchaseRepository.list(where, (query.page - 1) * query.limit, query.limit), purchaseRepository.count(where),
@@ -110,7 +115,8 @@ export const purchaseService = {
       if (Number(current.version) !== version) throw new HttpError(409, "VERSION_CONFLICT", "Chứng từ đã được người khác cập nhật");
       const document = await tx.purchase_documents.findUnique({ where: { id }, include: purchaseInclude });
       if (!document || !document.purchase_document_details.length) throw new HttpError(422, "PURCHASE_EMPTY", "Chứng từ chưa có hàng hóa");
-      const postedAt = new Date();
+      // occurredAt theo ngày chứng từ (documentDate), không phải ngày xử lý
+      const postedAt = new Date(`${document.documentDate}T12:00:00.000Z`);
       const now = postedAt.toISOString();
       const links: Array<{ linkType: string; linkedId: bigint; linkedCode: string }> = [];
 
@@ -421,5 +427,20 @@ export const purchaseService = {
       await tx.audit_logs.create({ data: { action: "Xóa chứng từ mua hàng v1", details: current.code, userId, userName: String(userId), createdAt: nowIso() } });
       return { id };
     });
+  },
+  async suggestions(query: { supplierId?: number; search?: string; limit?: number }) {
+    const limit = Math.min(Math.max(query.limit || 12, 1), 50);
+    const rows = await purchaseRepository.suggestions(query.supplierId, query.search, limit);
+    return rows.map(row => ({
+      packagingId: Number(row.packagingId),
+      name: row.name,
+      sku: row.sku,
+      unit: row.unit,
+      productName: row.productName,
+      times: Number(row.times || 0),
+      totalQuantity: Number(row.totalQuantity || 0),
+      lastPrice: Number(row.lastPrice || 0),
+      stockQuantity: Number(row.stockQuantity || 0),
+    }));
   },
 };

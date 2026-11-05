@@ -29,7 +29,7 @@ import type {
 	Supplier,
 	Warehouse,
 } from "../types";
-import { formatDate, formatNumber } from "../lib/utils";
+import { formatDate, formatNumber, formatMonthLabel } from "../lib/utils";
 import { useMonthFilter } from "../hooks/useMonthFilter";
 import { apiV1, legacyApi } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
@@ -42,6 +42,9 @@ import { DateInput } from "../components/DateRangeCalendar";
 import TableActions from "../components/TableActions";
 import DetailOptionsMenu from "../components/DetailOptionsMenu";
 import ListToolbar from "../components/ListToolbar";
+import ProductSuggestions, {
+	type SuggestedProduct,
+} from "../components/ProductSuggestions";
 import type { FilterField, FilterValues } from "../components/FilterDrawer";
 import { exportExcelFile } from "../lib/excelExport";
 
@@ -151,6 +154,7 @@ export default function Purchases() {
 	const [selected, setSelected] = useState<PurchaseDocument | null>(null);
 	const [printTarget, setPrintTarget] = useState<PurchaseDocument | null>(null);
 	const [lines, setLines] = useState<Line[]>([emptyLine()]);
+	const [suggestionSearch, setSuggestionSearch] = useState("");
 	const editorFormRef = useRef<HTMLFormElement>(null);
 	const lineTableRef = useLineTableTab(() =>
 		setLines(current => [...current, emptyLine()]),
@@ -218,6 +222,7 @@ export default function Purchases() {
 		},
 	});
 	const type = form.watch("type");
+	const supplierId = form.watch("supplierId");
 	const purchaseCost = Number(form.watch("purchaseCost") || 0);
 
 	const references = useQuery({
@@ -239,11 +244,20 @@ export default function Purchases() {
 			return { suppliers, warehouses, products, costPriceMap };
 		},
 	});
+	const listDateFrom = filters.dateFrom || range.dateFrom;
+	const listDateTo = filters.dateTo || range.dateTo;
 	const documents = useQuery({
-		queryKey: ["purchase-documents-v1", page, search, status],
+		queryKey: [
+			"purchase-documents-v1",
+			page,
+			search,
+			status,
+			listDateFrom,
+			listDateTo,
+		],
 		queryFn: () =>
 			apiV1<PurchaseDocument[]>(
-				`/api/v1/purchase-documents?page=${page}&limit=20&search=${encodeURIComponent(search)}${status ? `&status=${status}` : ""}`,
+				`/api/v1/purchase-documents?page=${page}&limit=20&search=${encodeURIComponent(search)}${status ? `&status=${status}` : ""}${listDateFrom ? `&dateFrom=${listDateFrom}` : ""}${listDateTo ? `&dateTo=${listDateTo}` : ""}`,
 			),
 	});
 	const packagingOptions = useMemo(
@@ -288,6 +302,27 @@ export default function Purchases() {
 			})),
 		[references.data],
 	);
+
+	const suggestionsQuery = useQuery({
+		queryKey: ["purchase-suggestions", supplierId, suggestionSearch],
+		queryFn: () =>
+			apiV1<SuggestedProduct[]>(
+				`/api/v1/purchase-documents/suggestions?supplierId=${supplierId || 0}&limit=20&search=${encodeURIComponent(suggestionSearch)}`,
+			).then(response => response.data || []),
+		enabled: open && Number(supplierId) > 0,
+		staleTime: 30_000,
+	});
+	const suggestionHistoryQuery = useQuery({
+		queryKey: ["purchase-suggestions-history", supplierId],
+		queryFn: () =>
+			apiV1<SuggestedProduct[]>(
+				`/api/v1/purchase-documents/suggestions?supplierId=${supplierId}&limit=1`,
+			).then(response => response.data || []),
+		enabled: open && Number(supplierId) > 0,
+		staleTime: 60_000,
+	});
+	const hasSuggestionHistory =
+		Number(supplierId) > 0 && (suggestionHistoryQuery.data?.length ?? 0) > 0;
 
 	const applyPackagingCost = (index: number, packagingId: number) => {
 		const cost = references.data?.costPriceMap?.get(packagingId) || 0;
@@ -377,6 +412,7 @@ export default function Purchases() {
 
 	const openCreate = () => {
 		setEditing(null);
+		setSuggestionSearch("");
 		setLines([emptyLine()]);
 		form.reset({
 			documentDate: today(),
@@ -460,6 +496,7 @@ export default function Purchases() {
 	};
 	const openEdit = (document: PurchaseDocument) => {
 		setEditing(document);
+		setSuggestionSearch("");
 		setLines(
 			document.details.map(line => ({
 				packagingId: line.packagingId,
@@ -487,6 +524,7 @@ export default function Purchases() {
 	};
 	const duplicate = (document: PurchaseDocument) => {
 		setEditing(null);
+		setSuggestionSearch("");
 		setLines(
 			document.details.map(line => ({
 				packagingId: line.packagingId,
@@ -556,6 +594,50 @@ export default function Purchases() {
 				position === index ? { ...line, ...patch } : line,
 			),
 		);
+	const addSuggestedProduct = (item: SuggestedProduct) => {
+		if (lines.some(line => line.packagingId === item.packagingId)) return;
+		const unitPrice =
+			references.data?.costPriceMap?.get(item.packagingId) ??
+			Number(item.lastPrice || 0);
+		const nextLine: Line = {
+			...emptyLine(),
+			packagingId: item.packagingId,
+			unitPrice,
+		};
+		const blankIndex = lines.findIndex(line => !line.packagingId);
+		if (blankIndex >= 0) {
+			setLines(current =>
+				current.map((line, index) =>
+					index === blankIndex ? { ...line, ...nextLine } : line,
+				),
+			);
+		} else {
+			setLines(current => [...current, nextLine]);
+		}
+	};
+	const addSuggestedProducts = (items: SuggestedProduct[]) => {
+		const additions = items.filter(
+			item => !lines.some(line => line.packagingId === item.packagingId),
+		);
+		if (!additions.length) return;
+		setLines(current => {
+			const next = current.map(line => ({ ...line }));
+			for (const item of additions) {
+				if (next.some(line => line.packagingId === item.packagingId)) continue;
+				const line: Line = {
+					...emptyLine(),
+					packagingId: item.packagingId,
+					unitPrice:
+						references.data?.costPriceMap?.get(item.packagingId) ??
+						Number(item.lastPrice || 0),
+				};
+				const blankIndex = next.findIndex(candidate => !candidate.packagingId);
+				if (blankIndex >= 0) next[blankIndex] = { ...next[blankIndex], ...line };
+				else next.push(line);
+			}
+			return next;
+		});
+	};
 	const goods = lines.reduce(
 		(sum, line) => sum + Number(line.quantity) * Number(line.unitPrice),
 		0,
@@ -670,22 +752,24 @@ export default function Purchases() {
 				<div className="erp-stat">
 					<FileClock />
 					<div>
-						<span>Chứng từ nháp trang này</span>
+						<span>Chứng từ nháp tháng này</span>
 						<strong>
 							{rows.filter(x => x.documentStatus === "DRAFT").length}
 						</strong>
+						<em className="erp-stat-month">{formatMonthLabel(month)}</em>
 					</div>
 				</div>
 				<div className="erp-stat">
 					<Banknote />
 					<div>
-						<span>Tổng thanh toán trang này</span>
+						<span>Tổng thanh toán tháng này</span>
 						<strong>
 							{formatNumber(
 								rows.reduce((sum, row) => sum + Number(row.totalAmount), 0),
 							)}{" "}
 							₫
 						</strong>
+						<em className="erp-stat-month">{formatMonthLabel(month)}</em>
 					</div>
 				</div>
 			</div>
@@ -1014,6 +1098,29 @@ export default function Purchases() {
 										<input {...form.register("deliveryPerson")} />
 									</label>
 								</div>
+								{hasSuggestionHistory && (
+									<ProductSuggestions
+										key={`purchase-${supplierId}`}
+										subtitle={
+										supplierId
+											? `Các sản phẩm thường mua từ ${
+													references.data?.suppliers.find(
+														supplier => supplier.id === supplierId,
+													)?.name || "nhà cung cấp này"
+												}`
+											: "Các sản phẩm được mua thường xuyên"
+									}
+									items={suggestionsQuery.data || []}
+									loading={suggestionsQuery.isLoading}
+									search={suggestionSearch}
+									onSearchChange={setSuggestionSearch}
+									isAdded={packagingId =>
+										lines.some(line => line.packagingId === packagingId)
+									}
+									onAdd={addSuggestedProduct}
+									onAddAll={addSuggestedProducts}
+									/>
+								)}
 								<div className="overflow-x-auto border rounded">
 									<table ref={lineTableRef} className="erp-table">
 										<thead>

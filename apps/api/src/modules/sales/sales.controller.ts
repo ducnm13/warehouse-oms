@@ -13,6 +13,16 @@ export const salesController = {
     const result = await salesService.list(req.query as any);
     res.json({ success: true, message: "Lấy danh sách bán hàng thành công", data: result.data, meta: result.meta });
   },
+  async suggestions(req: Request, res: Response) {
+    const customerId = req.query.customerId ? Number(req.query.customerId) : undefined;
+    const search = typeof req.query.search === "string" ? req.query.search.trim() : undefined;
+    const limit = req.query.limit ? Number(req.query.limit) : undefined;
+    res.json({
+      success: true,
+      message: "OK",
+      data: await salesService.suggestions({ customerId, search, limit }),
+    });
+  },
   async get(req: Request, res: Response) {
     res.json({ success: true, message: "Lấy chứng từ bán hàng thành công", data: await salesService.get(id(req)) });
   },

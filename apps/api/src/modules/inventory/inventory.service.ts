@@ -174,7 +174,8 @@ export const inventoryService = {
       if (!["DRAFT", "CANCELLED"].includes(current.documentStatus) || current.sourceModule !== "MANUAL_V1") throw new HttpError(409, "INVALID_STATUS", "Chứng từ không ở trạng thái nháp V1");
       const document = await tx.inventorytransactions.findUnique({ where: { id }, include: inventoryInclude });
       if (!document?.warehouseId) throw new HttpError(409, "MISSING_WAREHOUSE", "Chứng từ chưa có kho");
-      const occurredAt = new Date(), now = nowIso();
+      // occurredAt theo ngày chứng từ (transaction_date), không phải ngày xử lý
+      const occurredAt = new Date(`${document.transaction_date}T12:00:00.000Z`), now = nowIso();
       for (const line of document.inventorytransactiondetails) {
         if (!line.packagingId) throw new HttpError(409, "MISSING_ITEM", "Dòng chứng từ thiếu hàng hóa");
         const quantity = Number(line.quantity), balance = await lockBalance(tx, line.packagingId, document.warehouseId);
@@ -396,7 +397,9 @@ export const stocktakeService = {
         if (difference > 0.0001) positive.push({ line, quantity: difference });
         if (difference < -0.0001) negative.push({ line, quantity: Math.abs(difference) });
       }
-      const now = nowIso(), occurredAt = new Date();
+      const now = nowIso();
+      // occurredAt theo ngày kiểm kê (date), không phải ngày xử lý
+      const occurredAt = new Date(`${document.date || now.slice(0, 10)}T12:00:00.000Z`);
       const postGroup = async (type: "IMPORT" | "EXPORT", lines: any[]) => {
         if (!lines.length) return;
         const scope = type === "IMPORT" ? "inventory_import" : "inventory_export";

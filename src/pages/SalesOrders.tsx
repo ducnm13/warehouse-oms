@@ -40,6 +40,9 @@ import { useLineTableTab } from "../hooks/useLineTableTab";
 import TableActions from "../components/TableActions";
 import DetailOptionsMenu from "../components/DetailOptionsMenu";
 import ListToolbar from "../components/ListToolbar";
+import ProductSuggestions, {
+	type SuggestedProduct,
+} from "../components/ProductSuggestions";
 import type { FilterField, FilterValues } from "../components/FilterDrawer";
 import { exportExcelFile } from "../lib/excelExport";
 import { comboBoms, comboOptionLabel, isComboPackaging } from "../lib/combo";
@@ -53,6 +56,7 @@ import {
 	formatNumberInput,
 	formatProductName,
 	parseNumberWithSeparators,
+	formatMonthLabel,
 } from "../lib/utils";
 import { useMonthFilter } from "../hooks/useMonthFilter";
 import {
@@ -229,6 +233,7 @@ export default function SalesOrders() {
 	};
 	const relatedTypeLabel = (type: string) => relatedTypeMeta[type] || type;
 	const [lines, setLines] = useState<Line[]>([emptyLine()]);
+	const [suggestionSearch, setSuggestionSearch] = useState("");
 	const editorFormRef = useRef<HTMLFormElement>(null);
 	const lineTableRef = useLineTableTab(() =>
 		setLines(current => [...current, emptyLine()]),
@@ -411,18 +416,18 @@ export default function SalesOrders() {
 		if (!group) return 0;
 		return Number(group.priceBookId || group.priceBook?.id || 0);
 	};
+	const listDateFrom = filters.dateFrom || range.dateFrom;
+	const listDateTo = filters.dateTo || range.dateTo;
 	const documents = useQuery({
-		queryKey: ["sales-documents-v1", page, search, status],
+		queryKey: ["sales-documents-v1", page, search, status, listDateFrom, listDateTo],
 		queryFn: () =>
 			apiV1<SalesOrder[]>(
-				`/api/v1/sales-documents?page=${page}&limit=20&search=${encodeURIComponent(search)}${status ? `&status=${status}` : ""}`,
+				`/api/v1/sales-documents?page=${page}&limit=20&search=${encodeURIComponent(search)}${status ? `&status=${status}` : ""}${listDateFrom ? `&dateFrom=${listDateFrom}` : ""}${listDateTo ? `&dateTo=${listDateTo}` : ""}`,
 			),
 	});
 	const orders = documents.data?.data || [];
 	const meta = documents.data?.meta as any;
 	const visibleOrders = useMemo(() => {
-		const from = filters.dateFrom || range.dateFrom;
-		const to = filters.dateTo || range.dateTo;
 		return orders.filter(order => {
 			if (filters.paymentStatus) {
 				if (filters.paymentStatus === "UNPAID") {
@@ -436,8 +441,8 @@ export default function SalesOrders() {
 				if (filters.deliveryStatus === "PENDING" && delivered) return false;
 			}
 			const date = (order.orderDate || "").slice(0, 10);
-			if (from && date < from) return false;
-			if (to && date > to) return false;
+			if (listDateFrom && date < listDateFrom) return false;
+			if (listDateTo && date > listDateTo) return false;
 			return true;
 		});
 	}, [orders, filters, range]);
@@ -823,6 +828,7 @@ export default function SalesOrders() {
 	};
 	const openCreate = () => {
 		setEditing(null);
+		setSuggestionSearch("");
 		setLines([emptyLine()]);
 		promotionPreview.reset();
 		const firstCustomer = references.data?.customers[0];
@@ -846,6 +852,7 @@ export default function SalesOrders() {
 		setOpen(true);
 	};
 	const openEdit = (document: SalesOrder) => {
+		setSuggestionSearch("");
 		if (document.status === "POSTED" || document.status === "CANCELLED") {
 			toast.error(
 				"Đơn đã lưu phải bấm Hủy lưu để khôi phục tồn kho rồi mới sửa",
@@ -893,6 +900,7 @@ export default function SalesOrders() {
 	};
 	const duplicate = (document: SalesOrder) => {
 		setEditing(null);
+		setSuggestionSearch("");
 		setLines(
 			document.details
 				.filter(line => line.lineType !== "PROMOTION")
@@ -929,6 +937,27 @@ export default function SalesOrders() {
 
 	// Auto-update price book when customer changes (theo nhóm KH của khách)
 	const selectedCustomerId = form.watch("customerId");
+	const salesSuggestionsQuery = useQuery({
+		queryKey: ["sales-suggestions", selectedCustomerId, suggestionSearch],
+		queryFn: () =>
+			apiV1<SuggestedProduct[]>(
+				`/api/v1/sales-documents/suggestions?customerId=${selectedCustomerId || 0}&limit=20&search=${encodeURIComponent(suggestionSearch)}`,
+			).then(response => response.data || []),
+		enabled: open && Number(selectedCustomerId) > 0,
+		staleTime: 30_000,
+	});
+	const salesSuggestionHistoryQuery = useQuery({
+		queryKey: ["sales-suggestions-history", selectedCustomerId],
+		queryFn: () =>
+			apiV1<SuggestedProduct[]>(
+				`/api/v1/sales-documents/suggestions?customerId=${selectedCustomerId}&limit=1`,
+			).then(response => response.data || []),
+		enabled: open && Number(selectedCustomerId) > 0,
+		staleTime: 60_000,
+	});
+	const hasSalesSuggestionHistory =
+		Number(selectedCustomerId) > 0 &&
+		(salesSuggestionHistoryQuery.data?.length ?? 0) > 0;
 	useEffect(() => {
 		if (selectedCustomerId) {
 			const priceBookId = getCustomerPriceBookId(selectedCustomerId);
@@ -1119,8 +1148,74 @@ export default function SalesOrders() {
 			const price = await fetchPackagingSalePrice(packagingId);
 			if (price > 0) updateLine(index, { packagingId, unitPrice: price });
 		} catch {
-			// Giữ đơn giá hiện tại nếu không lấy được bảng giá.
+			// Gi��_ �`��n giA� hi���n t���i n���u khA'ng l���y �`�����c b���ng giA�.
 		}
+	};
+
+	const addSuggestedProduct = (item: SuggestedProduct) => {
+		if (lines.some(line => line.packagingId === item.packagingId)) return;
+		const blankIndex = lines.findIndex(line => !line.packagingId);
+		const targetIndex = blankIndex >= 0 ? blankIndex : lines.length;
+		const nextLine: Line = {
+			...emptyLine(),
+			packagingId: item.packagingId,
+			unitPrice: Number(item.lastPrice || 0),
+		};
+		if (blankIndex >= 0) {
+			setLines(current =>
+				current.map((line, index) =>
+					index === blankIndex ? { ...line, ...nextLine } : line,
+				),
+			);
+		} else {
+			setLines(current => [...current, nextLine]);
+		}
+		void applyPackagingPrice(targetIndex, item.packagingId);
+	};
+	const addSuggestedProducts = (items: SuggestedProduct[]) => {
+		const additions = items.filter(
+			item => !lines.some(line => line.packagingId === item.packagingId),
+		);
+		if (!additions.length) return;
+		setLines(current => {
+			const next = current.map(line => ({ ...line }));
+			for (const item of additions) {
+				if (next.some(line => line.packagingId === item.packagingId)) continue;
+				const line: Line = {
+					...emptyLine(),
+					packagingId: item.packagingId,
+					unitPrice: Number(item.lastPrice || 0),
+				};
+				const blankIndex = next.findIndex(candidate => !candidate.packagingId);
+				if (blankIndex >= 0) next[blankIndex] = { ...next[blankIndex], ...line };
+				else next.push(line);
+			}
+			return next;
+		});
+		void (async () => {
+			const prices = await Promise.all(
+				additions.map(async item => {
+					try {
+						return {
+							id: item.packagingId,
+							price: await fetchPackagingSalePrice(item.packagingId),
+						};
+					} catch {
+						return null;
+					}
+				}),
+			);
+			setLines(current =>
+				current.map(line => {
+					const found = prices.find(
+						item => item && item.id === line.packagingId,
+					);
+					return found && found.price > 0
+						? { ...line, unitPrice: found.price }
+						: line;
+				}),
+			);
+		})();
 	};
 
 	const deleteMutation = useMutation({
@@ -1430,16 +1525,17 @@ export default function SalesOrders() {
 				<div className="erp-stat">
 					<PackageCheck />
 					<div>
-						<span>Đã lưu trang này</span>
+						<span>Đã lưu tháng này</span>
 						<strong>
 							{orders.filter(order => order.status === "POSTED").length}
 						</strong>
+						<em className="erp-stat-month">{formatMonthLabel(month)}</em>
 					</div>
 				</div>
 				<div className="erp-stat">
 					<CircleDollarSign />
 					<div>
-						<span>Doanh số trang này</span>
+						<span>Doanh số tháng này</span>
 						<strong>
 							{formatNumber(
 								orders
@@ -1448,6 +1544,7 @@ export default function SalesOrders() {
 							)}{" "}
 							₫
 						</strong>
+						<em className="erp-stat-month">{formatMonthLabel(month)}</em>
 					</div>
 				</div>
 			</div>
@@ -1862,6 +1959,30 @@ export default function SalesOrders() {
 										</select>
 									</label>
 								</div>
+								{hasSalesSuggestionHistory && (
+									<ProductSuggestions
+										key={`sales-${selectedCustomerId}`}
+										subtitle={
+										selectedCustomerId
+											? `Các sản phẩm thường bán cho ${
+													references.data?.customers.find(
+														customer =>
+															customer.id === selectedCustomerId,
+													)?.name || "khách hàng này"
+												}`
+											: "Các sản phẩm được bán thường xuyên"
+									}
+									items={salesSuggestionsQuery.data || []}
+									loading={salesSuggestionsQuery.isLoading}
+									search={suggestionSearch}
+									onSearchChange={setSuggestionSearch}
+									isAdded={packagingId =>
+										lines.some(line => line.packagingId === packagingId)
+									}
+									onAdd={addSuggestedProduct}
+									onAddAll={addSuggestedProducts}
+									/>
+								)}
 								<div className="overflow-x-auto border rounded">
 									<table ref={lineTableRef} className="erp-table">
 										<thead>
