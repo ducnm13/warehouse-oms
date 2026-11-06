@@ -20,8 +20,10 @@
 		"prisma:generate": "prisma generate --schema packages/database/prisma/schema.prisma",
 		"prisma:push": "prisma db push --schema packages/database/prisma/schema.prisma",
 		"prisma:studio": "prisma studio --schema packages/database/prisma/schema.prisma",
-		"db:reset-operational": "tsx scripts/reset-operational-data.ts",
-		"db:dump": "tsx scripts/dump-database.ts"
+    "db:reset-operational": "tsx scripts/reset-operational-data.ts",
+    "db:reset-month": "tsx scripts/reset-month-documents.ts",
+    "db:restore": "tsx scripts/restore-database.ts",
+    "db:dump": "tsx scripts/dump-database.ts"
 	},
 	"dependencies": {
 		"@google/genai": "^1.29.0",

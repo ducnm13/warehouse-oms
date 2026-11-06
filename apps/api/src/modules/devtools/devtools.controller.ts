@@ -55,7 +55,22 @@ export const devtoolsController = {
       req.auth.userId,
       req.auth.username,
       req.body?.confirm,
+      req.body?.params,
     );
     res.json({ success: true, message: "Đã chạy xong script", data });
+  },
+
+  backups: async (_req: any, res: any) => {
+    res.json({ success: true, message: "OK", data: await devtoolsService.listBackups() });
+  },
+
+  restoreBackup: async (req: any, res: any) => {
+    const data = await devtoolsService.restoreBackup(
+      String(req.body?.file || ""),
+      req.auth.userId,
+      req.auth.username,
+      req.body?.confirm,
+    );
+    res.json({ success: true, message: "Đã khôi phục CSDL", data });
   },
 };

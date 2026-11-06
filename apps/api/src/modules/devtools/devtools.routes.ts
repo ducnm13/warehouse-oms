@@ -38,3 +38,5 @@ devtoolsRouter.post("/database/row/delete", asyncHandler(devtoolsController.dele
 devtoolsRouter.post("/database/query", asyncHandler(devtoolsController.query));
 devtoolsRouter.get("/scripts", asyncHandler(devtoolsController.scripts));
 devtoolsRouter.post("/scripts/:id/run", asyncHandler(devtoolsController.runScript));
+devtoolsRouter.get("/backups", asyncHandler(devtoolsController.backups));
+devtoolsRouter.post("/backups/restore", asyncHandler(devtoolsController.restoreBackup));

@@ -172,7 +172,6 @@ export default function Stocktake() {
 			{ header: "SKU", key: "sku", width: 22 },
 			{ header: "Tên hàng hóa", key: "name", width: 42 },
 			{ header: "ĐVT", key: "unit", width: 12 },
-			{ header: "Tồn sổ", key: "expected", width: 16 },
 			{ header: "Tồn thực tế", key: "actual", width: 16 },
 		];
 		for (const line of lines.slice(0, 20)) {
@@ -180,8 +179,7 @@ export default function Stocktake() {
 				sku: line.sku || "",
 				name: formatProductName(line.productName, line.packagingName),
 				unit: line.unit || "",
-				expected: line.expectedQuantity,
-				actual: line.expectedQuantity,
+				actual: "",
 			});
 		}
 		const buffer = await workbook.xlsx.writeBuffer();
@@ -191,6 +189,94 @@ export default function Stocktake() {
 				type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 			}),
 			"Mau_Kiem_Ke_Kho.xlsx",
+		);
+	};
+	const exportStocktakeDocument = async (document: StocktakeV1) => {
+		const workbook = new ExcelJS.Workbook();
+		const sheet = workbook.addWorksheet("Phieu kiem ke");
+		[8, 20, 42, 12, 16, 16, 16].forEach((width, index) => {
+			sheet.getColumn(index + 1).width = width;
+		});
+
+		const title = sheet.addRow(["PHIẾU KIỂM KÊ KHO"]);
+		sheet.mergeCells(`A${title.number}:G${title.number}`);
+		title.getCell(1).font = { bold: true, size: 16 };
+		title.getCell(1).alignment = { horizontal: "center" };
+
+		const infoOne = sheet.addRow([
+			`Mã phiếu: ${document.code}`,
+			"",
+			"",
+			`Ngày: ${formatDate(document.date)}`,
+		]);
+		sheet.mergeCells(`A${infoOne.number}:B${infoOne.number}`);
+		sheet.mergeCells(`D${infoOne.number}:G${infoOne.number}`);
+
+		const infoTwo = sheet.addRow([
+			`Kho: ${document.warehouseName || document.warehouseId}`,
+			"",
+			"",
+			`Trạng thái: ${statusMeta[document.status]?.label || document.status}`,
+		]);
+		sheet.mergeCells(`A${infoTwo.number}:B${infoTwo.number}`);
+		sheet.mergeCells(`D${infoTwo.number}:G${infoTwo.number}`);
+
+		const noteRow = sheet.addRow([`Ghi chú: ${document.note || ""}`]);
+		sheet.mergeCells(`A${noteRow.number}:G${noteRow.number}`);
+
+		sheet.addRow([]);
+		const header = sheet.addRow([
+			"STT",
+			"SKU",
+			"Hàng hóa / Quy cách",
+			"ĐVT",
+			"Tồn sổ",
+			"Thực tế",
+			"Chênh lệch",
+		]);
+		header.font = { bold: true };
+		header.fill = {
+			type: "pattern",
+			pattern: "solid",
+			fgColor: { argb: "FFE9E3FF" },
+		};
+		header.alignment = { horizontal: "center", vertical: "middle" };
+
+		document.details.forEach((line, index) => {
+			const row = sheet.addRow([
+				index + 1,
+				line.sku || "",
+				formatProductName(line.productName, line.packagingName),
+				line.unit || "",
+				Number(line.expectedQuantity),
+				Number(line.actualQuantity),
+				Number(line.difference),
+			]);
+			row.getCell(5).numFmt = "#,##0.####";
+			row.getCell(6).numFmt = "#,##0.####";
+			row.getCell(7).numFmt = "#,##0.####";
+		});
+
+		const lastRow = header.number + document.details.length;
+		for (let rowNumber = header.number; rowNumber <= lastRow; rowNumber += 1) {
+			for (let column = 1; column <= 7; column += 1) {
+				const cell = sheet.getCell(rowNumber, column);
+				cell.border = {
+					top: { style: "thin", color: { argb: "FFD9DEEB" } },
+					left: { style: "thin", color: { argb: "FFD9DEEB" } },
+					bottom: { style: "thin", color: { argb: "FFD9DEEB" } },
+					right: { style: "thin", color: { argb: "FFD9DEEB" } },
+				};
+			}
+		}
+
+		const buffer = await workbook.xlsx.writeBuffer();
+		const { saveAs } = await import("file-saver");
+		saveAs(
+			new Blob([buffer], {
+				type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+			}),
+			`Phieu_Kiem_Ke_${document.code}.xlsx`,
 		);
 	};
 	const importExcel = async (file?: File) => {
@@ -206,7 +292,34 @@ export default function Stocktake() {
 					.replace(/[\u0300-\u036f]/g, "")
 					.toLowerCase()
 					.trim();
-			const headerRow = sheet.getRow(1);
+			let headerRowNumber = 0;
+			for (
+				let rowNumber = 1;
+				rowNumber <= Math.min(sheet.rowCount, 20);
+				rowNumber += 1
+			) {
+				const cells: string[] = [];
+				sheet
+					.getRow(rowNumber)
+					.eachCell({ includeEmpty: false }, cell =>
+						cells.push(norm(cell.value)),
+					);
+				const hasSku = cells.some(
+					value => value.includes("sku") || value.includes("ma hang"),
+				);
+				const hasActual = cells.some(
+					value => value.includes("thuc te") || value.includes("actual"),
+				);
+				if (hasSku && hasActual) {
+					headerRowNumber = rowNumber;
+					break;
+				}
+			}
+			if (!headerRowNumber)
+				throw new Error(
+					"Không tìm thấy dòng tiêu đề có cột SKU và Tồn thực tế. Vui lòng dùng file mẫu.",
+				);
+			const headerRow = sheet.getRow(headerRowNumber);
 			const headers = new Map<string, number>();
 			headerRow.eachCell({ includeEmpty: false }, (cell, column) => {
 				headers.set(norm(cell.value), column);
@@ -230,7 +343,7 @@ export default function Stocktake() {
 			const values = new Map<string, number>();
 			const invalidRows: string[] = [];
 			sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-				if (rowNumber === 1) return;
+				if (rowNumber <= headerRowNumber) return;
 				const sku = String(row.getCell(skuColumn).value ?? "").trim();
 				const rawActual = row.getCell(actualColumn).value;
 				if (
@@ -966,6 +1079,12 @@ export default function Stocktake() {
 										label: "In biên bản",
 										icon: <Printer size={15} />,
 										onClick: () => setPrintTarget(selected),
+									},
+									{
+										key: "excel",
+										label: "Xuất Excel",
+										icon: <FileSpreadsheet size={15} />,
+										onClick: () => void exportStocktakeDocument(selected),
 									},
 									{
 										key: "duplicate",

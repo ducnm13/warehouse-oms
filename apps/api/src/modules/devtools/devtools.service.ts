@@ -1,4 +1,6 @@
 import os from "node:os";
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { prisma } from "@challenge/database";
@@ -44,6 +46,14 @@ function splitStatements(sql: string): string[] {
   return statements;
 }
 
+export type DevScriptParam = {
+  name: string;
+  label: string;
+  placeholder?: string;
+  required?: boolean;
+  pattern?: string;
+};
+
 export type DevScript = {
   id: string;
   label: string;
@@ -53,6 +63,8 @@ export type DevScript = {
   dangerous: boolean;
   confirmPhrase?: string;
   timeoutMs: number;
+  params?: DevScriptParam[];
+  backupBeforeRun?: boolean;
 };
 
 const SCRIPTS: DevScript[] = [
@@ -84,6 +96,50 @@ const SCRIPTS: DevScript[] = [
     dangerous: true,
     confirmPhrase: "XOA DU LIEU BAN HANG",
     timeoutMs: 300_000,
+  },
+  {
+    id: "reset-month-dry-run",
+    label: "Kiểm tra chứng từ theo tháng",
+    description: "Chạy thử script xóa chứng từ theo tháng (chỉ đếm, không xóa).",
+    command: "npx",
+    args: ["tsx", "scripts/reset-month-documents.ts", "--month={{month}}"],
+    dangerous: false,
+    timeoutMs: 180_000,
+    params: [
+      {
+        name: "month",
+        label: "Tháng",
+        placeholder: "YYYY-MM",
+        required: true,
+        pattern: "^\\d{4}-(0[1-9]|1[0-2])$",
+      },
+    ],
+  },
+  {
+    id: "reset-month",
+    label: "Xóa chứng từ theo tháng",
+    description:
+      "Hoàn tác kho/công nợ và xóa toàn bộ chứng từ phát sinh trong tháng đã chọn, giữ lại lệnh sản xuất, danh mục và tồn đầu kỳ.",
+    command: "npx",
+    args: [
+      "tsx",
+      "scripts/reset-month-documents.ts",
+      "--month={{month}}",
+      "--yes",
+    ],
+    dangerous: true,
+    confirmPhrase: "XOA CHUNG TU THANG",
+    timeoutMs: 600_000,
+    backupBeforeRun: true,
+    params: [
+      {
+        name: "month",
+        label: "Tháng",
+        placeholder: "YYYY-MM",
+        required: true,
+        pattern: "^\\d{4}-(0[1-9]|1[0-2])$",
+      },
+    ],
   },
   {
     id: "dump-database",
@@ -251,6 +307,47 @@ async function getDatabaseOverview() {
     host: process.env.DB_HOST || process.env.HOST || "localhost",
     port: toNumber(process.env.DB_PORT || 3306),
   };
+}
+
+const backupsDir = () => path.resolve(process.env.DUMP_DIR || path.join(projectRoot(), "backups"));
+
+function runProcess(
+  command: string,
+  args: string[],
+  timeoutMs: number,
+  append: (chunk: Buffer | string) => void,
+) {
+  return new Promise<{ exitCode: number | null; timedOut: boolean }>(resolve => {
+    let timedOut = false;
+    const child = spawn(command, args, {
+      cwd: projectRoot(),
+      env: process.env,
+      shell: process.platform === "win32",
+      windowsHide: true,
+    });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try {
+        if (process.platform === "win32" && child.pid) {
+          execFile("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true }, () => {});
+        } else {
+          child.kill("SIGKILL");
+        }
+      } catch {
+        child.kill();
+      }
+    }, timeoutMs);
+
+    child.stdout?.on("data", append);
+    child.stderr?.on("data", append);
+    child.on("error", error => {
+      append(`\n${error.message}\n`);
+    });
+    child.on("close", code => {
+      clearTimeout(timer);
+      resolve({ exitCode: code, timedOut });
+    });
+  });
 }
 
 export const devtoolsService = {
@@ -529,6 +626,8 @@ export const devtoolsService = {
       dangerous: script.dangerous,
       confirmPhrase: script.confirmPhrase || null,
       timeoutMs: script.timeoutMs,
+      params: script.params || [],
+      backupBeforeRun: script.backupBeforeRun === true,
       command: [script.command, ...script.args].join(" "),
     }));
   },
@@ -537,7 +636,13 @@ export const devtoolsService = {
     return activeRun;
   },
 
-  async runScript(id: string, userId: number, username: string, confirm?: string) {
+  async runScript(
+    id: string,
+    userId: number,
+    username: string,
+    confirm?: string,
+    params?: Record<string, unknown>,
+  ) {
     const script = SCRIPTS.find(item => item.id === id);
     if (!script) throw new HttpError(404, "SCRIPT_NOT_FOUND", "Không tìm thấy script");
     if (activeRun) {
@@ -546,6 +651,20 @@ export const devtoolsService = {
     if (script.dangerous && String(confirm || "").trim() !== script.confirmPhrase) {
       throw new HttpError(400, "CONFIRM_REQUIRED", `Nhập chính xác "${script.confirmPhrase}" để xác nhận`);
     }
+
+    const resolvedArgs = script.args.map(arg =>
+      arg.replace(/\{\{(\w+)\}\}/g, (_match, name: string) => {
+        const definition = script.params?.find(item => item.name === name);
+        const value = String(params?.[name] ?? "").trim();
+        if (definition?.required && !value) {
+          throw new HttpError(400, "PARAM_REQUIRED", `Thiếu tham số "${definition.label}"`);
+        }
+        if (definition?.pattern && !new RegExp(definition.pattern).test(value)) {
+          throw new HttpError(400, "PARAM_INVALID", `Tham số "${definition.label}" không hợp lệ`);
+        }
+        return value;
+      }),
+    );
 
     activeRun = { id, startedAt: new Date().toISOString() };
     const startedAt = Date.now();
@@ -556,37 +675,26 @@ export const devtoolsService = {
       if (output.length > 200_000) output = output.slice(-200_000);
     };
 
-    const result = await new Promise<{ exitCode: number | null; timedOut: boolean }>(resolve => {
-      let timedOut = false;
-      const child = spawn(script.command, script.args, {
-        cwd: projectRoot(),
-        env: process.env,
-        shell: process.platform === "win32",
-        windowsHide: true,
-      });
-      const timer = setTimeout(() => {
-        timedOut = true;
-        try {
-          if (process.platform === "win32" && child.pid) {
-            execFile("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true }, () => {});
-          } else {
-            child.kill("SIGKILL");
-          }
-        } catch {
-          child.kill();
-        }
-      }, script.timeoutMs);
+    let result = { exitCode: 0 as number | null, timedOut: false };
+    if (script.backupBeforeRun) {
+      append("\n=== Sao lưu CSDL trước khi xóa ===\n");
+      result = await runProcess("npx", ["tsx", "scripts/dump-database.ts"], 300_000, append);
+      if (result.exitCode !== 0 || result.timedOut) {
+        append("\nSao lưu thất bại, đã dừng thao tác xóa.\n");
+        const durationMs = Date.now() - startedAt;
+        activeRun = null;
+        return {
+          scriptId: script.id,
+          exitCode: result.exitCode,
+          timedOut: result.timedOut,
+          durationMs,
+          output: output.trim() || "(không có output)",
+        };
+      }
+      append("\n=== Sao lưu xong, bắt đầu xóa ===\n");
+    }
 
-      child.stdout?.on("data", append);
-      child.stderr?.on("data", append);
-      child.on("error", error => {
-        append(`\n${error.message}\n`);
-      });
-      child.on("close", code => {
-        clearTimeout(timer);
-        resolve({ exitCode: code, timedOut });
-      });
-    });
+    result = await runProcess(script.command, resolvedArgs, script.timeoutMs, append);
 
     const durationMs = Date.now() - startedAt;
     activeRun = null;
@@ -602,6 +710,83 @@ export const devtoolsService = {
 
     return {
       scriptId: script.id,
+      exitCode: result.exitCode,
+      timedOut: result.timedOut,
+      durationMs,
+      output: output.trim() || "(không có output)",
+    };
+  },
+
+  async listBackups() {
+    const dir = backupsDir();
+    await fs.mkdir(dir, { recursive: true });
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    const files = await Promise.all(
+      entries
+        .filter(entry => entry.isFile() && entry.name.toLowerCase().endsWith(".sql"))
+        .map(async entry => {
+          const stat = await fs.stat(path.join(dir, entry.name));
+          return {
+            name: entry.name,
+            sizeBytes: stat.size,
+            modifiedAt: stat.mtime.toISOString(),
+          };
+        }),
+    );
+    return files.sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
+  },
+
+  async restoreBackup(file: string, userId: number, username: string, confirm?: string) {
+    if (activeRun) {
+      throw new HttpError(409, "SCRIPT_RUNNING", `Script "${activeRun.id}" đang chạy, vui lòng đợi`);
+    }
+    if (String(confirm || "").trim() !== "KHOI PHUC CSDL") {
+      throw new HttpError(400, "CONFIRM_REQUIRED", 'Nhập chính xác "KHOI PHUC CSDL" để xác nhận');
+    }
+
+    const requested = String(file || "").trim();
+    const name = path.basename(requested);
+    if (!requested || name !== requested || !/\.sql$/i.test(name)) {
+      throw new HttpError(400, "INVALID_BACKUP", "Tên file backup không hợp lệ");
+    }
+    const fullPath = path.join(backupsDir(), name);
+    try {
+      const stat = await fs.stat(fullPath);
+      if (!stat.isFile()) throw new Error("not a file");
+    } catch {
+      throw new HttpError(404, "BACKUP_NOT_FOUND", "Không tìm thấy file backup");
+    }
+
+    const id = `restore:${name}`;
+    activeRun = { id, startedAt: new Date().toISOString() };
+    const startedAt = Date.now();
+    let output = "";
+    const append = (chunk: Buffer | string) => {
+      output += chunk.toString();
+      if (output.length > 200_000) output = output.slice(-200_000);
+    };
+
+    const result = await runProcess(
+      "npx",
+      ["tsx", "scripts/restore-database.ts", `--file=${fullPath}`, "--yes"],
+      600_000,
+      append,
+    );
+
+    const durationMs = Date.now() - startedAt;
+    activeRun = null;
+    void prisma.audit_logs.create({
+      data: {
+        action: "Khôi phục CSDL dev",
+        details: `${name} · exit ${result.exitCode ?? "-"} · ${Math.round(durationMs / 1000)}s`,
+        userId,
+        userName: username,
+        createdAt: new Date().toISOString(),
+      },
+    }).catch(() => {});
+
+    return {
+      scriptId: id,
       exitCode: result.exitCode,
       timedOut: result.timedOut,
       durationMs,

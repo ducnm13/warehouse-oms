@@ -12,6 +12,7 @@ import {
 	MemoryStick,
 	Play,
 	RefreshCw,
+	RotateCcw,
 	Save,
 	Search,
 	Server,
@@ -117,6 +118,14 @@ interface TableData {
 
 type RowEdits = Record<number, Record<string, any>>;
 
+interface ScriptParam {
+	name: string;
+	label: string;
+	placeholder?: string;
+	required?: boolean;
+	pattern?: string;
+}
+
 interface ScriptInfo {
 	id: string;
 	label: string;
@@ -124,7 +133,15 @@ interface ScriptInfo {
 	dangerous: boolean;
 	confirmPhrase: string | null;
 	timeoutMs: number;
+	params: ScriptParam[];
+	backupBeforeRun?: boolean;
 	command: string;
+}
+
+interface BackupInfo {
+	name: string;
+	sizeBytes: number;
+	modifiedAt: string;
 }
 
 interface ScriptRunResult {
@@ -194,6 +211,8 @@ const DevTools = () => {
 	const [runningId, setRunningId] = useState<string | null>(null);
 	const [scriptResult, setScriptResult] = useState<ScriptRunResult | null>(null);
 	const [scriptError, setScriptError] = useState<string | null>(null);
+	const [scriptParams, setScriptParams] = useState<Record<string, string>>({});
+	const [restoringFile, setRestoringFile] = useState<string | null>(null);
 
 	const access = useQuery({
 		queryKey: ["devtools-access"],
@@ -220,6 +239,12 @@ const DevTools = () => {
 		queryFn: () => apiV1<{ scripts: ScriptInfo[]; running: { id: string; startedAt: string } | null }>("/api/v1/devtools/scripts"),
 		enabled: allowed && tab === "scripts",
 		staleTime: 60_000,
+	});
+	const backups = useQuery({
+		queryKey: ["devtools-backups"],
+		queryFn: () => apiV1<BackupInfo[]>("/api/v1/devtools/backups"),
+		enabled: allowed && tab === "scripts",
+		staleTime: 10_000,
 	});
 
 	useEffect(() => {
@@ -351,6 +376,22 @@ const DevTools = () => {
 	};
 
 	const runScript = async (script: ScriptInfo) => {
+		const params: Record<string, string> = {};
+		for (const param of script.params || []) {
+			const key = `${script.id}:${param.name}`;
+			const fallback = param.name === "month" ? new Date().toISOString().slice(0, 7) : "";
+			const value = (scriptParams[key] ?? fallback).trim();
+			if (param.required && !value) {
+				toast.error(`Thiếu tham số "${param.label}"`);
+				return;
+			}
+			if (value && param.pattern && !new RegExp(param.pattern).test(value)) {
+				toast.error(`Tham số "${param.label}" không hợp lệ`);
+				return;
+			}
+			params[param.name] = value;
+		}
+
 		let confirmText: string | undefined;
 		if (script.dangerous) {
 			const input = await prompt({
@@ -372,9 +413,10 @@ const DevTools = () => {
 		try {
 			const response = await apiV1<ScriptRunResult>(`/api/v1/devtools/scripts/${script.id}/run`, {
 				method: "POST",
-				body: JSON.stringify({ confirm: confirmText }),
+				body: JSON.stringify({ confirm: confirmText, params }),
 			});
 			setScriptResult(response.data);
+			if (script.backupBeforeRun) void backups.refetch();
 			if (response.data.exitCode === 0 && !response.data.timedOut) toast.success("Script đã chạy xong");
 			else toast.error(`Script kết thúc với lỗi\nExit code: ${response.data.exitCode ?? "-"}`);
 		} catch (error) {
@@ -383,6 +425,35 @@ const DevTools = () => {
 			toast.error(`Không chạy được script\n${(error as Error).message}`);
 		} finally {
 			setRunningId(null);
+		}
+	};
+
+	const restoreBackup = async (backup: BackupInfo) => {
+		const input = await prompt({
+			title: "Khôi phục cơ sở dữ liệu",
+			message: `Nhập chính xác "KHOI PHUC CSDL" để khôi phục từ ${backup.name}. Dữ liệu hiện tại sẽ bị ghi đè.`,
+			placeholder: "KHOI PHUC CSDL",
+			confirmText: "Khôi phục",
+			tone: "danger",
+		});
+		if (input === null) return;
+
+		setRestoringFile(backup.name);
+		setScriptError(null);
+		try {
+			const response = await apiV1<ScriptRunResult>("/api/v1/devtools/backups/restore", {
+				method: "POST",
+				body: JSON.stringify({ file: backup.name, confirm: input }),
+			});
+			setScriptResult(response.data);
+			if (response.data.exitCode === 0 && !response.data.timedOut) toast.success("Đã khôi phục CSDL");
+			else toast.error(`Khôi phục kết thúc với lỗi\nExit code: ${response.data.exitCode ?? "-"}`);
+		} catch (error) {
+			setScriptResult(null);
+			setScriptError((error as Error).message);
+			toast.error(`Không khôi phục được CSDL\n${(error as Error).message}`);
+		} finally {
+			setRestoringFile(null);
 		}
 	};
 
@@ -920,6 +991,26 @@ const DevTools = () => {
 											</div>
 											<p className="mt-1 text-[12px] text-[#707eae]">{script.description}</p>
 											<code className="mt-1.5 block truncate rounded-lg bg-[#f4f7fe] px-2 py-1 text-[11px] text-[#2b3674]">{script.command}</code>
+											{script.params?.length ? (
+												<div className="mt-2 flex flex-wrap items-end gap-2">
+													{script.params.map(param => {
+														const key = `${script.id}:${param.name}`;
+														const fallback = param.name === "month" ? new Date().toISOString().slice(0, 7) : "";
+														return (
+															<label key={param.name} className="flex flex-col gap-1 text-[11px] font-semibold text-[#707eae]">
+																{param.label}
+																<input
+																	className="w-[150px]"
+																	type={param.name === "month" ? "month" : "text"}
+																	placeholder={param.placeholder}
+																	value={scriptParams[key] ?? fallback}
+																	onChange={event => setScriptParams(prev => ({ ...prev, [key]: event.target.value }))}
+																/>
+															</label>
+														);
+													})}
+												</div>
+											) : null}
 										</div>
 										<button
 											className={`erp-btn ${script.dangerous ? "erp-btn-danger" : "erp-btn-primary"}`}
@@ -957,6 +1048,53 @@ const DevTools = () => {
 						<pre className="custom-scrollbar m-4 flex-1 overflow-auto whitespace-pre-wrap rounded-2xl bg-[#0b1020] p-4 font-mono text-[12px] leading-relaxed text-[#d7e0ff]">
 							{scriptResult ? stripAnsi(scriptResult.output) : "Chọn một script và bấm Chạy để xem output."}
 						</pre>
+					</div>
+
+					<div className="erp-card overflow-hidden xl:col-span-2">
+						<div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#e9edf7] px-4 py-3">
+							<div>
+								<h2 className="flex items-center gap-2 text-[14px] font-bold text-[#1b2559]">
+									<Database size={17} className="text-[#422afb]" /> Sao lưu & khôi phục
+								</h2>
+								<p className="text-[11.5px] text-[#a3aed0]">
+									Script xóa chứng từ tự động sao lưu trước khi chạy. Có thể khôi phục từ danh sách bên dưới.
+								</p>
+							</div>
+							<button className="erp-btn" onClick={() => void backups.refetch()} disabled={backups.isFetching}>
+								{backups.isFetching ? <Loader2 className="animate-spin" size={15} /> : <RefreshCw size={15} />}
+								Làm mới
+							</button>
+						</div>
+						{backups.isLoading ? (
+							<div className="flex items-center justify-center gap-2 p-8 text-[13px] text-[#a3aed0]">
+								<Loader2 className="animate-spin" size={18} /> Đang tải…
+							</div>
+						) : backups.isError ? (
+							<div className="p-5 text-[12.5px] text-[#ee5d50]">{(backups.error as Error).message}</div>
+						) : !(backups.data?.data || []).length ? (
+							<div className="p-8 text-center text-[12.5px] text-[#a3aed0]">Chưa có file sao lưu nào trong thư mục backups/.</div>
+						) : (
+							<div className="divide-y divide-[#f1f4fb]">
+								{(backups.data?.data || []).map(backup => (
+									<div key={backup.name} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+										<div className="min-w-0">
+											<p className="truncate text-[12.5px] font-semibold text-[#1b2559]">{backup.name}</p>
+											<p className="text-[11.5px] text-[#a3aed0]">
+												{formatBytes(backup.sizeBytes)} · {new Date(backup.modifiedAt).toLocaleString("vi-VN")}
+											</p>
+										</div>
+										<button
+											className="erp-btn erp-btn-danger"
+											onClick={() => void restoreBackup(backup)}
+											disabled={!!restoringFile || !!runningId}
+										>
+											{restoringFile === backup.name ? <Loader2 className="animate-spin" size={15} /> : <RotateCcw size={15} />}
+											{restoringFile === backup.name ? "Đang khôi phục…" : "Khôi phục"}
+										</button>
+									</div>
+								))}
+							</div>
+						)}
 					</div>
 				</div>
 			) : null}
