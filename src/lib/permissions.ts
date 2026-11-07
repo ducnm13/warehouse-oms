@@ -21,12 +21,12 @@ export const getModuleAccess = (
 
 	return {
 		dashboard: has("dashboard.view"),
-		sales: has("sales.view") && !isWarehouseRole,
-		promotions: has("promotion.view") && !isWarehouseRole,
-		salesReturns: has("sales.return.view") && !isWarehouseRole,
-		customers: has("customer.view") && !isWarehouseRole,
-		debt: has("debt.view") && !isWarehouseRole,
-		online: has("online.view") && !isWarehouseRole,
+		sales: has("sales.view"),
+		promotions: has("promotion.view"),
+		salesReturns: has("sales.return.view"),
+		customers: has("customer.view"),
+		debt: has("debt.view"),
+		online: has("online.view"),
 		purchases: has("purchase.view"),
 		suppliers: has("purchase.view"),
 		warehouses: has("inventory.view"),
