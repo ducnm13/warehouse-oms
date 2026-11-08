@@ -412,6 +412,8 @@ export default function Transactions({
 			queryClient.invalidateQueries({
 				queryKey: ["inventory-reconciliation-v1"],
 			}),
+			queryClient.invalidateQueries({ queryKey: ["production-v1"] }),
+			queryClient.invalidateQueries({ queryKey: ["production-v1-mgmt"] }),
 		]);
 	const saveMutation = useMutation({
 		mutationFn: () => {

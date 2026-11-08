@@ -4,6 +4,7 @@ import { HttpError } from "../../common/http-error";
 import { mapInventoryDocument, mapStocktake } from "./inventory.mapper";
 import { inventoryInclude, inventoryRepository, prisma, stocktakeInclude } from "./inventory.repository";
 import { nextDocumentCode, documentCodePrefixes } from "../../common/document-code";
+import { syncOrderMaterialsFromIssue } from "../production/production.service";
 
 const decimal = (value: number) => new Prisma.Decimal(value.toFixed(4));
 const money = (value: number) => new Prisma.Decimal(value.toFixed(2));
@@ -164,6 +165,7 @@ export const inventoryService = {
         note: input.note, reason: input.reason, recipient: input.recipient, updatedAt: now, version: { increment: 1 },
         inventorytransactiondetails: { create: input.details.map(line => detailData(line, now)) },
       }, include: inventoryInclude });
+      await syncOrderMaterialsFromIssue(tx, id, userId, now);
       await tx.audit_logs.create({ data: { action: "Cập nhật phiếu kho v1", details: row.code || String(id), userId, userName: String(userId), createdAt: now } });
       return mapInventoryDocument(row);
     });
@@ -195,6 +197,7 @@ export const inventoryService = {
       // Lưu lại (từ đã hủy lưu): xóa dấu vết hủy, giữ nguyên bút toán đảo cũ để bù trừ
       const row = await tx.inventorytransactions.update({ where: { id }, data: { documentStatus: "POSTED", postedAt: occurredAt, postedBy: userId, cancelledAt: null, cancelledBy: null, cancelReason: null, reversalTransactionId: null, version: { increment: 1 }, updatedAt: now }, include: inventoryInclude });
 
+      await syncOrderMaterialsFromIssue(tx, id, userId, now, { markActual: true });
       await tx.audit_logs.create({ data: { action: "Lưu phiếu kho v1", details: row.code || String(id), userId, userName: String(userId), createdAt: now } });
       return mapInventoryDocument(row);
     }, { timeout: 30_000 });

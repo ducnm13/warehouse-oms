@@ -198,6 +198,75 @@ async function syncLinkedIssueMaterials(tx: any, orderId: number, userId: number
   });
 }
 
+export async function syncOrderMaterialsFromIssue(
+  tx: any,
+  issueDocumentId: number,
+  userId: number,
+  at: string,
+  options: { markActual?: boolean } = {},
+) {
+  const link = await tx.production_order_document_links_v1.findFirst({
+    where: { linkType: "INVENTORY_ISSUE", linkedId: BigInt(issueDocumentId) },
+  });
+  if (!link) return null;
+
+  const document = await tx.inventorytransactions.findUnique({
+    where: { id: issueDocumentId },
+    include: { inventorytransactiondetails: { include: { productpackagings: true } } },
+  });
+  if (!document || document.documentStatus === "CANCELLED") return null;
+
+  const order = await tx.productionorders.findUnique({ where: { id: Number(link.orderId) } });
+  if (!order) return null;
+
+  const details = document.inventorytransactiondetails.filter((line: any) => line.packagingId);
+  const keepIds = [...new Set(details.map((line: any) => Number(line.packagingId)))];
+  await tx.production_order_materials_v1.deleteMany({
+    where: { orderId: order.id, ...(keepIds.length ? { packagingId: { notIn: keepIds } } : {}) },
+  });
+
+  for (const line of details) {
+    const packagingId = Number(line.packagingId);
+    const quantity = Number(line.quantity || 0);
+    const unitCost = Number(line.unitCost || 0);
+    const base = {
+      plannedQuantity: dec(quantity),
+      unitCost: dec(unitCost),
+      totalValue: cash(quantity * unitCost),
+      unit: line.productpackagings?.unit || null,
+    };
+    await tx.production_order_materials_v1.upsert({
+      where: { orderId_packagingId: { orderId: order.id, packagingId } },
+      create: {
+        orderId: order.id,
+        packagingId,
+        ...base,
+        actualQuantity: dec(options.markActual ? quantity : 0),
+        createdAt: new Date(at),
+      },
+      update: {
+        ...base,
+        ...(options.markActual ? { actualQuantity: dec(quantity) } : {}),
+      },
+    });
+  }
+
+  await tx.productionorders.update({
+    where: { id: order.id },
+    data: { version: { increment: 1 }, updatedAt: at },
+  });
+  await tx.audit_logs.create({
+    data: {
+      action: "Đồng bộ NVL từ phiếu xuất kho",
+      details: `${order.code} <- ${document.code || document.id}`,
+      userId,
+      userName: String(userId),
+      createdAt: at,
+    },
+  });
+  return { orderId: Number(order.id) };
+}
+
 async function mapProductionWithDocuments(db: any, rows: any[]) {
   const statuses = await resolveProductionDocumentStatuses(db, rows);
   return rows.map(row => ({ ...mapProduction(row), documentStatus: statuses.get(row.id) || "DRAFT" }));
@@ -297,6 +366,10 @@ export const productionService = {
         create: { orderId: id, linkType: value.linkType, linkedId: BigInt(value.linkedId), linkedCode: value.linkedCode || null, createdAt: new Date() },
         update: { linkedCode: value.linkedCode || null }
       });
+      if (value.linkType === "INVENTORY_ISSUE") {
+        const issue = await tx.inventorytransactions.findUnique({ where: { id: value.linkedId }, select: { documentStatus: true } });
+        await syncOrderMaterialsFromIssue(tx, value.linkedId, u, t, { markActual: issue?.documentStatus === "POSTED" });
+      }
       await tx.audit_logs.create({ data: { action: "Liên kết phiếu kho lệnh sản xuất", details: `${id} -> ${value.linkedCode || value.linkedId}`, userId: u, userName: String(u), createdAt: t } });
       return mapOneProductionWithDocuments(tx, await tx.productionorders.findUnique({ where: { id }, include: productionInclude }));
     });
@@ -416,11 +489,7 @@ export const productionService = {
     return prisma.$transaction(async tx => {
       const order = await tx.productionorders.findUnique({
         where: { id },
-        include: {
-          productiondetails: true,
-          production_order_materials_v1: true,
-          production_order_document_links_v1: true,
-        },
+        include: { production_order_document_links_v1: true },
       });
       if (!order) throw new HttpError(404, "NOT_FOUND", "Không tìm thấy lệnh sản xuất");
 
@@ -429,41 +498,7 @@ export const productionService = {
       );
       if (!issueLink) throw new HttpError(400, "NO_ISSUE_LINK", "Lệnh chưa liên kết phiếu xuất kho");
 
-      const invDoc = await tx.inventorytransactions.findUnique({
-        where: { id: Number(issueLink.linkedId) },
-        include: { inventorytransactiondetails: true },
-      });
-      if (!invDoc) throw new HttpError(404, "DOC_NOT_FOUND", "Không tìm thấy phiếu xuất kho");
-
-      const t = now();
-      for (const detail of invDoc.inventorytransactiondetails) {
-        const material = order.production_order_materials_v1.find(
-          m => m.packagingId === detail.packagingId
-        );
-        if (material) {
-          const quantity = Number(detail.quantity);
-          const unitCost = Number(detail.unitCost);
-          const totalValue = quantity * unitCost;
-          await tx.production_order_materials_v1.update({
-            where: { id: material.id },
-            data: {
-              plannedQuantity: dec(quantity),
-              actualQuantity: dec(quantity),
-              unitCost: dec(unitCost),
-              totalValue: cash(totalValue),
-            },
-          });
-        }
-      }
-      await tx.audit_logs.create({
-        data: {
-          action: "Đồng bộ NVL từ phiếu xuất",
-          details: `${order.code} <- ${invDoc.code}`,
-          userId: u,
-          userName: String(u),
-          createdAt: t,
-        },
-      });
+      await syncOrderMaterialsFromIssue(tx, Number(issueLink.linkedId), u, now(), { markActual: true });
       return mapOneProductionWithDocuments(tx, await tx.productionorders.findUnique({ where: { id }, include: productionInclude }));
     });
   },

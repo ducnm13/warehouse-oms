@@ -86,7 +86,10 @@ const NumberInput = forwardRef<HTMLInputElement, NumberInputProps>(
 
     const handleFocus = () => {
       setFocused(true);
-      setDisplayValue(value.toString());
+      // Hiển thị dạng số thô khi focus, nhưng giữ dấu phẩy làm dấu thập phân
+      // theo vi-VN để không bị hiểu nhầm thành dấu phân cách nghìn.
+      const raw = Number.isFinite(value) ? String(value) : "";
+      setDisplayValue(integerOnly ? raw : raw.replace(".", ","));
     };
 
     return (
