@@ -6,6 +6,11 @@ const outputSchema = z.object({
   allocationPercent: z.coerce.number().min(0).max(100).default(0),
   note: z.string().trim().max(500).optional().default(""),
 });
+const materialSchema = z.object({
+  packagingId: z.coerce.number().int().positive(),
+  plannedQuantity: z.coerce.number().positive().max(999999999),
+  unit: z.string().trim().max(50).optional().default(""),
+});
 const unique = (rows: Array<{ packagingId: number }>, context: z.RefinementCtx, path: string) => {
   const seen = new Set<number>(); rows.forEach((row, index) => { if (seen.has(row.packagingId)) context.addIssue({ code: "custom", path: [path, index, "packagingId"], message: "Quy cách không được trùng" }); seen.add(row.packagingId); });
 };
@@ -17,6 +22,7 @@ export const productionDraftSchema = z.object({
   targetSachets: z.coerce.number().int().min(0).max(999999999), lossPercent: z.coerce.number().min(0).max(100),
   note: z.string().trim().max(1000).optional().default(""),
   outputs: z.array(outputSchema).min(1).max(100),
+  materials: z.array(materialSchema).max(500).optional().default([]),
 }).superRefine((value, context) => unique(value.outputs, context, "outputs"));
 export const productionUpdateSchema = productionDraftSchema.safeExtend({ version: z.coerce.number().int().positive() });
 export const productionActionSchema = z.object({ version: z.coerce.number().int().positive() });

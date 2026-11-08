@@ -85,6 +85,119 @@ async function snapshot(tx: any, orderId: number, outputs: any[]) {
   await tx.production_order_materials_v1.createMany({ data: [...map].map(([packagingId, value]) => ({ orderId, packagingId, plannedQuantity: dec(value.qty), unit: value.unit || null })) });
 }
 
+const convertMaterialUnit = (value: number, fromUnit: string, toUnit: string) => {
+  const normalize = (u: string) => (u || "").toLowerCase().replace(/[^a-z]/g, "");
+  const from = normalize(fromUnit);
+  const to = normalize(toUnit);
+  if (!from || !to || from === to) return value;
+  const massFrom = ["g", "gram", "gr"].includes(from);
+  const massTo = ["g", "gram", "gr"].includes(to);
+  const kgFrom = ["kg", "kilogram", "kilo"].includes(from);
+  const kgTo = ["kg", "kilogram", "kilo"].includes(to);
+  const mlFrom = ["ml", "mililit"].includes(from);
+  const mlTo = ["ml", "mililit"].includes(to);
+  const lFrom = ["l", "lit", "liter"].includes(from);
+  const lTo = ["l", "lit", "liter"].includes(to);
+  if (massFrom && kgTo) return value / 1000;
+  if (kgFrom && massTo) return value * 1000;
+  if (mlFrom && lTo) return value / 1000;
+  if (lFrom && mlTo) return value * 1000;
+  return value;
+};
+
+async function saveMaterials(
+  tx: any,
+  orderId: number,
+  outputs: any[],
+  materials?: Array<{ packagingId: number; plannedQuantity: number; unit?: string }>,
+) {
+  if (materials?.length) {
+    const aggregated = new Map<number, { packagingId: number; plannedQuantity: number; unit?: string }>();
+    for (const material of materials) {
+      const current = aggregated.get(material.packagingId);
+      if (current) {
+        current.plannedQuantity += material.plannedQuantity;
+        if (!current.unit) current.unit = material.unit;
+      } else {
+        aggregated.set(material.packagingId, { ...material });
+      }
+    }
+    const rows = [...aggregated.values()];
+    const ids = rows.map(m => m.packagingId);
+    const packages = await tx.productpackagings.findMany({ where: { id: { in: ids } } });
+    const packageMap = new Map<number, any>(packages.map((p: any) => [Number(p.id), p]));
+    const missing = ids.filter(id => !packageMap.has(id));
+    if (missing.length) throw new HttpError(422, "MATERIAL_NOT_FOUND", `Nguyên vật liệu ${missing.join(", ")} không tồn tại`);
+    await tx.production_order_materials_v1.createMany({
+      data: rows.map(m => ({
+        orderId,
+        packagingId: m.packagingId,
+        plannedQuantity: dec(m.plannedQuantity),
+        unit: m.unit || packageMap.get(m.packagingId)?.unit || null,
+      })),
+    });
+    return;
+  }
+  await snapshot(tx, orderId, outputs);
+}
+
+async function syncLinkedIssueMaterials(tx: any, orderId: number, userId: number, at: string) {
+  const order = await tx.productionorders.findUnique({
+    where: { id: orderId },
+    include: {
+      production_order_materials_v1: true,
+      production_order_document_links_v1: true,
+    },
+  });
+  if (!order) return;
+  const issueLink = order.production_order_document_links_v1.find((link: any) => link.linkType === "INVENTORY_ISSUE");
+  if (!issueLink) return;
+  const document = await tx.inventorytransactions.findUnique({
+    where: { id: Number(issueLink.linkedId) },
+    include: { inventorytransactiondetails: true },
+  });
+  if (!document || document.documentStatus !== "DRAFT") return;
+
+  const materials = order.production_order_materials_v1;
+  if (!materials.length) return;
+  const ids = materials.map((material: any) => material.packagingId);
+  const [packages, prices] = await Promise.all([
+    tx.productpackagings.findMany({ where: { id: { in: ids } } }),
+    tx.product_prices.findMany({ where: { packagingId: { in: ids }, priceType: "COST" } }),
+  ]);
+  const packageMap = new Map<number, any>(packages.map((pkg: any) => [Number(pkg.id), pkg]));
+  const priceMap = new Map<number, number>(prices.map((price: any) => [Number(price.packagingId), Number(price.price || 0)]));
+  const existingCost = new Map<number, number>(
+    document.inventorytransactiondetails.map((line: any) => [Number(line.packagingId), Number(line.unitCost || 0)]),
+  );
+  const rows = materials.map((material: any) => {
+    const pkg = packageMap.get(Number(material.packagingId));
+    const materialUnit = material.unit || pkg?.unit || "";
+    const pkgUnit = pkg?.unit || materialUnit;
+    const quantity = convertMaterialUnit(Number(material.plannedQuantity), materialUnit, pkgUnit);
+    const unitCost = existingCost.get(Number(material.packagingId)) || priceMap.get(Number(material.packagingId)) || 0;
+    return {
+      transactionId: document.id,
+      packagingId: material.packagingId,
+      quantity: Number(quantity.toFixed(3)),
+      unitCost: dec(unitCost),
+      totalValue: cash(quantity * unitCost),
+      note: order.code,
+      createdAt: at,
+      updatedAt: at,
+    };
+  });
+  await tx.inventorytransactiondetails.deleteMany({ where: { transactionId: document.id } });
+  await tx.inventorytransactiondetails.createMany({ data: rows });
+  await tx.inventorytransactions.update({
+    where: { id: document.id },
+    data: { version: { increment: 1 }, updatedAt: at },
+  });
+  await tx.audit_logs.create({
+    data: { action: "Đồng bộ NVL sang phiếu xuất kho", details: `${order.code} → ${document.code || document.id}`, userId, userName: String(userId), createdAt: at },
+  });
+}
+
 async function mapProductionWithDocuments(db: any, rows: any[]) {
   const statuses = await resolveProductionDocumentStatuses(db, rows);
   return rows.map(row => ({ ...mapProduction(row), documentStatus: statuses.get(row.id) || "DRAFT" }));
@@ -127,7 +240,8 @@ export const productionService = {
           productiondetails: { create: i.outputs.map(x => ({ packagingId: x.packagingId, quantity: x.plannedQuantity, allocation_percent: x.allocationPercent, note: x.note, createdAt: t, updatedAt: t })) }
         }, include: productionInclude
       });
-      await snapshot(tx, r.id, i.outputs);
+      await saveMaterials(tx, r.id, i.outputs, i.materials);
+      await syncLinkedIssueMaterials(tx, r.id, u, t);
       await tx.audit_logs.create({ data: { action: "Tạo lệnh sản xuất v1", details: r.code, userId: u, userName: String(u), createdAt: t } });
       return mapOneProductionWithDocuments(tx, await tx.productionorders.findUnique({ where: { id: r.id }, include: productionInclude }));
     });
@@ -152,7 +266,8 @@ export const productionService = {
             productiondetails: { create: i.outputs.map(x => ({ packagingId: x.packagingId, quantity: x.plannedQuantity, allocation_percent: x.allocationPercent, note: x.note, createdAt: t, updatedAt: t })) }
           }
         });
-        await snapshot(tx, id, i.outputs);
+        await saveMaterials(tx, id, i.outputs, i.materials);
+        await syncLinkedIssueMaterials(tx, id, u, t);
       } else {
         // Đang sản xuất: sửa thông tin mẻ + bổ sung (mã lệnh, kho, ngày tạo), giữ nguyên dòng chi tiết & số thực tế đã nhập
         const firstOutput = await tx.productpackagings.findUnique({ where: { id: i.outputs[0].packagingId }, include: { products: true } });

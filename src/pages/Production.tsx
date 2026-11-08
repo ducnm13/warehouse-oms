@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useReactToPrint } from "react-to-print";
 import {
@@ -52,6 +52,8 @@ interface BomPreview {
 	packagingName?: string;
 	unit?: string;
 	quantity: number;
+	unitCost?: number;
+	manual?: boolean;
 }
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -184,6 +186,8 @@ export default function Production({
 	const [lines, setLines] = useState<OrderLine[]>([
 		{ packagingId: 0, plannedQuantity: 1, note: "" },
 	]);
+	const [materials, setMaterials] = useState<BomPreview[]>([]);
+	const [materialsDirty, setMaterialsDirty] = useState(false);
 	const editorFormRef = useRef<HTMLFormElement>(null);
 	const lineTableRef = useLineTableTab(() =>
 		setLines(current => [
@@ -282,6 +286,7 @@ export default function Production({
 				(product.packagings || []).map(packaging => ({
 					...packaging,
 					productName: product.name,
+					productSku: product.sku,
 					canBeProduced: Boolean((product as any).canBeProduced),
 				})),
 			),
@@ -293,14 +298,41 @@ export default function Production({
 		() =>
 			packagingOptions
 				.filter(item => item.canBeProduced)
-				.map(item => ({
+				.map(item => {
+					const code = item.sku || item.productSku;
+					return {
+						value: item.id,
+						label: code
+							? `${code} · ${item.productName}`
+							: item.productName,
+						subLabel: [
+							item.name !== item.productName ? item.name : "",
+							item.unit || "",
+						]
+							.filter(Boolean)
+							.join(" | "),
+					};
+				}),
+		[packagingOptions],
+	);
+
+	const materialSearchOptions = useMemo(
+		() =>
+			packagingOptions.map(item => {
+				const code = item.sku || item.productSku;
+				return {
 					value: item.id,
-					label: item.productName,
-					subLabel:
-						(item.name !== item.productName ? `${item.name}` : "") +
-						(item.sku ? ` | SKU: ${item.sku}` : "") +
-						(item.unit ? ` | ${item.unit}` : ""),
-				})),
+					label: code
+						? `${code} · ${item.productName}`
+						: item.productName,
+					subLabel: [
+						item.name !== item.productName ? item.name : "",
+						item.unit || "",
+					]
+						.filter(Boolean)
+						.join(" | "),
+				};
+			}),
 		[packagingOptions],
 	);
 
@@ -412,11 +444,48 @@ export default function Production({
 		});
 	}, [bomDetails.data, refs.data]);
 
+	useEffect(() => {
+		if (materialsDirty) return;
+		setMaterials(bomPreview.map(row => ({ ...row, manual: false })));
+	}, [bomPreview, materialsDirty]);
+
+	const updateMaterial = (index: number, patch: Partial<BomPreview>) => {
+		setMaterialsDirty(true);
+		setMaterials(current =>
+			current.map((row, i) =>
+				i === index ? { ...row, ...patch, manual: true } : row,
+			),
+		);
+	};
+	const changeMaterialPackaging = (index: number, packagingId: number) => {
+		const pkg = packagingOptions.find(item => item.id === packagingId);
+		updateMaterial(index, {
+			packagingId,
+			unit: pkg?.unit || "",
+			sku: pkg?.sku,
+			productName: pkg?.productName,
+			packagingName: pkg?.name,
+		});
+	};
+	const addMaterial = () => {
+		setMaterialsDirty(true);
+		setMaterials(current => [
+			...current,
+			{ packagingId: 0, quantity: 1, unit: "", manual: true },
+		]);
+	};
+	const removeMaterial = (index: number) => {
+		setMaterialsDirty(true);
+		setMaterials(current => current.filter((_, i) => i !== index));
+	};
+	const resetMaterials = () => setMaterialsDirty(false);
+
 	const invalidate = () =>
 		Promise.all([
 			qc.invalidateQueries({ queryKey: ["production-v1"] }),
 			qc.invalidateQueries({ queryKey: ["next-code-production"] }),
 			qc.invalidateQueries({ queryKey: ["inventory-balances-v1"] }),
+			qc.invalidateQueries({ queryKey: ["inventory-documents-v1"] }),
 		]);
 
 	const save = useMutation({
@@ -426,6 +495,13 @@ export default function Production({
 			}
 			if (lines.some(line => !line.packagingId || line.plannedQuantity <= 0)) {
 				throw Error("Nhập đủ mã thành phẩm, số lượng");
+			}
+			if (
+				materials.some(
+					material => material.packagingId <= 0 || material.quantity <= 0,
+				)
+			) {
+				throw Error("Chọn đủ nguyên vật liệu và số lượng định mức");
 			}
 			const mainPkg = packagingOptions.find(
 				p => p.id === lines[0]?.packagingId,
@@ -451,6 +527,16 @@ export default function Production({
 					allocationPercent: 0,
 					note: line.note || "",
 				})),
+				materials: materials
+					.filter(
+						material =>
+							material.packagingId > 0 && material.quantity > 0,
+					)
+					.map(material => ({
+						packagingId: material.packagingId,
+						plannedQuantity: material.quantity,
+						unit: material.unit || "",
+					})),
 			};
 			return editing
 				? apiV1<ProductionOrderV1>(`/api/v1/production-orders/${editing.id}`, {
@@ -637,6 +723,16 @@ export default function Production({
 	// Kho mặc định cho lệnh mới: ưu tiên kho thành phẩm, nếu không có thì lấy kho đầu tiên
 	const defaultWarehouseId = () =>
 		finishedGoodsWarehouseId(refs.data?.warehouses);
+	const materialsFromOrder = (order: ProductionOrderV1): BomPreview[] =>
+		order.materials.map(material => ({
+			packagingId: material.packagingId,
+			sku: material.sku,
+			productName: material.productName,
+			packagingName: material.packagingName,
+			unit: material.bomUnit || material.unit || "",
+			quantity: material.plannedQuantity,
+			manual: true,
+		}));
 	const create = () => {
 		setEditing(null);
 		setCode(nextCode.data || "LSX00001");
@@ -645,6 +741,8 @@ export default function Production({
 		setOrderDate(today());
 		setWarehouseId(defaultWarehouseId());
 		setLines([{ packagingId: 0, plannedQuantity: 1, note: "" }]);
+		setMaterials([]);
+		setMaterialsDirty(false);
 		setOpen(true);
 	};
 	const edit = (d: ProductionOrderV1) => {
@@ -661,6 +759,8 @@ export default function Production({
 				note: x.note || "",
 			})),
 		);
+		setMaterials(materialsFromOrder(d));
+		setMaterialsDirty(true);
 		setOpen(true);
 	};
 	const duplicate = (d: ProductionOrderV1) => {
@@ -677,6 +777,8 @@ export default function Production({
 				note: x.note || "",
 			})),
 		);
+		setMaterials(materialsFromOrder(d));
+		setMaterialsDirty(true);
 		setOpen(true);
 	};
 	useDocumentShortcuts({
@@ -920,6 +1022,13 @@ export default function Production({
 													onClick: () => setSelected(d),
 												},
 												{
+													key: "edit",
+													label: "Sửa",
+													icon: <Edit size={15} />,
+													hidden: !manage || d.status !== "DRAFT",
+													onClick: () => edit(d),
+												},
+												{
 													key: "duplicate",
 													label: "Nhân bản",
 													icon: <Copy size={15} />,
@@ -997,7 +1106,7 @@ export default function Production({
 
 			{open && (
 				<div className="erp-modal-backdrop">
-					<div className="erp-modal" style={{ width: "min(100%, 88rem)" }}>
+					<div className="erp-modal" style={{ width: "min(100%, 100rem)" }}>
 						<div className="erp-modal-header">
 							<div>
 								<h2>{editing ? `Sửa ${editing.code}` : "Tạo lệnh sản xuất"}</h2>
@@ -1041,8 +1150,8 @@ export default function Production({
 										placeholder="Diễn giải lệnh sản xuất..."
 									/>
 								</label>
-								<div className="grid gap-4 lg:grid-cols-3">
-									<div className="lg:col-span-2">
+								<div className="grid gap-4">
+									<div className="min-w-0">
 										<div className="mb-2 flex items-center justify-between">
 											<b>Thành phẩm ({lines.length} mã)</b>
 											<button
@@ -1103,6 +1212,7 @@ export default function Production({
 																	placeholder="Mã"
 																	required
 																	autoAdvance
+																	showSelectedSubLabel
 																/>
 															</td>
 															<td className="font-medium text-slate-700">
@@ -1151,12 +1261,36 @@ export default function Production({
 										</table>
 									</div>
 									<div className="min-w-0">
-										<b>Định mức nguyên liệu</b>
-										{bomDetails.isLoading ? (
+										<div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+											<div>
+												<b>Định mức nguyên liệu</b>
+												<p className="text-xs text-slate-500">
+													Có thể sửa số lượng hoặc thêm nguyên vật liệu nếu công thức thay đổi.
+												</p>
+											</div>
+											<div className="flex items-center gap-2">
+												<button
+													type="button"
+													className="erp-btn"
+													disabled={!materialsDirty}
+													onClick={resetMaterials}
+												>
+													<Undo2 size={14} /> Tính lại theo BOM
+												</button>
+												<button
+													type="button"
+													className="erp-btn"
+													onClick={addMaterial}
+												>
+													<Plus size={14} /> Thêm dòng
+												</button>
+											</div>
+										</div>
+										{bomDetails.isLoading && !materials.length ? (
 											<p className="mt-2 rounded bg-slate-50 p-3 text-sm text-slate-500">
 												Đang tải định mức...
 											</p>
-										) : !bomPreview.length ? (
+										) : !materials.length ? (
 											<p className="mt-2 rounded bg-slate-50 p-3 text-sm text-slate-500">
 												Chọn thành phẩm có BOM để tự tổng hợp nguyên liệu.
 											</p>
@@ -1168,46 +1302,112 @@ export default function Production({
 												>
 													<colgroup>
 														<col style={{ width: "48px" }} />
-														<col style={{ width: "120px" }} />
-														<col style={{ minWidth: "200px" }} />
-														<col style={{ width: "120px" }} />
-														<col style={{ width: "120px" }} />
-														<col style={{ width: "120px" }} />
+														<col style={{ width: "140px" }} />
+														<col style={{ width: "480px" }} />
+														<col style={{ width: "80px" }} />
+														<col style={{ width: "140px" }} />
+														<col style={{ width: "130px" }} />
+														<col style={{ width: "140px" }} />
+														<col style={{ width: "48px" }} />
 													</colgroup>
 													<thead>
 														<tr>
 															<th className="text-center">STT</th>
 															<th className="bom-code-cell">Mã</th>
 															<th className="bom-name-cell">Tên nguyên liệu</th>
+															<th>ĐVT</th>
 															<th className="text-right">Số lượng</th>
 															<th className="text-right">Đơn giá vốn</th>
 															<th className="text-right">Thành tiền</th>
+															<th></th>
 														</tr>
 													</thead>
 													<tbody>
-														{bomPreview.map((row, index) => (
-															<tr key={`${row.packagingId}-${row.unit}`}>
-																<td className="text-center">{index + 1}</td>
-																<td className="bom-code-cell font-mono font-semibold">
-																	{row.sku || `PKG-${row.packagingId}`}
-																</td>
-																<td className="bom-name-cell font-medium text-slate-700">
-																	{row.productName || "-"}
-																	<small>{row.unit || ""}</small>
-																</td>
-																<td className="text-right font-semibold">
-																	{formatNumber(row.quantity)}
-																</td>
-																<td className="text-right">
-																	{formatNumber(row.unitCost || 0)}
-																</td>
-																<td className="text-right font-semibold text-emerald-700">
-																	{formatNumber(
-																		(row.quantity || 0) * (row.unitCost || 0),
-																	)}
-																</td>
-															</tr>
-														))}
+														{materials.map((row, index) => {
+															const pkg = packagingOptions.find(
+																item => item.id === row.packagingId,
+															);
+															const unit = row.unit || pkg?.unit || "";
+															const pkgUnit = pkg?.unit || unit;
+															const baseCost =
+																refs.data?.costMap.get(row.packagingId) ||
+																0;
+															const unitCost =
+																row.unitCost ??
+																baseCost *
+																	convertUnitValue(
+																		1,
+																		unit,
+																		pkgUnit,
+																	);
+															const packagingName =
+																row.packagingName ||
+																(pkg && pkg.name !== pkg.productName
+																	? pkg.name
+																	: "");
+															return (
+																<tr key={`${row.packagingId}-${index}`}>
+																	<td className="text-center">{index + 1}</td>
+																	<td>
+																		<SearchableSelect
+																			value={row.packagingId}
+																			options={materialSearchOptions}
+																			onChange={packagingId =>
+																				changeMaterialPackaging(
+																					index,
+																					packagingId,
+																				)
+																			}
+																			placeholder="Mã NVL"
+																			autoAdvance
+																			showSelectedSubLabel
+																		/>
+																	</td>
+																	<td className="bom-name-cell font-medium text-slate-700">
+																		{row.productName ||
+																			pkg?.productName || (
+																				<span className="text-slate-400">
+																					Chưa chọn
+																				</span>
+																			)}
+																		{packagingName && (
+																			<small>{packagingName}</small>
+																		)}
+																	</td>
+																	<td>{unit}</td>
+																	<td>
+																		<NumberInput
+																			value={row.quantity}
+																			onChange={quantity =>
+																				updateMaterial(index, {
+																					quantity,
+																				})
+																			}
+																			min={0}
+																		/>
+																	</td>
+																	<td className="text-right">
+																		{formatNumber(unitCost)}
+																	</td>
+																	<td className="text-right font-semibold text-emerald-700">
+																		{formatNumber(
+																			(row.quantity || 0) * unitCost,
+																		)}
+																	</td>
+																	<td>
+																		<button
+																			type="button"
+																			className="erp-icon-btn text-red-500"
+																			onClick={() =>
+																				removeMaterial(index)
+																			}
+																		>
+																			<Trash2 size={15} />
+																		</button>
+																	</td>
+																</tr>
+															);
+														})}
 													</tbody>
 												</table>
 											</div>

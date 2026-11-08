@@ -17,6 +17,7 @@ interface SearchableSelectProps {
   disabled?: boolean;
   className?: string;
   autoAdvance?: boolean;
+  showSelectedSubLabel?: boolean;
 }
 
 interface MenuPosition {
@@ -36,6 +37,7 @@ export default function SearchableSelect({
   disabled = false,
   className = "",
   autoAdvance = false,
+  showSelectedSubLabel = false,
 }: SearchableSelectProps) {
   const [open, setOpen] = useState(false);
   const [keyword, setKeyword] = useState("");
@@ -182,6 +184,11 @@ export default function SearchableSelect({
       >
         <span className="min-w-0 flex-1 truncate">
           {selected ? selected.label : placeholder}
+          {selected && showSelectedSubLabel && selected.subLabel && (
+            <span className="ml-1 text-xs text-[#a3aed0]">
+              · {selected.subLabel}
+            </span>
+          )}
         </span>
         <span className="flex shrink-0 items-center gap-1 text-[#a3aed0]">
           {selected && !required && !disabled && (
