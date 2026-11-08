@@ -27,6 +27,7 @@ import { Card } from "../components/ui/card";
 import { Field, FieldLabel, Input } from "../components/ui/input";
 import { apiV1 } from "../lib/apiV1";
 import SearchableSelect from "../components/SearchableSelect";
+import { canViewCatalogPrices } from "../lib/permissions";
 import { formatNumber, formatProductName } from "../lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -322,6 +323,20 @@ export default function CatalogProducts({
 	onOpenImport,
 }: { onOpenImport?: () => void } = {}) {
 	const qc = useQueryClient();
+	const currentUser = useMemo(
+		() =>
+			JSON.parse(localStorage.getItem("user") || "{}") as {
+				role?: string;
+				roles?: string[];
+				permissions?: string[];
+			},
+		[],
+	);
+	const showPrices = canViewCatalogPrices(
+		currentUser.role,
+		currentUser.permissions,
+		currentUser.roles,
+	);
 	const [page, setPage] = useState(1);
 	const [search, setSearch] = useState("");
 	const [filters, setFilters] = useState<FilterValues>({});
@@ -733,10 +748,14 @@ export default function CatalogProducts({
 			{ header: "Tên quy cách", key: "name", width: 32 },
 			{ header: "SKU", key: "sku", width: 16 },
 			{ header: "ĐVT", key: "unit", width: 10 },
-			{ header: "Giá cost (vốn)", key: "cost", width: 16 },
-			{ header: "Giá bán đại lý/NPP", key: "sale1", width: 18 },
-			{ header: "Giá bán cao tốc", key: "sale2", width: 16 },
-			{ header: "Giá bán lẻ", key: "sale3", width: 14 },
+			...(showPrices
+				? [
+						{ header: "Giá cost (vốn)", key: "cost", width: 16 },
+						{ header: "Giá bán đại lý/NPP", key: "sale1", width: 18 },
+						{ header: "Giá bán cao tốc", key: "sale2", width: 16 },
+						{ header: "Giá bán lẻ", key: "sale3", width: 14 },
+					]
+				: []),
 			{ header: "Tồn kho", key: "stock", width: 12 },
 			{ header: "Tồn tối thiểu", key: "minStock", width: 14 },
 			{ header: "Kho", key: "warehouse", width: 18 },
@@ -761,10 +780,14 @@ export default function CatalogProducts({
 					name: pk.name,
 					sku: pk.sku ?? "",
 					unit: pk.unit ?? "",
-					cost: getPrice(pk.prices, "COST"),
-					sale1: getPrice(pk.prices, "SALE_1"),
-					sale2: getPrice(pk.prices, "SALE_2"),
-					sale3: getPrice(pk.prices, "SALE_3"),
+					...(showPrices
+						? {
+								cost: getPrice(pk.prices, "COST"),
+								sale1: getPrice(pk.prices, "SALE_1"),
+								sale2: getPrice(pk.prices, "SALE_2"),
+								sale3: getPrice(pk.prices, "SALE_3"),
+							}
+						: {}),
 					stock,
 					minStock: pk.min_stock ?? 0,
 					warehouse: pk.warehouse?.name ?? "",
@@ -790,8 +813,9 @@ export default function CatalogProducts({
 				<div>
 					<h1>Danh mục hàng hóa</h1>
 					<p>
-						Quản lý vật tư, thành phẩm, bao bì và dịch vụ — giá bán, giá vốn,
-						tồn kho
+						{showPrices
+							? "Quản lý vật tư, thành phẩm, bao bì và dịch vụ — giá bán, giá vốn, tồn kho"
+							: "Quản lý vật tư, thành phẩm, bao bì và dịch vụ — tồn kho"}
 					</p>
 				</div>
 				<div className="flex gap-2.5 flex-wrap">
@@ -987,14 +1011,16 @@ export default function CatalogProducts({
 																	{singlePackaging.sku || "—"}
 																</b>
 															</span>
-															<span>
-																Giá mua:{" "}
-																<b className="text-amber-700">
-																	{formatNumber(
-																		getPrice(singlePackaging.prices, "COST"),
-																	)}
-																</b>
-															</span>
+															{showPrices && (
+																<span>
+																	Giá mua:{" "}
+																	<b className="text-amber-700">
+																		{formatNumber(
+																			getPrice(singlePackaging.prices, "COST"),
+																		)}
+																	</b>
+																</span>
+															)}
 															<span className="text-teal-600 font-semibold">
 																Tồn: {formatNumber(singleStock)}{" "}
 																{singlePackaging.unit}
@@ -1060,11 +1086,12 @@ export default function CatalogProducts({
 													<thead>
 														<tr>
 															<th>Quy cách / SKU</th>
-															{PRICE_TYPES.map(t => (
-																<th key={t.key} className="text-right">
-																	{t.label}
-																</th>
-															))}
+															{showPrices &&
+																PRICE_TYPES.map(t => (
+																	<th key={t.key} className="text-right">
+																		{t.label}
+																	</th>
+																))}
 															<th>Kho</th>
 															<th className="text-right">Tồn</th>
 															<th className="text-right">Tồn min</th>
@@ -1102,14 +1129,15 @@ export default function CatalogProducts({
 																			</small>
 																		)}
 																	</td>
-																	{PRICE_TYPES.map(t => (
-																		<td
-																			key={t.key}
-																			className={`text-right font-semibold ${t.cls}`}
-																		>
-																			{formatNumber(getPrice(pk.prices, t.key))}
-																		</td>
-																	))}
+																	{showPrices &&
+																		PRICE_TYPES.map(t => (
+																			<td
+																				key={t.key}
+																				className={`text-right font-semibold ${t.cls}`}
+																			>
+																				{formatNumber(getPrice(pk.prices, t.key))}
+																			</td>
+																		))}
 																	<td>
 																		{pk.warehouse?.name ?? (
 																			<span className="text-slate-300">—</span>
@@ -1555,8 +1583,9 @@ export default function CatalogProducts({
 											/>
 										</label>
 									</div>
-									<div className="overflow-hidden rounded-lg border border-slate-200">
-										<table className="w-full border-collapse text-[13px]">
+									{showPrices && (
+										<div className="overflow-hidden rounded-lg border border-slate-200">
+											<table className="w-full border-collapse text-[13px]">
 											<thead>
 												<tr className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
 													<th className="px-3 py-2 font-semibold">Loại giá</th>
@@ -1741,6 +1770,7 @@ export default function CatalogProducts({
 											Giá bán là đơn giá sau thuế
 										</label>
 									</div>
+									)}
 								</div>
 
 								{/* Thuộc tính hệ thống gọn */}
@@ -2077,7 +2107,9 @@ export default function CatalogProducts({
 										: `Sửa quy cách: ${pkgForm.name}`}
 								</h2>
 								<p className="mt-1 text-xs text-slate-500">
-									Thông tin, tồn tối thiểu và bảng giá
+									{showPrices
+										? "Thông tin, tồn tối thiểu và bảng giá"
+										: "Thông tin và tồn tối thiểu"}
 								</p>
 							</div>
 							<div className="flex items-center gap-1">
@@ -2249,15 +2281,17 @@ export default function CatalogProducts({
 										</label>
 									)}
 								</div>
-								<div>
-									<p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">
-										Bảng giá
-									</p>
-									<PriceEditor
-										prices={pkgForm.prices}
-										onChange={prices => setPkgForm({ ...pkgForm, prices })}
-									/>
-								</div>
+								{showPrices && (
+									<div>
+										<p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+											Bảng giá
+										</p>
+										<PriceEditor
+											prices={pkgForm.prices}
+											onChange={prices => setPkgForm({ ...pkgForm, prices })}
+										/>
+									</div>
+								)}
 							</div>
 							<div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-6 py-4">
 								<button

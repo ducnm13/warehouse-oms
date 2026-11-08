@@ -1,13 +1,30 @@
 import { catalogService } from "./catalog.service";
 
+const hideCatalogPrices = (auth: any) => {
+  const roles = Array.isArray(auth?.roles) ? auth.roles : [];
+  const isWarehouse = roles.includes("W_MANAGER") || auth?.legacyRole === "W_MANAGER";
+  return isWarehouse && !auth?.permissions?.includes("system.admin");
+};
+
+const withoutProductPrices = (product: any) => ({
+  ...product,
+  productpackagings: Array.isArray(product?.productpackagings)
+    ? product.productpackagings.map((packaging: any) => ({ ...packaging, prices: [] }))
+    : product?.productpackagings,
+});
+
 export const catalogController = {
   listProducts: async (req: any, res: any) => {
-    const data = await catalogService.listProducts(req.query);
+    const data: any = await catalogService.listProducts(req.query);
+    if (hideCatalogPrices(req.auth)) {
+      data.data = data.data.map(withoutProductPrices);
+    }
     res.json({ success: true, message: "OK", ...data });
   },
 
   getProduct: async (req: any, res: any) => {
-    const data = await catalogService.getProduct(Number(req.params.id));
+    const product = await catalogService.getProduct(Number(req.params.id));
+    const data = hideCatalogPrices(req.auth) ? withoutProductPrices(product) : product;
     res.json({ success: true, message: "OK", data });
   },
 
@@ -28,7 +45,10 @@ export const catalogController = {
   },
 
   getPackaging: async (req: any, res: any) => {
-    const data = await catalogService.getPackaging(Number(req.params.id));
+    const packaging = await catalogService.getPackaging(Number(req.params.id));
+    const data = hideCatalogPrices(req.auth)
+      ? { ...(packaging as any), prices: [] }
+      : packaging;
     res.json({ success: true, message: "OK", data });
   },
 

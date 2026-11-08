@@ -11,6 +11,16 @@ export const hasPermission = (
 	return list.some(item => granted.includes(item));
 };
 
+export const canViewCatalogPrices = (
+	role: string | undefined,
+	permissions: string[] | undefined,
+	roles?: string[],
+) => {
+	if (permissions?.includes("system.admin")) return true;
+	const roleCodes = [...new Set([...(roles || []), ...(role ? [role] : [])])];
+	return !roleCodes.includes("W_MANAGER");
+};
+
 export const getModuleAccess = (
 	role: string | undefined,
 	permissions: string[] | undefined,

@@ -52,6 +52,43 @@ async function ensureOpening(tx: any, packagingId: number, warehouseId: number, 
   });
 }
 
+async function availableAtDate(tx: any, packagingId: number, warehouseId: number, at: Date, currentBalance: number) {
+  const rows = await tx.$queryRawUnsafe(
+    `SELECT COALESCE(SUM(CASE WHEN direction='IN' THEN quantity ELSE -quantity END),0) net
+     FROM inventory_ledger WHERE packagingId=? AND warehouseId=? AND occurredAt>?`,
+    packagingId, warehouseId, at,
+  ) as any[];
+  return currentBalance - Number(rows[0]?.net || 0);
+}
+
+async function releasePostedLedger(tx: any, id: number) {
+  const rows = await tx.$queryRawUnsafe(
+    `SELECT warehouseId,packagingId,
+      COALESCE(SUM(CASE WHEN direction='IN' THEN quantity ELSE -quantity END),0) net
+     FROM inventory_ledger
+     WHERE sourceId=? AND sourceType IN ('INVENTORY_DOCUMENT','INVENTORY_DOCUMENT_CANCEL')
+     GROUP BY warehouseId,packagingId ORDER BY packagingId,warehouseId`,
+    id,
+  ) as any[];
+  if (!rows.length) throw new HttpError(409, "LEDGER_NOT_FOUND", "Không tìm thấy ledger gốc để đảo chứng từ");
+  for (const row of rows) {
+    const net = Number(row.net || 0);
+    if (!net) continue;
+    const packagingId = Number(row.packagingId), warehouseId = Number(row.warehouseId);
+    const balance = await lockBalance(tx, packagingId, warehouseId);
+    if (net > 0 && balance < net) {
+      throw new HttpError(409, "REVERSAL_STOCK_SHORTAGE", `Không đủ tồn để đảo hàng hóa #${packagingId} tại kho #${warehouseId}`);
+    }
+    await tx.productwarehouses.update({
+      where: { packagingId_warehouseId: { packagingId, warehouseId } },
+      data: { stock_quantity: { decrement: decimal(net) }, updatedAt: nowIso() },
+    });
+  }
+  await tx.inventory_ledger.deleteMany({
+    where: { sourceId: id, sourceType: { in: ["INVENTORY_DOCUMENT", "INVENTORY_DOCUMENT_CANCEL"] } },
+  });
+}
+
 async function averageCost(tx: any, packagingId: number, warehouseId: number) {
   const rows = await tx.$queryRawUnsafe(
     `SELECT COALESCE(SUM(CASE WHEN direction='IN' THEN quantity ELSE -quantity END),0) quantity,
@@ -182,7 +219,12 @@ export const inventoryService = {
         if (!line.packagingId) throw new HttpError(409, "MISSING_ITEM", "Dòng chứng từ thiếu hàng hóa");
         const quantity = Number(line.quantity), balance = await lockBalance(tx, line.packagingId, document.warehouseId);
         await ensureOpening(tx, line.packagingId, document.warehouseId, balance);
-        if (document.type === "EXPORT" && balance < quantity) throw new HttpError(409, "NEGATIVE_STOCK", `Không đủ tồn cho ${line.productpackagings?.sku || line.packagingId} tại ${document.warehouses?.name || `kho #${document.warehouseId}`}: còn ${balance}, cần ${quantity}`);
+        if (document.type === "EXPORT") {
+          const available = await availableAtDate(tx, line.packagingId, document.warehouseId, occurredAt, balance);
+          if (available < quantity) {
+            throw new HttpError(409, "NEGATIVE_STOCK", `Không đủ tồn cho ${line.productpackagings?.sku || line.packagingId} tại ${document.warehouses?.name || `kho #${document.warehouseId}`} ngày ${document.transaction_date}: còn ${available.toFixed(3)}, cần ${quantity}`);
+          }
+        }
         const unitCost = document.type === "EXPORT" ? await averageCost(tx, line.packagingId, document.warehouseId) : Number(line.unitCost || 0);
         await tx.inventorytransactiondetails.update({ where: { id: line.id }, data: { unitCost: decimal(unitCost), totalValue: money(quantity * unitCost) } });
         await tx.productwarehouses.update({ where: { packagingId_warehouseId: { packagingId: line.packagingId, warehouseId: document.warehouseId } }, data: {
@@ -209,32 +251,10 @@ export const inventoryService = {
       if (current.documentStatus !== "POSTED") throw new HttpError(409, "INVALID_STATUS", "Chỉ được hủy phiếu kho đã lưu");
       const document = await tx.inventorytransactions.findUnique({ where: { id }, include: inventoryInclude });
       if (!document?.warehouseId) throw new HttpError(409, "MISSING_WAREHOUSE", "Chứng từ chưa có kho");
-      // Query ledger by sourceId AND sourceType (INVENTORY_DOCUMENT) to match posting
-      const originalLedger = await tx.inventory_ledger.findMany({ where: { sourceId: id, sourceType: "INVENTORY_DOCUMENT" } });
-      if (originalLedger.length === 0) throw new HttpError(409, "LEDGER_NOT_FOUND", "Không tìm thấy ledger gốc để đảo chứng từ");
-      // If count doesn't match, log warning but continue with available ledger entries
-      if (originalLedger.length !== document.inventorytransactiondetails.length) {
-        console.warn(`[InventoryCancel] Ledger count mismatch: ${originalLedger.length} ledger entries vs ${document.inventorytransactiondetails.length} document details for doc ${id}`);
-      }
       const now = nowIso(), occurredAt = new Date();
-      // Hoàn tồn trực tiếp bằng bút toán đảo trong ledger, KHÔNG sinh chứng từ đảo (H-) để báo cáo gọn.
-      for (const line of document.inventorytransactiondetails) {
-        if (!line.packagingId) continue;
-        const quantity = Number(line.quantity), balance = await lockBalance(tx, line.packagingId, document.warehouseId);
-        if (document.type === "IMPORT" && balance < quantity) throw new HttpError(409, "REVERSAL_STOCK_SHORTAGE", `Không đủ tồn để đảo ${line.productpackagings?.sku || line.packagingId}`);
-        const original = originalLedger.find(entry => entry.sourceLineId === line.id);
-        await tx.productwarehouses.update({ where: { packagingId_warehouseId: { packagingId: line.packagingId, warehouseId: document.warehouseId } }, data: {
-          stock_quantity: document.type === "IMPORT" ? { decrement: quantity } : { increment: quantity }, updatedAt: now,
-        } });
-        // Use sourceType based on original document's sourceModule for audit trail
-        const cancelSourceType = document.sourceModule === "MANUAL_V1" ? "INVENTORY_DOCUMENT_CANCEL" : `${document.sourceModule}_CANCEL`;
-        await tx.inventory_ledger.create({ data: {
-          sourceType: cancelSourceType, sourceId: id, sourceLineId: line.id, documentCode: document.code || String(id),
-          direction: document.type === "IMPORT" ? "OUT" : "IN", packagingId: line.packagingId, warehouseId: document.warehouseId,
-          quantity: decimal(quantity), unitCost: line.unitCost, totalValue: line.totalValue, reversalOfId: original?.id,
-          occurredAt, createdBy: userId,
-        } });
-      }
+      // Hủy phiếu: hoàn tồn theo đúng net ledger của chứng từ rồi xóa ledger.
+      // Không sinh bút toán/chứng từ "Hủy phiếu kho" để không làm tăng số liệu nhập kho.
+      await releasePostedLedger(tx, id);
       const row = await tx.inventorytransactions.update({ where: { id }, data: { documentStatus: "CANCELLED", cancelledAt: occurredAt.toISOString(), cancelledBy: userId, cancelReason: input.reason, version: { increment: 1 }, updatedAt: now }, include: inventoryInclude });
       await tx.audit_logs.create({ data: { action: "Hủy phiếu kho v1", details: `${row.code}: ${input.reason}`, userId, userName: String(userId), createdAt: now } });
       return mapInventoryDocument(row);
@@ -247,24 +267,9 @@ export const inventoryService = {
       if (current.documentStatus !== "POSTED") throw new HttpError(409, "INVALID_STATUS", "Chỉ được hủy lưu phiếu kho đã lưu");
       const document = await tx.inventorytransactions.findUnique({ where: { id }, include: inventoryInclude });
       if (!document?.warehouseId) throw new HttpError(409, "MISSING_WAREHOUSE", "Chứng từ chưa có kho");
-      const originalLedger = await tx.inventory_ledger.findMany({ where: { sourceId: id, sourceType: "INVENTORY_DOCUMENT" } });
-      if (originalLedger.length === 0) throw new HttpError(409, "LEDGER_NOT_FOUND", "Không tìm thấy ledger gốc để đảo chứng từ");
-      const now = nowIso(), occurredAt = new Date();
-      for (const line of document.inventorytransactiondetails) {
-        if (!line.packagingId) continue;
-        const quantity = Number(line.quantity), balance = await lockBalance(tx, line.packagingId, document.warehouseId);
-        if (document.type === "IMPORT" && balance < quantity) throw new HttpError(409, "REVERSAL_STOCK_SHORTAGE", `Không đủ tồn để đảo ${line.productpackagings?.sku || line.packagingId}`);
-        const original = originalLedger.find(entry => entry.sourceLineId === line.id);
-        await tx.productwarehouses.update({ where: { packagingId_warehouseId: { packagingId: line.packagingId, warehouseId: document.warehouseId } }, data: {
-          stock_quantity: document.type === "IMPORT" ? { decrement: quantity } : { increment: quantity }, updatedAt: now,
-        } });
-        await tx.inventory_ledger.create({ data: {
-          sourceType: "INVENTORY_DOCUMENT_CANCEL", sourceId: id, sourceLineId: line.id, documentCode: document.code || String(id),
-          direction: document.type === "IMPORT" ? "OUT" : "IN", packagingId: line.packagingId, warehouseId: document.warehouseId,
-          quantity: decimal(quantity), unitCost: line.unitCost, totalValue: line.totalValue, reversalOfId: original?.id,
-          occurredAt, createdBy: userId,
-        } });
-      }
+      const now = nowIso();
+      // Hủy lưu: hoàn tồn theo net ledger rồi xóa ledger cũ; khi lưu lại sẽ sinh ledger mới.
+      await releasePostedLedger(tx, id);
       const row = await tx.inventorytransactions.update({ where: { id }, data: {
         documentStatus: "DRAFT", postedAt: null, postedBy: null, cancelledAt: null, cancelledBy: null, cancelReason: null,
         version: { increment: 1 }, updatedAt: now,

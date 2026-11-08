@@ -23,7 +23,8 @@
     "db:reset-operational": "tsx scripts/reset-operational-data.ts",
     "db:reset-month": "tsx scripts/reset-month-documents.ts",
     "db:restore": "tsx scripts/restore-database.ts",
-    "db:dump": "tsx scripts/dump-database.ts"
+    "db:dump": "tsx scripts/dump-database.ts",
+    "db:recalculate": "tsx scripts/recalculate-app-data.ts"
 	},
 	"dependencies": {
 		"@google/genai": "^1.29.0",

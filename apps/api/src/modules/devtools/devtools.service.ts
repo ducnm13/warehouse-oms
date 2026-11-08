@@ -142,6 +142,46 @@ const SCRIPTS: DevScript[] = [
     ],
   },
   {
+    id: "recalculate-stock-preview",
+    label: "Tính lại tồn kho & công nợ (xem trước)",
+    description:
+      "Chạy thử tính lại tồn kho từ tồn đầu kỳ + sổ kho và trạng thái thanh toán/công nợ. Chỉ hiển thị chênh lệch, không ghi dữ liệu.",
+    command: "npx",
+    args: ["tsx", "scripts/recalculate-app-data.ts", "--month={{month}}"],
+    dangerous: false,
+    timeoutMs: 300_000,
+    params: [
+      {
+        name: "month",
+        label: "Tháng",
+        placeholder: "YYYY-MM",
+        required: true,
+        pattern: "^\\d{4}-(0[1-9]|1[0-2])$",
+      },
+    ],
+  },
+  {
+    id: "recalculate-stock",
+    label: "Tính lại tồn kho & công nợ",
+    description:
+      "Ghi đè tồn kho hiện tại theo tồn đầu kỳ + sổ kho đến hết tháng đã chọn và tính lại trạng thái thanh toán/công nợ.",
+    command: "npx",
+    args: ["tsx", "scripts/recalculate-app-data.ts", "--month={{month}}", "--yes"],
+    dangerous: true,
+    confirmPhrase: "TINH LAI DU LIEU",
+    timeoutMs: 600_000,
+    backupBeforeRun: true,
+    params: [
+      {
+        name: "month",
+        label: "Tháng",
+        placeholder: "YYYY-MM",
+        required: true,
+        pattern: "^\\d{4}-(0[1-9]|1[0-2])$",
+      },
+    ],
+  },
+  {
     id: "dump-database",
     label: "Dump cơ sở dữ liệu",
     description: "Xuất toàn bộ cấu trúc và dữ liệu ra file .sql trong thư mục backups/.",
