@@ -16,6 +16,7 @@ import CustomerGroups from "./CustomerGroups";
 import ListToolbar from "../components/ListToolbar";
 import type { FilterField, FilterValues } from "../components/FilterDrawer";
 import { exportExcelFile } from "../lib/excelExport";
+import { useCanViewMoney } from "../hooks/useCanViewMoney";
 
 interface CustomerGroupOption {
 	id: number;
@@ -38,6 +39,7 @@ const Customers = ({
 }: {
 	initialTab?: "customers" | "groups";
 }) => {
+	const showMoney = useCanViewMoney();
 	const [activeTab, setActiveTab] = useState<"customers" | "groups">(
 		initialTab,
 	);
@@ -274,10 +276,14 @@ const Customers = ({
 					value: (row: Customer) =>
 						Number(row.isSupplier) === 1 ? "Nhà cung cấp" : "Khách hàng",
 				},
-				{
-					header: "Công nợ",
-					value: (row: Customer) => Number(row.debt || 0),
-				},
+				...(showMoney
+					? [
+							{
+								header: "Công nợ",
+								value: (row: Customer) => Number(row.debt || 0),
+							},
+						]
+					: []),
 			],
 			filteredCustomers,
 		);

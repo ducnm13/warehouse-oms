@@ -40,6 +40,7 @@ import type { FilterField, FilterValues } from "../components/FilterDrawer";
 import { exportExcelFile } from "../lib/excelExport";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
+import { useCanViewMoney } from "../hooks/useCanViewMoney";
 
 type View = "receivables" | "payables" | "receipts" | "vouchers";
 type Allocation = { documentId: number; amount: number };
@@ -101,6 +102,7 @@ const AGING_FILTER_FIELDS: FilterField[] = [
 
 export default function Debt() {
 	const queryClient = useQueryClient();
+	const showMoney = useCanViewMoney();
 	const currentUser = JSON.parse(localStorage.getItem("user") || "{}") as {
 		role?: string;
 		permissions?: string[];
@@ -461,6 +463,22 @@ export default function Debt() {
 			visibleAgingRows,
 		);
 	};
+
+	if (!showMoney) {
+		return (
+			<div className="erp-page">
+				<div className="erp-page-header">
+					<div>
+						<h1>Công nợ</h1>
+						<p>Thông tin công nợ được ẩn với vai trò quản lý kho.</p>
+					</div>
+				</div>
+				<div className="erp-card p-10 text-center text-slate-500">
+					Bạn không có quyền xem các giá trị công nợ.
+				</div>
+			</div>
+		);
+	}
 
 	return (
 		<div className="erp-page">

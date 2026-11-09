@@ -18,6 +18,7 @@ import {
 	TrendingUp,
 	WalletCards,
 } from "lucide-react";
+import { useCanViewMoney } from "../../hooks/useCanViewMoney";
 
 const GROUPS: Array<{
 	label: string;
@@ -181,6 +182,31 @@ const GROUPS: Array<{
 
 export default function ReportsIndex() {
 	const navigate = useNavigate();
+	const showMoney = useCanViewMoney();
+	const moneyPaths = new Set([
+		"/reports/financial",
+		"/reports/sales-profit",
+		"/reports/sales-customer",
+		"/reports/sales-product",
+		"/reports/sales-returns",
+		"/reports/purchases-supplier",
+		"/reports/purchases-product",
+		"/reports/inventory-summary",
+		"/reports/stock-on-hand",
+		"/reports/item-ledger",
+		"/reports/production-variance",
+		"/reports/operations",
+		"/reports/assembly-issues",
+		"/reports/debt-receivable",
+		"/reports/debt-payable",
+		"/reports/online",
+	]);
+	const groups = showMoney
+		? GROUPS
+		: GROUPS.map(group => ({
+				...group,
+				items: group.items.filter(item => !moneyPaths.has(item.path)),
+			})).filter(group => group.items.length > 0);
 	return (
 		<div className="erp-page">
 			<div className="erp-page-header">
@@ -192,7 +218,7 @@ export default function ReportsIndex() {
 					</p>
 				</div>
 			</div>
-			{GROUPS.map(group => (
+			{groups.map(group => (
 				<div key={group.label} className="space-y-3">
 					<h2 className="text-[13px] font-bold uppercase tracking-wide text-slate-500">
 						{group.label}

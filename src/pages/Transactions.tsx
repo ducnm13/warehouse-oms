@@ -47,6 +47,7 @@ import TableActions from "../components/TableActions";
 import ListToolbar from "../components/ListToolbar";
 import type { FilterField, FilterValues } from "../components/FilterDrawer";
 import { exportExcelFile } from "../lib/excelExport";
+import { useCanViewMoney } from "../hooks/useCanViewMoney";
 
 type Line = {
 	packagingId: number;
@@ -109,6 +110,7 @@ export default function Transactions({
 	initialType = "IMPORT",
 }: { initialType?: "IMPORT" | "EXPORT" } = {}) {
 	const queryClient = useQueryClient();
+	const showMoney = useCanViewMoney();
 	const [view, setView] = useState<View>("documents");
 	const [search, setSearch] = useState("");
 	const [filters, setFilters] = useState<FilterValues>({});
@@ -1028,20 +1030,22 @@ export default function Transactions({
 										<th>Diễn giải</th>
 										<th>Kho</th>
 										<th>Trạng thái</th>
-										<th className="text-right">Giá trị</th>
+										{showMoney && (
+											<th className="text-right">Giá trị</th>
+										)}
 										<th>Thao tác</th>
 									</tr>
 								</thead>
 								<tbody>
 									{documents.isLoading ? (
 										<tr>
-											<td colSpan={7} className="text-center">
+											<td colSpan={showMoney ? 7 : 6} className="text-center">
 												Đang tải...
 											</td>
 										</tr>
 									) : visibleRows.length === 0 ? (
 										<tr>
-											<td colSpan={7} className="text-center text-slate-400">
+											<td colSpan={showMoney ? 7 : 6} className="text-center text-slate-400">
 												Chưa có chứng từ kho, kể cả phiếu do bán hàng tự sinh
 											</td>
 										</tr>
@@ -1075,14 +1079,16 @@ export default function Transactions({
 														{statusMeta[document.documentStatus].label}
 													</span>
 												</td>
-												<td className="text-right font-semibold">
-													{formatNumber(
-														document.details.reduce(
-															(sum, line) => sum + Number(line.totalValue),
-															0,
-														),
-													)}
-												</td>
+												{showMoney && (
+													<td className="text-right font-semibold">
+														{formatNumber(
+															document.details.reduce(
+																(sum, line) => sum + Number(line.totalValue),
+																0,
+															),
+														)}
+													</td>
+												)}
 												<td>
 													<TableActions
 														actions={[
@@ -1449,8 +1455,12 @@ export default function Transactions({
 												<th className="w-12 text-center">STT</th>
 												<th>Hàng hóa / Quy cách</th>
 												<th>Số lượng</th>
-												<th>Đơn giá vốn</th>
-												<th className="text-right">Thành tiền</th>
+												{showMoney && (
+													<>
+														<th>Đơn giá vốn</th>
+														<th className="text-right">Thành tiền</th>
+													</>
+												)}
 												<th>Ghi chú</th>
 												<th></th>
 											</tr>
@@ -1483,6 +1493,8 @@ export default function Transactions({
 															className="w-28"
 														/>
 													</td>
+													{showMoney && (
+														<>
 													<td>
 														<NumberInput
 															value={line.unitCost}
@@ -1501,6 +1513,8 @@ export default function Transactions({
 													<td className="text-right font-semibold">
 														{formatNumber(line.quantity * line.unitCost)}
 													</td>
+														</>
+													)}
 													<td>
 														<input
 															value={line.note}
@@ -1550,9 +1564,11 @@ export default function Transactions({
 											}
 										/>
 									</label>
-									<div className="text-right text-xl font-bold text-emerald-700">
-										Tổng giá trị: {formatNumber(totalValue)} ₫
-									</div>
+									{showMoney && (
+										<div className="text-right text-xl font-bold text-emerald-700">
+											Tổng giá trị: {formatNumber(totalValue)} ₫
+										</div>
+									)}
 								</div>
 							</div>
 							<div className="erp-modal-footer">
@@ -1612,8 +1628,12 @@ export default function Transactions({
 										<th className="w-12 text-center">STT</th>
 										<th>Hàng hóa</th>
 										<th className="text-right">Số lượng</th>
-										<th className="text-right">Đơn giá</th>
-										<th className="text-right">Thành tiền</th>
+										{showMoney && (
+											<>
+												<th className="text-right">Đơn giá</th>
+												<th className="text-right">Thành tiền</th>
+											</>
+										)}
 									</tr>
 								</thead>
 								<tbody>
@@ -1630,12 +1650,16 @@ export default function Transactions({
 											<td className="text-right">
 												{formatNumber(line.quantity)} {line.unit}
 											</td>
+											{showMoney && (
+												<>
 											<td className="text-right">
 												{formatNumber(line.unitCost)}
 											</td>
 											<td className="text-right font-semibold">
 												{formatNumber(line.totalValue)}
 											</td>
+												</>
+											)}
 										</tr>
 									))}
 								</tbody>

@@ -8,6 +8,7 @@ import {
 } from "../lib/printTemplate";
 import PrintAppFooter from "./PrintAppFooter";
 import { DocumentSignatures } from "./DocumentPrintShell";
+import { useCanViewMoney } from "../hooks/useCanViewMoney";
 
 interface SalesReturnDocumentProps {
 	document: SalesReturnV1;
@@ -18,6 +19,7 @@ export const SalesReturnDocument = React.forwardRef<
 	HTMLDivElement,
 	SalesReturnDocumentProps
 >(({ document, company }, ref) => {
+	const showMoney = useCanViewMoney();
 	const lines = document.lines || [];
 	const date = new Date(document.returnDate);
 	const day = String(date.getDate()).padStart(2, "0");
@@ -118,12 +120,16 @@ export const SalesReturnDocument = React.forwardRef<
 							<th className="border border-black p-2 font-bold text-center w-20">
 								SL trả
 							</th>
-							<th className="border border-black p-2 font-bold text-center w-24">
-								Đơn giá
-							</th>
-							<th className="border border-black p-2 font-bold text-center w-28">
-								Thành tiền
-							</th>
+							{showMoney && (
+								<>
+									<th className="border border-black p-2 font-bold text-center w-24">
+										Đơn giá
+									</th>
+									<th className="border border-black p-2 font-bold text-center w-28">
+										Thành tiền
+									</th>
+								</>
+							)}
 						</tr>
 					</thead>
 					<tbody>
@@ -145,14 +151,20 @@ export const SalesReturnDocument = React.forwardRef<
 								<td className="border border-black py-1 text-center font-medium">
 									{formatNumber(Number(line.quantity || 0))}
 								</td>
+								{showMoney && (
+									<>
 								<td className="border border-black py-1 px-2 text-right">
 									{formatNumber(Number(line.unitPrice || 0))}
 								</td>
 								<td className="border border-black py-1 px-2 text-right font-medium">
 									{formatNumber(Number(line.lineTotal || 0))}
 								</td>
+									</>
+								)}
 							</tr>
 						))}
+						{showMoney && (
+							<>
 						<tr className="bg-gray-50 font-bold">
 							<td colSpan={5} className="border border-black p-1 text-center">
 								Cộng tiền hàng
@@ -177,8 +189,11 @@ export const SalesReturnDocument = React.forwardRef<
 								{formatNumber(Number(document.totalAmount || 0))}
 							</td>
 						</tr>
+							</>
+						)}
 					</tbody>
 				</table>
+				{showMoney && (
 				<div className="mt-2 space-y-1 text-sm italic">
 					<div>
 						<span className="text-gray-700">Số tiền bằng chữ: </span>
@@ -191,6 +206,7 @@ export const SalesReturnDocument = React.forwardRef<
 						thành số dư có của khách và tự động trừ vào đơn bán tiếp theo.
 					</p>
 				</div>
+				)}
 			</div>
 
 			<DocumentSignatures signers={signers} />

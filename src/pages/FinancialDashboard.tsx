@@ -29,6 +29,7 @@ import {
 } from "../components/ui/card";
 import Badge from "../components/ui/badge";
 import { currentMonthKey, formatNumber } from "../lib/utils";
+import { useCanViewMoney } from "../hooks/useCanViewMoney";
 
 type Data = {
 	revenue: number;
@@ -66,6 +67,7 @@ const initial: Data = {
 };
 export default function FinancialDashboard() {
 	console.debug("[FinancialDashboard] component rendered");
+	const showMoney = useCanViewMoney();
 	const [data, setData] = useState<Data>(initial),
 		[loading, setLoading] = useState(true),
 		[month, setMonth] = useState(currentMonthKey());
@@ -125,8 +127,9 @@ export default function FinancialDashboard() {
 				<div>
 					<h1>Tổng quan tài chính</h1>
 					<p>
-						Doanh thu, chi phí tháng {Number(month.slice(5))}/
-						{month.slice(0, 4)}; công nợ và tồn kho hiện tại
+						{showMoney
+							? `Doanh thu, chi phí tháng ${Number(month.slice(5))}/${month.slice(0, 4)}; công nợ và tồn kho hiện tại`
+							: "Tình trạng tồn kho hiện tại"}
 					</p>
 				</div>
 				<input
@@ -146,6 +149,8 @@ export default function FinancialDashboard() {
 				</div>
 			) : (
 				<>
+					{showMoney && (
+						<>
 					<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
 						{cards.map(([label, value, Icon, color]) => (
 							<div className="erp-stat" key={label}>
@@ -286,6 +291,8 @@ export default function FinancialDashboard() {
 							</div>
 						</div>
 					</div>
+						</>
+					)}
 					<div className="erp-card overflow-hidden">
 						<div className="p-4">
 							<h2 className="flex items-center gap-2 font-bold">

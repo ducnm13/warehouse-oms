@@ -47,6 +47,7 @@ import ProductSuggestions, {
 } from "../components/ProductSuggestions";
 import type { FilterField, FilterValues } from "../components/FilterDrawer";
 import { exportExcelFile } from "../lib/excelExport";
+import { useCanViewMoney } from "../hooks/useCanViewMoney";
 
 const headerSchema = z.object({
 	documentDate: z.string().min(1, "Chọn ngày chứng từ"),
@@ -144,6 +145,7 @@ const linkTypeLabel = (type: string) => {
 
 export default function Purchases() {
 	const queryClient = useQueryClient();
+	const showMoney = useCanViewMoney();
 	const [search, setSearch] = useState("");
 	const [filters, setFilters] = useState<FilterValues>({});
 	const { month, setMonth, range } = useMonthFilter();
@@ -710,18 +712,25 @@ export default function Purchases() {
 								? "Thanh toán một phần"
 								: "Chưa thanh toán",
 				},
-				{
-					header: "Tiền hàng",
-					value: (row: PurchaseDocument) => Number(row.goodsAmount || 0),
-				},
-				{
-					header: "Tổng tiền",
-					value: (row: PurchaseDocument) => Number(row.totalAmount || 0),
-				},
-				{
-					header: "Đã trả",
-					value: (row: PurchaseDocument) => Number(row.paidAmount || 0),
-				},
+				...(showMoney
+					? [
+							{
+								header: "Tiền hàng",
+								value: (row: PurchaseDocument) =>
+									Number(row.goodsAmount || 0),
+							},
+							{
+								header: "Tổng tiền",
+								value: (row: PurchaseDocument) =>
+									Number(row.totalAmount || 0),
+							},
+							{
+								header: "Đã trả",
+								value: (row: PurchaseDocument) =>
+									Number(row.paidAmount || 0),
+							},
+						]
+					: []),
 			],
 			visibleRows,
 		);
@@ -759,19 +768,21 @@ export default function Purchases() {
 						<em className="erp-stat-month">{formatMonthLabel(month)}</em>
 					</div>
 				</div>
-				<div className="erp-stat">
-					<Banknote />
-					<div>
-						<span>Tổng thanh toán tháng này</span>
-						<strong>
-							{formatNumber(
-								rows.reduce((sum, row) => sum + Number(row.totalAmount), 0),
-							)}{" "}
-							₫
-						</strong>
-						<em className="erp-stat-month">{formatMonthLabel(month)}</em>
+				{showMoney && (
+					<div className="erp-stat">
+						<Banknote />
+						<div>
+							<span>Tổng thanh toán tháng này</span>
+							<strong>
+								{formatNumber(
+									rows.reduce((sum, row) => sum + Number(row.totalAmount), 0),
+								)}{" "}
+								₫
+							</strong>
+							<em className="erp-stat-month">{formatMonthLabel(month)}</em>
+						</div>
 					</div>
-				</div>
+				)}
 			</div>
 			<div className="erp-card overflow-hidden">
 				<ListToolbar month={month} onMonthChange={value => { setMonth(value); setFilters(current => { const next = { ...current }; delete next.dateFrom; delete next.dateTo; return next; }); }}
@@ -818,8 +829,12 @@ export default function Purchases() {
 									<th>Nhà cung cấp</th>
 									<th>Diễn giải</th>
 									<th>Trạng thái</th>
-									<th className="text-right">Tiền hàng</th>
-									<th className="text-right">Thanh toán</th>
+									{showMoney && (
+										<>
+											<th className="text-right">Tiền hàng</th>
+											<th className="text-right">Thanh toán</th>
+										</>
+									)}
 									<th></th>
 								</tr>
 							</thead>
@@ -851,12 +866,16 @@ export default function Purchases() {
 												<small>Đã thanh toán</small>
 											)}
 										</td>
-										<td className="text-right">
-											{formatNumber(document.goodsAmount)} ₫
-										</td>
-										<td className="text-right font-semibold">
-											{formatNumber(document.totalAmount)} ₫
-										</td>
+										{showMoney && (
+											<>
+												<td className="text-right">
+													{formatNumber(document.goodsAmount)} ₫
+												</td>
+												<td className="text-right font-semibold">
+													{formatNumber(document.totalAmount)} ₫
+												</td>
+											</>
+										)}
 										<td>
 											<TableActions
 												actions={[
@@ -1129,9 +1148,13 @@ export default function Purchases() {
 												<th>Hàng hóa / Quy cách</th>
 												{type === "DOMESTIC_INVENTORY" && <th>Kho</th>}
 												<th>SL</th>
-												<th>Đơn giá</th>
-												<th>Thuế %</th>
-												<th className="text-right">Thành tiền</th>
+												{showMoney && (
+													<>
+														<th>Đơn giá</th>
+														<th>Thuế %</th>
+														<th className="text-right">Thành tiền</th>
+													</>
+												)}
 												<th></th>
 											</tr>
 										</thead>
@@ -1184,6 +1207,8 @@ export default function Purchases() {
 															}
 														/>
 													</td>
+													{showMoney && (
+														<>
 													<td>
 														<input
 															className="w-32"
@@ -1219,6 +1244,8 @@ export default function Purchases() {
 																(1 + line.taxRate / 100),
 														)}
 													</td>
+														</>
+													)}
 													<td>
 														<button
 															type="button"
@@ -1252,6 +1279,7 @@ export default function Purchases() {
 										Diễn giải
 										<textarea rows={3} {...form.register("description")} />
 									</label>
+									{showMoney && (
 									<div className="ml-auto w-full max-w-sm space-y-2">
 										<div className="flex justify-between">
 											<span>Tiền hàng</span>
@@ -1277,6 +1305,7 @@ export default function Purchases() {
 											<b>{formatNumber(total)} ₫</b>
 										</div>
 									</div>
+									)}
 								</div>
 							</div>
 							<div className="erp-modal-footer">
@@ -1346,8 +1375,12 @@ export default function Purchases() {
 										<th>Hàng hóa</th>
 										<th>Kho</th>
 										<th>SL</th>
-										<th className="text-right">Đơn giá</th>
-										<th className="text-right">Tiền + thuế</th>
+										{showMoney && (
+											<>
+												<th className="text-right">Đơn giá</th>
+												<th className="text-right">Tiền + thuế</th>
+											</>
+										)}
 									</tr>
 								</thead>
 								<tbody>
@@ -1362,6 +1395,8 @@ export default function Purchases() {
 											<td>
 												{formatNumber(line.quantity)} {line.unit}
 											</td>
+											{showMoney && (
+												<>
 											<td className="text-right">
 												{formatNumber(line.unitPrice)}
 											</td>
@@ -1371,6 +1406,8 @@ export default function Purchases() {
 												)}{" "}
 												₫
 											</td>
+												</>
+											)}
 										</tr>
 									))}
 								</tbody>
@@ -1422,14 +1459,16 @@ export default function Purchases() {
 									Lý do hủy: {selected.cancelReason}
 								</div>
 							)}
-							<div className="mt-4 ml-auto w-fit p-4 text-right bg-emerald-50 border-2 border-emerald-200 rounded-xl">
-								<div className="text-sm text-emerald-700 font-medium uppercase tracking-wider mb-1">
-									Tổng thanh toán
+							{showMoney && (
+								<div className="mt-4 ml-auto w-fit p-4 text-right bg-emerald-50 border-2 border-emerald-200 rounded-xl">
+									<div className="text-sm text-emerald-700 font-medium uppercase tracking-wider mb-1">
+										Tổng thanh toán
+									</div>
+									<div className="text-2xl font-extrabold text-emerald-800">
+										{formatNumber(selected.totalAmount)} ₫
+									</div>
 								</div>
-								<div className="text-2xl font-extrabold text-emerald-800">
-									{formatNumber(selected.totalAmount)} ₫
-								</div>
-							</div>
+							)}
 						</div>
 						<div className="erp-modal-footer">
 							<DetailOptionsMenu

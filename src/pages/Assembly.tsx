@@ -35,6 +35,7 @@ import type {
 	User,
 	Warehouse,
 } from "../types";
+import { useCanViewMoney } from "../hooks/useCanViewMoney";
 
 type Tab = "ASSEMBLY" | "DISASSEMBLY";
 interface OrderLine {
@@ -90,6 +91,7 @@ const ASSEMBLY_FILTER_FIELDS: FilterField[] = [
 
 export default function Assembly({ user }: { user: User }) {
 	const qc = useQueryClient();
+	const showMoney = useCanViewMoney();
 	const manage = hasPermission(user.role, user.permissions, "assembly.manage");
 	const [tab, setTab] = useState<Tab>("ASSEMBLY");
 	const [search, setSearch] = useState("");
@@ -819,10 +821,14 @@ export default function Assembly({ user }: { user: User }) {
 							.join("; "),
 					width: 32,
 				},
-				{
-					header: "Tổng tiền",
-					value: (row: any) => orderAmount(row),
-				},
+				...(showMoney
+					? [
+							{
+								header: "Tổng tiền",
+								value: (row: any) => orderAmount(row),
+							},
+						]
+					: []),
 				{
 					header: "Trạng thái",
 					value: (row: any) => statusLabel[row.status] || row.status,
@@ -893,7 +899,9 @@ export default function Assembly({ user }: { user: User }) {
 							<th>Mã lệnh</th>
 							<th>Ngày</th>
 							<th>Thành phẩm</th>
-							<th className="text-right">Tổng tiền</th>
+							{showMoney && (
+								<th className="text-right">Tổng tiền</th>
+							)}
 							<th>Trạng thái</th>
 							<th></th>
 						</tr>
@@ -902,7 +910,7 @@ export default function Assembly({ user }: { user: User }) {
 						{visibleRows.length === 0 && (
 							<tr>
 								<td
-									colSpan={6}
+									colSpan={showMoney ? 6 : 5}
 									className="py-10 text-center text-sm text-[#a3aed0]"
 								>
 									Không có dữ liệu
@@ -928,9 +936,11 @@ export default function Assembly({ user }: { user: User }) {
 										{orderOutputLabel(row) || "-"}
 									</div>
 								</td>
-								<td className="text-right font-semibold">
-									{formatNumber(orderAmount(row))}
-								</td>
+								{showMoney && (
+									<td className="text-right font-semibold">
+										{formatNumber(orderAmount(row))}
+									</td>
+								)}
 								<td>
 									<span className={`erp-badge ${badge[row.status]}`}>
 										{statusLabel[row.status] || row.status}
@@ -1058,18 +1068,20 @@ export default function Assembly({ user }: { user: User }) {
 								/>
 							</div>
 						</div>
-						<div className="flex h-full flex-col justify-center rounded-lg bg-emerald-50 p-3">
-							<p className="text-xs font-bold uppercase tracking-wide text-emerald-700">
-								Tổng tiền
-							</p>
-							<p className="mt-1 text-xl font-bold text-emerald-700">
-								{formatNumber(totalCost)} ₫
-							</p>
-							<p className="mt-1 text-xs text-emerald-700">
-								Theo giá vốn thành phẩm cần{" "}
-								{tab === "ASSEMBLY" ? "lắp ráp" : "tháo dỡ"}
-							</p>
-						</div>
+						{showMoney && (
+							<div className="flex h-full flex-col justify-center rounded-lg bg-emerald-50 p-3">
+								<p className="text-xs font-bold uppercase tracking-wide text-emerald-700">
+									Tổng tiền
+								</p>
+								<p className="mt-1 text-xl font-bold text-emerald-700">
+									{formatNumber(totalCost)} ₫
+								</p>
+								<p className="mt-1 text-xs text-emerald-700">
+									Theo giá vốn thành phẩm cần{" "}
+									{tab === "ASSEMBLY" ? "lắp ráp" : "tháo dỡ"}
+								</p>
+							</div>
+						)}
 					</div>
 
 					<div className="grid items-start gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
@@ -1084,8 +1096,12 @@ export default function Assembly({ user }: { user: User }) {
 											<th className="min-w-56">Tên hàng hóa</th>
 											<th className="w-16">ĐVT</th>
 											<th className="w-28 text-right">Số lượng</th>
-											<th className="w-28 text-right">Đơn giá</th>
-											<th className="w-32 text-right">Thành tiền</th>
+											{showMoney && (
+												<>
+													<th className="w-28 text-right">Đơn giá</th>
+													<th className="w-32 text-right">Thành tiền</th>
+												</>
+											)}
 											<th className="w-9"></th>
 										</tr>
 									</thead>
@@ -1153,12 +1169,16 @@ export default function Assembly({ user }: { user: User }) {
 															}
 														/>
 													</td>
+													{showMoney && (
+														<>
 													<td className="text-right">
 														{formatNumber(unitCost)}
 													</td>
 													<td className="text-right font-semibold">
 														{formatNumber(line.plannedQuantity * unitCost)}
 													</td>
+														</>
+													)}
 													<td>
 														<button
 															type="button"
@@ -1388,12 +1408,14 @@ export default function Assembly({ user }: { user: User }) {
 										{selected.note || "-"}
 									</div>
 								</div>
-								<div>
-									<small>Tổng tiền</small>
-									<b className="block text-emerald-700">
-										{formatNumber(orderAmount(selected))} đ
-									</b>
-								</div>
+								{showMoney && (
+									<div>
+										<small>Tổng tiền</small>
+										<b className="block text-emerald-700">
+											{formatNumber(orderAmount(selected))} đ
+										</b>
+									</div>
+								)}
 								<div>
 									<small>Tham chiếu</small>
 									<div className="mt-1 flex flex-wrap gap-1">
@@ -1441,7 +1463,9 @@ export default function Assembly({ user }: { user: User }) {
 									<th>Mã thành phẩm</th>
 									<th>Tên thành phẩm</th>
 									<th className="text-right">Số lượng</th>
-									<th className="text-right">Thành tiền</th>
+									{showMoney && (
+										<th className="text-right">Thành tiền</th>
+									)}
 								</tr>
 							</thead>
 							<tbody>
@@ -1453,9 +1477,11 @@ export default function Assembly({ user }: { user: User }) {
 										<td className="text-right">
 											{formatNumber(row.plannedQuantity || 0)} {row.unit || ""}
 										</td>
-										<td className="text-right font-semibold">
-											{formatNumber(outputAmount(row))}
-										</td>
+										{showMoney && (
+											<td className="text-right font-semibold">
+												{formatNumber(outputAmount(row))}
+											</td>
+										)}
 									</tr>
 								))}
 							</tbody>
@@ -1535,18 +1561,20 @@ export default function Assembly({ user }: { user: User }) {
 									{voucherDraft.type === "EXPORT" ? "Xuất kho" : "Nhập kho"}
 								</b>
 							</div>
-							<div className="rounded bg-emerald-50 p-3">
-								<small>Tổng giá vốn</small>
-								<b className="block text-emerald-700">
-									{formatNumber(
-										voucherDraft.lines.reduce(
-											(sum, line) => sum + line.quantity * line.unitCost,
-											0,
-										),
-									)}{" "}
-									₫
-								</b>
-							</div>
+							{showMoney && (
+								<div className="rounded bg-emerald-50 p-3">
+									<small>Tổng giá vốn</small>
+									<b className="block text-emerald-700">
+										{formatNumber(
+											voucherDraft.lines.reduce(
+												(sum, line) => sum + line.quantity * line.unitCost,
+												0,
+											),
+										)}{" "}
+										₫
+									</b>
+								</div>
+							)}
 						</div>
 						<div className="overflow-x-auto rounded-lg border border-slate-200">
 							<table className="erp-table w-full min-w-[640px]">
@@ -1557,8 +1585,12 @@ export default function Assembly({ user }: { user: User }) {
 										<th>Tên hàng hóa</th>
 										<th>ĐVT</th>
 										<th className="text-right">Số lượng</th>
-										<th className="text-right">Đơn giá vốn</th>
-										<th className="text-right">Thành tiền</th>
+										{showMoney && (
+											<>
+												<th className="text-right">Đơn giá vốn</th>
+												<th className="text-right">Thành tiền</th>
+											</>
+										)}
 									</tr>
 								</thead>
 								<tbody>
@@ -1595,12 +1627,16 @@ export default function Assembly({ user }: { user: User }) {
 													className="w-28"
 												/>
 											</td>
+											{showMoney && (
+												<>
 											<td className="text-right">
 												{formatNumber(line.unitCost)}
 											</td>
 											<td className="text-right font-semibold">
 												{formatNumber(line.quantity * line.unitCost)}
 											</td>
+												</>
+											)}
 										</tr>
 									))}
 								</tbody>

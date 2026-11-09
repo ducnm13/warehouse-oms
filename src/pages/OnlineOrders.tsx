@@ -31,6 +31,7 @@ import type { Product } from "../types";
 import ListToolbar from "../components/ListToolbar";
 import type { FilterField, FilterValues } from "../components/FilterDrawer";
 import { exportExcelFile } from "../lib/excelExport";
+import { useCanViewMoney } from "../hooks/useCanViewMoney";
 
 interface OnlineProduct {
 	id: number;
@@ -99,6 +100,7 @@ const ORDER_FILTER_FIELDS: FilterField[] = [
 const newOrderCode = () => `DH${Math.floor(100000 + Math.random() * 900000)}`;
 
 const OnlineOrders = () => {
+	const showMoney = useCanViewMoney();
 	const [tab, setTab] = useState<
 		"dashboard" | "create" | "orders" | "products" | "reports"
 	>("dashboard");
@@ -745,10 +747,15 @@ const OnlineOrders = () => {
 							.join("; "),
 					width: 40,
 				},
-				{
-					header: "Tổng tiền",
-					value: (order: OnlineOrder) => Number(order.totalAmount || 0),
-				},
+				...(showMoney
+					? [
+							{
+								header: "Tổng tiền",
+								value: (order: OnlineOrder) =>
+									Number(order.totalAmount || 0),
+							},
+						]
+					: []),
 				{
 					header: "Trạng thái",
 					value: (order: OnlineOrder) =>
@@ -780,8 +787,12 @@ const OnlineOrders = () => {
 						["dashboard", "Tổng quan"],
 						["create", "Tạo đơn mới"],
 						["orders", "Đơn hàng & Đóng gói"],
-						["products", "Sản phẩm"],
-						["reports", "Báo cáo"],
+						...(showMoney
+							? [
+									["products", "Sản phẩm"] as const,
+									["reports", "Báo cáo"] as const,
+								]
+							: []),
 					] as const
 				).map(([key, label]) => (
 					<button
@@ -805,15 +816,17 @@ const OnlineOrders = () => {
 			{tab === "dashboard" && (
 				<>
 					<div className="grid gap-4 md:grid-cols-4">
-						<div className="erp-stat">
-							<TrendingUp />
-							<div>
-								<span>Tổng doanh thu</span>
-								<strong>
-									{formatNumber(Number(stats?.totalRevenue || 0))} ₫
-								</strong>
+						{showMoney && (
+							<div className="erp-stat">
+								<TrendingUp />
+								<div>
+									<span>Tổng doanh thu</span>
+									<strong>
+										{formatNumber(Number(stats?.totalRevenue || 0))} ₫
+									</strong>
+								</div>
 							</div>
-						</div>
+						)}
 						<div className="erp-stat">
 							<ShoppingCart />
 							<div>
@@ -840,6 +853,7 @@ const OnlineOrders = () => {
 							</div>
 						</div>
 					</div>
+					{showMoney && (
 					<div className="erp-card overflow-hidden">
 						<div className="erp-toolbar">
 							<b>Biểu đồ doanh thu</b>
@@ -886,6 +900,7 @@ const OnlineOrders = () => {
 							)}
 						</div>
 					</div>
+					)}
 				</>
 			)}
 
@@ -973,7 +988,9 @@ const OnlineOrders = () => {
 										options={products.map(p => ({
 											value: p.id,
 											label: p.name,
-											subLabel: `${formatNumber(p.price)}đ/${p.unit || "Cái"}`,
+											subLabel: showMoney
+												? `${formatNumber(p.price)}đ/${p.unit || "Cái"}`
+												: undefined,
 										}))}
 										onChange={id => handleProductSelect(index, id || null)}
 										placeholder="Gõ để tìm sản phẩm..."
@@ -1007,6 +1024,8 @@ const OnlineOrders = () => {
 										placeholder="SL"
 										className="rounded border border-slate-300 px-3 py-2 text-center text-sm outline-none focus:border-emerald-500"
 									/>
+									{showMoney && (
+										<>
 									<input
 										type="number"
 										min={0}
@@ -1029,6 +1048,8 @@ const OnlineOrders = () => {
 										)}{" "}
 										₫
 									</b>
+										</>
+									)}
 									{items.length > 1 ? (
 										<button
 											type="button"
@@ -1047,6 +1068,7 @@ const OnlineOrders = () => {
 							))}
 						</div>
 					</div>
+					{showMoney && (
 					<div className="space-y-2 rounded-lg bg-slate-50 p-4">
 						<div className="flex justify-between text-sm">
 							<span>Tiền hàng:</span>
@@ -1067,6 +1089,7 @@ const OnlineOrders = () => {
 							<span>{formatNumber(total)} ₫</span>
 						</div>
 					</div>
+					)}
 					<button
 						type="submit"
 						disabled={saving}
@@ -1119,7 +1142,9 @@ const OnlineOrders = () => {
 									<th>Mã đơn</th>
 									<th>Người nhận</th>
 									<th>Sản phẩm</th>
-									<th className="text-right">Tổng tiền</th>
+									{showMoney && (
+										<th className="text-right">Tổng tiền</th>
+									)}
 									<th>Trạng thái</th>
 									<th className="text-right">Thao tác</th>
 								</tr>
@@ -1128,7 +1153,7 @@ const OnlineOrders = () => {
 								{loading ? (
 									<tr>
 										<td
-											colSpan={6}
+											colSpan={showMoney ? 6 : 5}
 											className="py-12 text-center text-slate-400"
 										>
 											Đang tải...
@@ -1137,7 +1162,7 @@ const OnlineOrders = () => {
 								) : visibleOrders.length === 0 ? (
 									<tr>
 										<td
-											colSpan={6}
+											colSpan={showMoney ? 6 : 5}
 											className="py-12 text-center text-slate-400"
 										>
 											Không tìm thấy đơn hàng nào
@@ -1178,17 +1203,21 @@ const OnlineOrders = () => {
 													<div key={i} className="text-xs text-slate-600">
 														•{" "}
 														<b className="text-slate-800">{item.productName}</b>{" "}
-														(x{item.quantity} {item.unit || "Cái"}) -{" "}
-														{formatNumber(item.price)} ₫
+														(x{item.quantity} {item.unit || "Cái"})
+														{showMoney && <> - {formatNumber(item.price)} ₫</>}
 													</div>
 												))}
-												<small className="text-slate-400">
-													Phí ship: {formatNumber(order.shippingFee)} ₫
-												</small>
+												{showMoney && (
+													<small className="text-slate-400">
+														Phí ship: {formatNumber(order.shippingFee)} ₫
+													</small>
+												)}
 											</td>
-											<td className="text-right font-black">
-												{formatNumber(order.totalAmount)} ₫
-											</td>
+											{showMoney && (
+												<td className="text-right font-black">
+													{formatNumber(order.totalAmount)} ₫
+												</td>
+											)}
 											<td>
 												<span
 													className={`inline-flex px-2 py-0.5 rounded text-xs font-bold ${STATUS_META[order.status]?.css || "bg-slate-100 text-slate-600"}`}
@@ -1332,7 +1361,7 @@ const OnlineOrders = () => {
 									: "Thêm sản phẩm mới"}
 							</b>
 							<div className="flex flex-wrap items-center gap-2">
-								{companyBook && (
+								{showMoney && companyBook && (
 									<small className="text-slate-500">
 										Giá theo:{" "}
 										<b>
@@ -1357,6 +1386,7 @@ const OnlineOrders = () => {
 								>
 									<RefreshCw size={14} /> Đồng bộ tên từ kho
 								</button>
+								{showMoney && (
 								<button
 									type="button"
 									onClick={handleSyncCompanyPrices}
@@ -1365,6 +1395,7 @@ const OnlineOrders = () => {
 								>
 									<RefreshCw size={14} /> Đồng bộ giá công ty
 								</button>
+								)}
 							</div>
 						</div>
 						<div className="grid gap-4 md:grid-cols-2">
@@ -1418,6 +1449,7 @@ const OnlineOrders = () => {
 									className="w-full rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
 								/>
 							</label>
+							{showMoney && (
 							<label className="text-[13px] font-medium text-slate-700">
 								<span className="mb-1 block">
 									Đơn giá (đ) <span className="text-red-500">*</span>
@@ -1432,6 +1464,7 @@ const OnlineOrders = () => {
 									className="w-full rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
 								/>
 							</label>
+							)}
 							<div className="flex items-end">
 								<button
 									type="submit"
@@ -1450,8 +1483,12 @@ const OnlineOrders = () => {
 									<tr>
 										<th>ID</th>
 										<th>Tên sản phẩm</th>
-										<th className="text-right">Đơn giá</th>
-										<th className="text-right">Giá công ty</th>
+										{showMoney && (
+											<>
+												<th className="text-right">Đơn giá</th>
+												<th className="text-right">Giá công ty</th>
+											</>
+										)}
 										<th>ĐVT</th>
 										<th>Link kho</th>
 										<th className="text-right">Thao tác</th>
@@ -1461,7 +1498,7 @@ const OnlineOrders = () => {
 									{products.length === 0 ? (
 										<tr>
 											<td
-												colSpan={7}
+												colSpan={showMoney ? 7 : 5}
 												className="py-12 text-center text-slate-400"
 											>
 												Chưa có sản phẩm nào
@@ -1479,6 +1516,8 @@ const OnlineOrders = () => {
 												>
 													<td className="font-bold text-slate-500">#{p.id}</td>
 													<td className="font-bold">{p.name}</td>
+											{showMoney && (
+												<>
 													<td className="text-right font-bold text-emerald-700">
 														{formatNumber(p.price)} ₫
 													</td>
@@ -1491,6 +1530,8 @@ const OnlineOrders = () => {
 															<span className="text-slate-400">—</span>
 														)}
 													</td>
+												</>
+											)}
 													<td>{p.unit || "Cái"}</td>
 													<td>
 														{p.packagingSku ? (
@@ -1677,8 +1718,12 @@ const OnlineOrders = () => {
 										<th className="w-12 text-center">STT</th>
 										<th>Sản phẩm</th>
 										<th className="text-right">SL</th>
-										<th className="text-right">Đơn giá</th>
-										<th className="text-right">Thành tiền</th>
+										{showMoney && (
+											<>
+												<th className="text-right">Đơn giá</th>
+												<th className="text-right">Thành tiền</th>
+											</>
+										)}
 									</tr>
 								</thead>
 								<tbody>
@@ -1687,18 +1732,24 @@ const OnlineOrders = () => {
 											<td className="text-center">{i + 1}</td>
 											<td><b>{item.productName}</b><small>{item.unit || ""}</small></td>
 											<td className="text-right">{formatNumber(item.quantity)}</td>
-											<td className="text-right">{formatNumber(item.price)} ₫</td>
-											<td className="text-right font-bold">{formatNumber(Number(item.quantity || 0) * Number(item.price || 0))} ₫</td>
+											{showMoney && (
+												<>
+													<td className="text-right">{formatNumber(item.price)} ₫</td>
+													<td className="text-right font-bold">{formatNumber(Number(item.quantity || 0) * Number(item.price || 0))} ₫</td>
+												</>
+											)}
 										</tr>
 									))}
 								</tbody>
 							</table>
+							{showMoney && (
 							<div className="space-y-1 text-sm">
 								<div className="flex justify-between"><span>Phí ship:</span><b>{formatNumber(detailOrder.shippingFee)} ₫</b></div>
 								<div className="flex justify-between text-base font-black text-emerald-700">
 									<span>Tổng thanh toán:</span><span>{formatNumber(detailOrder.totalAmount)} ₫</span>
 								</div>
 							</div>
+							)}
 						</div>
 						<div className="erp-modal-footer">
 							<DetailOptionsMenu

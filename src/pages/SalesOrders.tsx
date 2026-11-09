@@ -46,6 +46,7 @@ import ProductSuggestions, {
 import type { FilterField, FilterValues } from "../components/FilterDrawer";
 import { exportExcelFile } from "../lib/excelExport";
 import { comboBoms, comboOptionLabel, isComboPackaging } from "../lib/combo";
+import { useCanViewMoney } from "../hooks/useCanViewMoney";
 import { SalesOrderDocument } from "../components/SalesOrderDocument";
 import Button from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -202,6 +203,7 @@ const cloneRowStyle = (source: ExcelJS.Row, target: ExcelJS.Row) => {
 
 export default function SalesOrders() {
 	const queryClient = useQueryClient();
+	const showMoney = useCanViewMoney();
 	const [search, setSearch] = useState("");
 	const [filters, setFilters] = useState<FilterValues>({});
 	const { month, setMonth, range } = useMonthFilter();
@@ -1440,14 +1442,20 @@ export default function SalesOrders() {
 					value: (order: SalesOrder) => order.note || "",
 					width: 36,
 				},
-				{
-					header: "Tổng tiền",
-					value: (order: SalesOrder) => Number(order.totalAmount || 0),
-				},
-				{
-					header: "Đã thanh toán",
-					value: (order: SalesOrder) => Number(order.paidAmount || 0),
-				},
+				...(showMoney
+					? [
+							{
+								header: "Tổng tiền",
+								value: (order: SalesOrder) =>
+									Number(order.totalAmount || 0),
+							},
+							{
+								header: "Đã thanh toán",
+								value: (order: SalesOrder) =>
+									Number(order.paidAmount || 0),
+							},
+						]
+					: []),
 				{
 					header: "Trạng thái",
 					value: (order: SalesOrder) =>
@@ -1532,21 +1540,23 @@ export default function SalesOrders() {
 						<em className="erp-stat-month">{formatMonthLabel(month)}</em>
 					</div>
 				</div>
-				<div className="erp-stat">
-					<CircleDollarSign />
-					<div>
-						<span>Doanh số tháng này</span>
-						<strong>
-							{formatNumber(
-								orders
-									.filter(order => order.status === "POSTED")
-									.reduce((sum, order) => sum + order.totalAmount, 0),
-							)}{" "}
-							₫
-						</strong>
-						<em className="erp-stat-month">{formatMonthLabel(month)}</em>
+				{showMoney && (
+					<div className="erp-stat">
+						<CircleDollarSign />
+						<div>
+							<span>Doanh số tháng này</span>
+							<strong>
+								{formatNumber(
+									orders
+										.filter(order => order.status === "POSTED")
+										.reduce((sum, order) => sum + order.totalAmount, 0),
+								)}{" "}
+								₫
+							</strong>
+							<em className="erp-stat-month">{formatMonthLabel(month)}</em>
+						</div>
 					</div>
-				</div>
+				)}
 			</div>
 			<Card className="overflow-hidden !p-0">
 				<ListToolbar month={month} onMonthChange={value => { setMonth(value); setFilters(current => { const next = { ...current }; delete next.dateFrom; delete next.dateTo; return next; }); }}
@@ -1601,7 +1611,9 @@ export default function SalesOrders() {
 									<th>Đơn hàng</th>
 									<th>Khách hàng</th>
 									<th>Diễn giải</th>
-									<th className="text-right">Tổng tiền</th>
+									{showMoney && (
+										<th className="text-right">Tổng tiền</th>
+									)}
 									<th>Trạng thái</th>
 									<th>Chức năng</th>
 								</tr>
@@ -1659,18 +1671,20 @@ export default function SalesOrders() {
 											{order.note || "-"}
 										</td>
 										{/* <td>{order.warehouseName}</td> */}
-										<td className="text-right font-semibold">
-											{formatNumber(order.totalAmount)} ₫
-											{order.status === "POSTED" && (
-												<small>
-													Còn nợ:{" "}
-													{formatNumber(
-														order.totalAmount - Number(order.paidAmount || 0),
-													)}{" "}
-													₫
-												</small>
-											)}
-										</td>
+										{showMoney && (
+											<td className="text-right font-semibold">
+												{formatNumber(order.totalAmount)} ₫
+												{order.status === "POSTED" && (
+													<small>
+														Còn nợ:{" "}
+														{formatNumber(
+															order.totalAmount - Number(order.paidAmount || 0),
+														)}{" "}
+														₫
+													</small>
+												)}
+											</td>
+										)}
 										<td>
 											<span
 												className={`erp-badge ${statusMeta[order.status as V1Status].css}`}
@@ -1714,6 +1728,7 @@ export default function SalesOrders() {
 														label: "Xuất Excel",
 														icon: <FileSpreadsheet size={15} />,
 														tone: "success",
+														hidden: !showMoney,
 														onClick: () => exportOrder(order),
 													},
 													{
@@ -1741,6 +1756,7 @@ export default function SalesOrders() {
 														icon: <CircleDollarSign size={15} />,
 														tone: "success",
 														hidden:
+															!showMoney ||
 															order.status !== "POSTED" ||
 															order.paymentStatus === "PAID",
 														onClick: () => receivePayment(order),
@@ -1990,10 +2006,16 @@ export default function SalesOrders() {
 												<th className="w-12 text-center">STT</th>
 												<th>Hàng hóa / Quy cách</th>
 												<th>SL</th>
-												<th>Đơn giá</th>
-												<th>CK %</th>
+												{showMoney && (
+													<>
+														<th>Đơn giá</th>
+														<th>CK %</th>
+													</>
+												)}
 												<th>Ghi chú sản phẩm</th>
-												<th className="text-right">Thành tiền</th>
+												{showMoney && (
+													<th className="text-right">Thành tiền</th>
+												)}
 												<th></th>
 											</tr>
 										</thead>
@@ -2050,6 +2072,8 @@ export default function SalesOrders() {
 															}
 														/>
 													</td>
+													{showMoney && (
+														<>
 													<td>
 														<input
 															className="w-32"
@@ -2080,6 +2104,8 @@ export default function SalesOrders() {
 															}
 														/>
 													</td>
+														</>
+													)}
 													<td>
 														<input
 															className="min-w-44"
@@ -2090,18 +2116,20 @@ export default function SalesOrders() {
 															}
 														/>
 													</td>
-													<td className="text-right font-semibold">
-														{formatNumber(
-															Number(line.quantity || 0) *
-																Number(line.unitPrice || 0) *
-																(1 -
-																	Math.min(
-																		Math.max(Number(line.discountRate || 0), 0),
-																		100,
-																	) /
-																		100),
-														)}
-													</td>
+													{showMoney && (
+														<td className="text-right font-semibold">
+															{formatNumber(
+																Number(line.quantity || 0) *
+																	Number(line.unitPrice || 0) *
+																	(1 -
+																		Math.min(
+																			Math.max(Number(line.discountRate || 0), 0),
+																			100,
+																		) /
+																			100),
+															)}
+														</td>
+													)}
 													<td>
 														<button
 															type="button"
@@ -2159,6 +2187,7 @@ export default function SalesOrders() {
 										Diễn giải
 										<textarea rows={3} {...form.register("note")} />
 									</label>
+									{showMoney && (
 									<div className="ml-auto w-full max-w-sm space-y-2">
 										<div className="flex justify-between">
 											<span>Tiền hàng</span>
@@ -2203,6 +2232,7 @@ export default function SalesOrders() {
 											<b>{formatNumber(total)} ₫</b>
 										</div>
 									</div>
+									)}
 								</div>
 							</div>
 							<div className="erp-modal-footer">
@@ -2385,9 +2415,11 @@ export default function SalesOrders() {
 								>
 									{statusMeta[selected.status as V1Status].label}
 								</span>
-								<b className="text-xl text-emerald-700">
-									{formatNumber(selected.totalAmount)} ₫
-								</b>
+								{showMoney && (
+									<b className="text-xl text-emerald-700">
+										{formatNumber(selected.totalAmount)} ₫
+									</b>
+								)}
 							</div>
 							<div className="rounded bg-slate-50 p-3">
 								<b>Thông tin khách hàng</b>
@@ -2420,9 +2452,13 @@ export default function SalesOrders() {
 										<th className="w-12 text-center">STT</th>
 										<th>Hàng hóa</th>
 										<th>Số lượng</th>
-										<th className="text-right">Đơn giá</th>
-										<th className="text-right">Thành tiền</th>
-										<th className="text-right">Giá vốn</th>
+										{showMoney && (
+											<>
+												<th className="text-right">Đơn giá</th>
+												<th className="text-right">Thành tiền</th>
+												<th className="text-right">Giá vốn</th>
+											</>
+										)}
 									</tr>
 								</thead>
 								<tbody>
@@ -2445,6 +2481,8 @@ export default function SalesOrders() {
 											<td>
 												{formatNumber(line.quantity)} {line.unit}
 											</td>
+											{showMoney && (
+												<>
 											<td className="text-right">
 												{formatNumber(line.unitPrice)}
 											</td>
@@ -2454,6 +2492,8 @@ export default function SalesOrders() {
 											<td className="text-right">
 												{formatNumber(line.costAmount || 0)}
 											</td>
+												</>
+											)}
 										</tr>
 									))}
 								</tbody>
@@ -2486,7 +2526,9 @@ export default function SalesOrders() {
 															<th className="w-12 text-center">STT</th>
 															<th>Hàng hóa</th>
 															<th className="text-right">Số lượng</th>
-															<th className="text-right">Đơn giá vốn</th>
+															{showMoney && (
+																<th className="text-right">Đơn giá vốn</th>
+															)}
 														</tr>
 													</thead>
 													<tbody>
@@ -2504,9 +2546,11 @@ export default function SalesOrders() {
 																		{formatNumber(line.quantity || 0)}{" "}
 																		{line.unit || ""}
 																	</td>
-																	<td className="text-right">
-																		{formatNumber(line.unitCost || 0)}
-																	</td>
+																	{showMoney && (
+																		<td className="text-right">
+																			{formatNumber(line.unitCost || 0)}
+																		</td>
+																	)}
 																</tr>
 															),
 														)}
@@ -2648,7 +2692,8 @@ export default function SalesOrders() {
 									Lý do hủy: {selected.cancelReason}
 								</div>
 							)}
-							{selected.status === "POSTED" &&
+							{showMoney &&
+								selected.status === "POSTED" &&
 								Number(selected.paidAmount || 0) > 0 && (
 									<div className="rounded bg-amber-50 p-3 text-sm text-amber-700">
 										Đơn đã thu {formatNumber(selected.paidAmount || 0)} ₫ nên
@@ -2798,8 +2843,12 @@ export default function SalesOrders() {
 												<th className="w-12 text-center">STT</th>
 												<th>Hàng hóa</th>
 												<th className="text-right">Số lượng</th>
-												<th className="text-right">Đơn giá vốn</th>
-												<th className="text-right">Thành tiền</th>
+												{showMoney && (
+													<>
+														<th className="text-right">Đơn giá vốn</th>
+														<th className="text-right">Thành tiền</th>
+													</>
+												)}
 											</tr>
 										</thead>
 										<tbody>
@@ -2825,6 +2874,8 @@ export default function SalesOrders() {
 														{formatNumber(line.quantity || 0)}{" "}
 														{line.unit || line.productpackagings?.unit || ""}
 													</td>
+													{showMoney && (
+														<>
 													<td className="text-right">
 														{formatNumber(line.unitCost || line.unitPrice || 0)}
 													</td>
@@ -2833,6 +2884,8 @@ export default function SalesOrders() {
 															line.totalValue || line.lineTotal || 0,
 														)}
 													</td>
+														</>
+													)}
 												</tr>
 											))}
 										</tbody>
@@ -2843,8 +2896,9 @@ export default function SalesOrders() {
 										</div>
 									)}
 								</>
-							) : relatedDetail.type === "PAYMENT_RECEIPT" ||
-							  relatedDetail.type === "PAYMENT_REVERSAL" ? (
+							) : showMoney &&
+							  (relatedDetail.type === "PAYMENT_RECEIPT" ||
+							  relatedDetail.type === "PAYMENT_REVERSAL") ? (
 								<>
 									<div className="grid gap-3 md:grid-cols-4">
 										<div className="rounded bg-slate-50 p-3">
@@ -2909,7 +2963,7 @@ export default function SalesOrders() {
 										Phương thức: <b>{relatedDetail.data?.method || "-"}</b>
 									</div>
 								</>
-							) : relatedDetail.type.startsWith("RECEIVABLE") ? (
+							) : showMoney && relatedDetail.type.startsWith("RECEIVABLE") ? (
 								<>
 									<div className="grid gap-3 md:grid-cols-4">
 										<div className="rounded bg-slate-50 p-3">

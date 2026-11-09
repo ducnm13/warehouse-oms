@@ -8,6 +8,7 @@ import {
 } from "../lib/printTemplate";
 import PrintAppFooter from "./PrintAppFooter";
 import { DocumentSignatures } from "./DocumentPrintShell";
+import { useCanViewMoney } from "../hooks/useCanViewMoney";
 
 interface SalesOrderDocumentProps {
 	order: SalesOrder;
@@ -33,6 +34,7 @@ export const SalesOrderDocument = React.forwardRef<
 	HTMLDivElement,
 	SalesOrderDocumentProps
 >(({ order, company }, ref) => {
+	const showMoney = useCanViewMoney();
 	const details = order.details || [];
 	const dateOrDots = (v?: string) =>
 		v ? formatDate(v) : "....................";
@@ -178,12 +180,16 @@ export const SalesOrderDocument = React.forwardRef<
 							<th className="border border-black p-2 font-bold text-center w-20">
 								SL
 							</th>
-							<th className="border border-black p-2 font-bold text-center w-24">
-								Đơn giá
-							</th>
-							<th className="border border-black p-2 font-bold text-center w-28">
-								Thành tiền
-							</th>
+							{showMoney && (
+								<>
+									<th className="border border-black p-2 font-bold text-center w-24">
+										Đơn giá
+									</th>
+									<th className="border border-black p-2 font-bold text-center w-28">
+										Thành tiền
+									</th>
+								</>
+							)}
 						</tr>
 					</thead>
 					<tbody>
@@ -211,6 +217,8 @@ export const SalesOrderDocument = React.forwardRef<
 								<td className="border border-black py-1 text-center font-medium">
 									{formatNumber(Number(d.quantity || 0))}
 								</td>
+								{showMoney && (
+									<>
 								<td className="border border-black py-1 px-2 text-right">
 									{formatNumber(Number(d.unitPrice || 0))}
 								</td>
@@ -218,8 +226,12 @@ export const SalesOrderDocument = React.forwardRef<
 								<td className="border border-black py-1 px-2 text-right font-medium">
 									{formatNumber(lineTotal(d))}
 								</td>
+									</>
+								)}
 							</tr>
 						))}
+						{showMoney && (
+							<>
 						<tr className="bg-gray-50 font-bold">
 							<td
 								colSpan={5}
@@ -253,14 +265,18 @@ export const SalesOrderDocument = React.forwardRef<
 								{formatNumber(Number(order.totalAmount || 0))}
 							</td>
 						</tr>
+							</>
+						)}
 					</tbody>
 				</table>
+				{showMoney && (
 				<div className="mt-2 space-y-1 text-sm italic">
-					<span className=" text-gray-700">Số tiền bằng chữ: </span>
+					<span className=" text-gray-700">S��` ti��?n b���ng ch��_: </span>
 					<span className="font-semibold">
 						{numberToVietnameseWords(Number(order.totalAmount || 0))}
 					</span>
 				</div>
+				)}
 			</div>
 
 			<div className="mt-6 text-right text-sm italic">

@@ -32,6 +32,7 @@ import DetailOptionsMenu from "../components/DetailOptionsMenu";
 import ListToolbar from "../components/ListToolbar";
 import type { FilterField, FilterValues } from "../components/FilterDrawer";
 import { exportExcelFile } from "../lib/excelExport";
+import { useCanViewMoney } from "../hooks/useCanViewMoney";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const badge = {
@@ -71,6 +72,7 @@ type ReturnLineInput = {
 };
 
 export default function SalesReturns() {
+	const showMoney = useCanViewMoney();
 	const queryClient = useQueryClient();
 	const [page, setPage] = useState(1),
 		[search, setSearch] = useState("");
@@ -175,7 +177,9 @@ export default function SalesReturns() {
 			filteredOrders.map(row => ({
 				value: row.id,
 				label: `${row.code} - ${row.customerName || ""}`,
-				subLabel: `${formatDate(row.orderDate)} • ${formatNumber(row.totalAmount)} đ`,
+				subLabel: `${formatDate(row.orderDate)}${
+					showMoney ? ` • ${formatNumber(row.totalAmount)} đ` : ""
+				}`,
 			})),
 		[filteredOrders],
 	);
@@ -389,14 +393,20 @@ export default function SalesReturns() {
 					value: (row: SalesReturnV1) => row.reason || "",
 					width: 30,
 				},
-				{
-					header: "Giảm công nợ",
-					value: (row: SalesReturnV1) => Number(row.totalAmount || 0),
-				},
-				{
-					header: "Giá vốn nhập",
-					value: (row: SalesReturnV1) => Number(row.costAmount || 0),
-				},
+				...(showMoney
+					? [
+							{
+								header: "Giảm công nợ",
+								value: (row: SalesReturnV1) =>
+									Number(row.totalAmount || 0),
+							},
+							{
+								header: "Giá vốn nhập",
+								value: (row: SalesReturnV1) =>
+									Number(row.costAmount || 0),
+							},
+						]
+					: []),
 				{
 					header: "Trạng thái",
 					value: (row: SalesReturnV1) => statusLabel[row.status] || row.status,
@@ -463,8 +473,12 @@ export default function SalesReturns() {
 									<th>Đơn gốc / Khách hàng</th>
 									<th>Kho nhận</th>
 									<th>Lý do</th>
-									<th>Giảm công nợ</th>
-									<th>Giá vốn nhập</th>
+									{showMoney && (
+										<>
+											<th>Giảm công nợ</th>
+											<th>Giá vốn nhập</th>
+										</>
+									)}
 									<th>Trạng thái</th>
 									<th></th>
 								</tr>
@@ -491,8 +505,12 @@ export default function SalesReturns() {
 										<td className="max-w-[240px]" title={document.reason}>
 											{document.reason}
 										</td>
-										<td>{formatNumber(document.totalAmount)} ₫</td>
-										<td>{formatNumber(document.costAmount)} ₫</td>
+										{showMoney && (
+											<>
+												<td>{formatNumber(document.totalAmount)} ₫</td>
+												<td>{formatNumber(document.costAmount)} ₫</td>
+											</>
+										)}
 										<td>
 											<span className={`erp-badge ${badge[document.status]}`}>
 												{statusLabel[document.status] || document.status}
@@ -699,8 +717,12 @@ export default function SalesReturns() {
 													<th>Đã trả</th>
 													<th>Còn trả</th>
 													<th>SL trả lần này</th>
-													<th>Doanh thu dòng</th>
-													<th>Giá vốn</th>
+													{showMoney && (
+														<>
+															<th>Doanh thu dòng</th>
+															<th>Giá vốn</th>
+														</>
+													)}
 													<th className="w-24 text-right">Chức năng</th>
 												</tr>
 											</thead>
@@ -764,8 +786,12 @@ export default function SalesReturns() {
 																		}
 																	/>
 																</td>
-																<td>{formatNumber(line.lineTotal || 0)} ₫</td>
-																<td>{formatNumber(line.costAmount || 0)} ₫</td>
+																{showMoney && (
+																	<>
+																		<td>{formatNumber(line.lineTotal || 0)} ₫</td>
+																		<td>{formatNumber(line.costAmount || 0)} ₫</td>
+																	</>
+																)}
 																<td className="text-right">
 																	<button
 																		type="button"
@@ -783,10 +809,12 @@ export default function SalesReturns() {
 										</table>
 									</div>
 								)}
-								<p className="text-xs text-[#a3aed0]">
-									Giá trị trả được giảm trừ công nợ; trường hợp giá trị trả vượt
-									công nợ, V1 chưa hỗ trợ hoàn tiền.
-								</p>
+								{showMoney && (
+									<p className="text-xs text-[#a3aed0]">
+										Giá trị trả được giảm trừ công nợ; trường hợp giá trị trả vượt
+										công nợ, V1 chưa hỗ trợ hoàn tiền.
+									</p>
+								)}
 							</div>
 							<div className="erp-modal-footer">
 								<button
@@ -831,8 +859,12 @@ export default function SalesReturns() {
 										<th className="w-12 text-center">STT</th>
 										<th>Hàng hóa</th>
 										<th>SL trả</th>
-										<th>Giảm doanh thu + thuế</th>
-										<th>Giá vốn nhập lại</th>
+										{showMoney && (
+											<>
+												<th>Giảm doanh thu + thuế</th>
+												<th>Giá vốn nhập lại</th>
+											</>
+										)}
 									</tr>
 								</thead>
 								<tbody>
@@ -849,8 +881,12 @@ export default function SalesReturns() {
 											<td>
 												{formatNumber(line.quantity)} {line.unit}
 											</td>
-											<td>{formatNumber(line.lineTotal + line.taxAmount)} ₫</td>
-											<td>{formatNumber(line.costAmount)} ₫</td>
+											{showMoney && (
+												<>
+													<td>{formatNumber(line.lineTotal + line.taxAmount)} ₫</td>
+													<td>{formatNumber(line.costAmount)} ₫</td>
+												</>
+											)}
 										</tr>
 									))}
 								</tbody>

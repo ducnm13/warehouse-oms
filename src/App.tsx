@@ -53,6 +53,7 @@ import CatalogProducts from './pages/CatalogProducts';
 import CatalogImport from './pages/CatalogImport';
 import WarehousesManager from './pages/WarehousesManager';
 import PriceBooks from './pages/PriceBooks';
+import MoneyReportGuard from './components/MoneyReportGuard';
 import { MaintenancePage, NotFoundPage, ServerErrorPage } from './pages/ErrorPages';
 import { User } from './types';
 import { useRealtimeSync } from './hooks/useRealtimeSync';
@@ -183,25 +184,25 @@ const AppRoutes = () => {
           <Route path="/inventory-export" element={<Transactions initialType="EXPORT" />} />
           <Route path="/inventory-report" element={<Navigate to="/reports" replace />} />
           <Route path="/reports" element={<ReportsIndex />} />
-          <Route path="/reports/financial" element={<FinancialSummaryReport />} />
-          <Route path="/reports/sales-profit" element={<SalesProfitReport />} />
-          <Route path="/reports/sales-customer" element={<SalesByCustomerReport />} />
-          <Route path="/reports/sales-product" element={<SalesByProductReport />} />
-          <Route path="/reports/sales-returns" element={<SalesReturnsReport />} />
-          <Route path="/reports/purchases-supplier" element={<PurchasesBySupplierReport />} />
-          <Route path="/reports/purchases-product" element={<PurchasesByProductReport />} />
-          <Route path="/reports/inventory-summary" element={<InventorySummaryReport />} />
-          <Route path="/reports/stock-on-hand" element={<StockOnHandReport />} />
-          <Route path="/reports/item-ledger" element={<ItemLedgerReport />} />
+          <Route path="/reports/financial" element={<MoneyReportGuard><FinancialSummaryReport /></MoneyReportGuard>} />
+          <Route path="/reports/sales-profit" element={<MoneyReportGuard><SalesProfitReport /></MoneyReportGuard>} />
+          <Route path="/reports/sales-customer" element={<MoneyReportGuard><SalesByCustomerReport /></MoneyReportGuard>} />
+          <Route path="/reports/sales-product" element={<MoneyReportGuard><SalesByProductReport /></MoneyReportGuard>} />
+          <Route path="/reports/sales-returns" element={<MoneyReportGuard><SalesReturnsReport /></MoneyReportGuard>} />
+          <Route path="/reports/purchases-supplier" element={<MoneyReportGuard><PurchasesBySupplierReport /></MoneyReportGuard>} />
+          <Route path="/reports/purchases-product" element={<MoneyReportGuard><PurchasesByProductReport /></MoneyReportGuard>} />
+          <Route path="/reports/inventory-summary" element={<MoneyReportGuard><InventorySummaryReport /></MoneyReportGuard>} />
+          <Route path="/reports/stock-on-hand" element={<MoneyReportGuard><StockOnHandReport /></MoneyReportGuard>} />
+          <Route path="/reports/item-ledger" element={<MoneyReportGuard><ItemLedgerReport /></MoneyReportGuard>} />
           <Route path="/reports/transfers" element={<TransfersReport />} />
           <Route path="/reports/production-overview" element={<ProductionOverviewReport />} />
-          <Route path="/reports/production-variance" element={<ProductionVarianceReport />} />
-          <Route path="/reports/operations" element={<OperationsReport />} />
-          <Route path="/reports/assembly-issues" element={<AssemblyIssueReport />} />
-          <Route path="/reports/debt-receivable" element={<DebtAgingReport kind="receivable" />} />
-          <Route path="/reports/debt-payable" element={<DebtAgingReport kind="payable" />} />
+          <Route path="/reports/production-variance" element={<MoneyReportGuard><ProductionVarianceReport /></MoneyReportGuard>} />
+          <Route path="/reports/operations" element={<MoneyReportGuard><OperationsReport /></MoneyReportGuard>} />
+          <Route path="/reports/assembly-issues" element={<MoneyReportGuard><AssemblyIssueReport /></MoneyReportGuard>} />
+          <Route path="/reports/debt-receivable" element={<MoneyReportGuard><DebtAgingReport kind="receivable" /></MoneyReportGuard>} />
+          <Route path="/reports/debt-payable" element={<MoneyReportGuard><DebtAgingReport kind="payable" /></MoneyReportGuard>} />
           <Route path="/reports/promotions" element={<PromotionUsageReport />} />
-          <Route path="/reports/online" element={<OnlineReport />} />
+          <Route path="/reports/online" element={<MoneyReportGuard><OnlineReport /></MoneyReportGuard>} />
           <Route path="/production" element={<Production user={user!} onNavigate={(tab) => navigate(`/${tab}`)} />} />
           <Route path="/production-mgmt" element={<ProductionManagement user={user!} onNavigate={(tab) => navigate(`/${tab}`)} />} />
           <Route path="/assembly" element={<Assembly user={user!} />} />
@@ -210,7 +211,7 @@ const AppRoutes = () => {
           <Route path="/catalog-import" element={<CatalogImport onBack={() => navigate('/products')} />} />
           <Route path="/price-books" element={<PriceBooks />} />
           <Route path="/warehouses" element={<WarehousesManager />} />
-          <Route path="/opening-inventory" element={<OpeningInventory />} />
+          <Route path="/opening-inventory" element={<MoneyReportGuard><OpeningInventory /></MoneyReportGuard>} />
           <Route path="/users" element={<Users />} />
           <Route path="/roles" element={<Roles />} />
           <Route path="/chat" element={<ChatBox />} />

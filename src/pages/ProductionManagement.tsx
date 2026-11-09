@@ -35,6 +35,7 @@ import DetailOptionsMenu from "../components/DetailOptionsMenu";
 import ListToolbar from "../components/ListToolbar";
 import type { FilterField, FilterValues } from "../components/FilterDrawer";
 import { exportExcelFile } from "../lib/excelExport";
+import { useCanViewMoney } from "../hooks/useCanViewMoney";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -129,6 +130,7 @@ export default function ProductionManagement({
 	onNavigate?: (tab: string) => void;
 }) {
 	const qc = useQueryClient();
+	const showMoney = useCanViewMoney();
 	const manage =
 		user.role === "ADMIN" ||
 		user.role === "P_MANAGER" ||
@@ -1606,8 +1608,12 @@ export default function ProductionManagement({
 											<th>Kế hoạch</th>
 											<th>Phân bổ %</th>
 											<th>Thực tế</th>
-											<th>Đơn giá vốn</th>
-											<th>Thành tiền</th>
+											{showMoney && (
+												<>
+													<th>Đơn giá vốn</th>
+													<th>Thành tiền</th>
+												</>
+											)}
 										</tr>
 									</thead>
 									<tbody>
@@ -1625,8 +1631,12 @@ export default function ProductionManagement({
 												<td>
 													{formatNumber(d.actualQuantity || 0)} {d.unit}
 												</td>
-												<td>{formatNumber(d.unitCost || 0)}</td>
-												<td>{formatNumber(d.totalValue || 0)}</td>
+												{showMoney && (
+													<>
+														<td>{formatNumber(d.unitCost || 0)}</td>
+														<td>{formatNumber(d.totalValue || 0)}</td>
+													</>
+												)}
 											</tr>
 										))}
 									</tbody>

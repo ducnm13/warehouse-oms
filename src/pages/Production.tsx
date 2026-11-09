@@ -39,6 +39,7 @@ import DetailOptionsMenu from "../components/DetailOptionsMenu";
 import ListToolbar from "../components/ListToolbar";
 import type { FilterField, FilterValues } from "../components/FilterDrawer";
 import { exportExcelFile } from "../lib/excelExport";
+import { useCanViewMoney } from "../hooks/useCanViewMoney";
 
 interface OrderLine {
 	packagingId: number;
@@ -131,6 +132,7 @@ export default function Production({
 	onNavigate?: (tab: string) => void;
 }) {
 	const qc = useQueryClient();
+	const showMoney = useCanViewMoney();
 	const manage =
 		user.role === "ADMIN" ||
 		user.role === "P_MANAGER" ||
@@ -1317,8 +1319,12 @@ export default function Production({
 															<th className="bom-name-cell">Tên nguyên liệu</th>
 															<th>ĐVT</th>
 															<th className="text-right">Số lượng</th>
-															<th className="text-right">Đơn giá vốn</th>
-															<th className="text-right">Thành tiền</th>
+															{showMoney && (
+																<>
+																	<th className="text-right">Đơn giá vốn</th>
+																	<th className="text-right">Thành tiền</th>
+																</>
+															)}
 															<th></th>
 														</tr>
 													</thead>
@@ -1386,6 +1392,8 @@ export default function Production({
 																			min={0}
 																		/>
 																	</td>
+																	{showMoney && (
+																		<>
 																	<td className="text-right">
 																		{formatNumber(unitCost)}
 																	</td>
@@ -1394,6 +1402,8 @@ export default function Production({
 																			(row.quantity || 0) * unitCost,
 																		)}
 																	</td>
+																		</>
+																	)}
 																	<td>
 																		<button
 																			type="button"
@@ -1519,8 +1529,12 @@ export default function Production({
 										<th>Nguyên liệu</th>
 										<th>ĐVT</th>
 										<th className="text-right">Số lượng</th>
-										<th className="text-right">Đơn giá vốn</th>
-										<th className="text-right">Thành tiền</th>
+										{showMoney && (
+											<>
+												<th className="text-right">Đơn giá vốn</th>
+												<th className="text-right">Thành tiền</th>
+											</>
+										)}
 									</tr>
 								</thead>
 								<tbody>
@@ -1575,6 +1589,8 @@ export default function Production({
 												<td className="text-right">
 													{formatNumber(x.plannedQuantity || 0)}
 												</td>
+												{showMoney && (
+													<>
 												<td className="text-right">
 													{formatNumber(convertedCost)}
 												</td>
@@ -1583,6 +1599,8 @@ export default function Production({
 														(x.plannedQuantity || 0) * convertedCost,
 													)}
 												</td>
+													</>
+												)}
 											</tr>
 										);
 									})}

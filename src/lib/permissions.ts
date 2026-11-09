@@ -21,6 +21,12 @@ export const canViewCatalogPrices = (
 	return !roleCodes.includes("W_MANAGER");
 };
 
+export const canViewMoney = (
+	role: string | undefined,
+	permissions: string[] | undefined,
+	roles?: string[],
+) => canViewCatalogPrices(role, permissions, roles);
+
 export const getModuleAccess = (
 	role: string | undefined,
 	permissions: string[] | undefined,

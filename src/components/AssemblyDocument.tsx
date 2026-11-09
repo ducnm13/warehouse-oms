@@ -1,5 +1,6 @@
 import React, { forwardRef } from "react";
 import { formatDate, formatNumber, formatProductName } from "../lib/utils";
+import { useCanViewMoney } from "../hooks/useCanViewMoney";
 import {
 	numberToVietnameseWords,
 	resolvePrintSigners,
@@ -63,6 +64,7 @@ export const AssemblyDocument = forwardRef<
 	HTMLDivElement,
 	AssemblyDocumentProps
 >(({ order, isDisassembly, company }, ref) => {
+	const showMoney = useCanViewMoney();
 	const outputRows = order.outputs?.length
 		? order.outputs
 		: order.sources?.length
@@ -214,12 +216,16 @@ export const AssemblyDocument = forwardRef<
 						<th className="w-20 border border-black p-1 text-center font-bold">
 							Số lượng
 						</th>
+						{showMoney && (
+							<>
 						<th className="w-24 border border-black p-1 text-center font-bold">
 							Đơn giá
 						</th>
 						<th className="w-28 border border-black p-1 text-center font-bold">
 							Thành tiền
 						</th>
+							</>
+						)}
 					</tr>
 				</thead>
 				<tbody>
@@ -243,18 +249,22 @@ export const AssemblyDocument = forwardRef<
 							<td className="border border-black p-2 text-right">
 								{formatNumber(row.quantity)}
 							</td>
+							{showMoney && (
+								<>
 							<td className="border border-black p-2 text-right">
 								{formatNumber(row.unitCost)}
 							</td>
 							<td className="border border-black p-2 text-right font-semibold">
 								{formatNumber(row.amount)}
 							</td>
+								</>
+							)}
 						</tr>
 					))}
 					{!rows.length && (
 						<tr>
 							<td
-								colSpan={8}
+								colSpan={showMoney ? 8 : 6}
 								className="border border-black p-4 text-center text-slate-500"
 							>
 								Không có dòng hàng hóa
@@ -270,15 +280,19 @@ export const AssemblyDocument = forwardRef<
 						>
 							Tổng cộng
 						</td>
+						{showMoney && (
+							<>
 						<td className="border border-black p-2"></td>
 						<td className="border border-black p-2 text-right">
 							{formatNumber(total)}
 						</td>
+							</>
+						)}
 					</tr>
 				</tfoot>
 			</table>
 
-			{total > 0 && (
+			{showMoney && total > 0 && (
 				<p className="mt-3 text-sm italic break-words">
 					Tổng tiền bằng chữ: {numberToVietnameseWords(total)}
 				</p>

@@ -43,6 +43,7 @@ import { exportExcelFile } from "../lib/excelExport";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
 import TableActions from "../components/TableActions";
+import { useCanViewMoney } from "../hooks/useCanViewMoney";
 
 type TransferLine = { packagingId: number; quantity: number; note: string };
 type TransferForm = {
@@ -101,6 +102,7 @@ const TRANSFER_FILTER_FIELDS: FilterField[] = [
 
 export default function WarehouseTransfers() {
 	const queryClient = useQueryClient();
+	const showMoney = useCanViewMoney();
 	const [page, setPage] = useState(1),
 		[search, setSearch] = useState("");
 	const [filters, setFilters] = useState<FilterValues>({});
@@ -457,14 +459,18 @@ export default function WarehouseTransfers() {
 					header: "Tổng số dòng",
 					value: (row: WarehouseTransferV1) => row.details?.length || 0,
 				},
-				{
-					header: "Tổng giá trị",
-					value: (row: WarehouseTransferV1) =>
-						(row.details || []).reduce(
-							(sum, detail) => sum + Number(detail.totalValue || 0),
-							0,
-						),
-				},
+				...(showMoney
+					? [
+							{
+								header: "Tổng giá trị",
+								value: (row: WarehouseTransferV1) =>
+									(row.details || []).reduce(
+										(sum, detail) => sum + Number(detail.totalValue || 0),
+										0,
+									),
+							},
+						]
+					: []),
 				{
 					header: "Trạng thái",
 					value: (row: WarehouseTransferV1) =>
@@ -982,8 +988,12 @@ export default function WarehouseTransfers() {
 										<th className="w-12 text-center">STT</th>
 										<th>Hàng hóa</th>
 										<th className="text-right">Số lượng</th>
-										<th className="text-right">Giá vốn</th>
-										<th className="text-right">Giá trị</th>
+										{showMoney && (
+											<>
+												<th className="text-right">Giá vốn</th>
+												<th className="text-right">Giá trị</th>
+											</>
+										)}
 									</tr>
 								</thead>
 								<tbody>
@@ -1004,12 +1014,16 @@ export default function WarehouseTransfers() {
 											<td className="text-right">
 												{formatNumber(line.quantity)} {line.unit}
 											</td>
+											{showMoney && (
+												<>
 											<td className="text-right">
 												{formatNumber(line.unitCost)}
 											</td>
 											<td className="text-right">
 												{formatNumber(line.totalValue)}
 											</td>
+												</>
+											)}
 										</tr>
 									))}
 								</tbody>

@@ -8,6 +8,7 @@ import {
 } from "../lib/printTemplate";
 import PrintAppFooter from "./PrintAppFooter";
 import { DocumentSignatures } from "./DocumentPrintShell";
+import { useCanViewMoney } from "../hooks/useCanViewMoney";
 
 interface PurchaseDocumentPrintProps {
 	document: PurchaseDocument;
@@ -18,6 +19,7 @@ export const PurchaseDocumentPrint = React.forwardRef<
 	HTMLDivElement,
 	PurchaseDocumentPrintProps
 >(({ document, company }, ref) => {
+	const showMoney = useCanViewMoney();
 	const details = document.details || [];
 	const totalQuantity = details.reduce(
 		(sum, d) => sum + Number(d.quantity || 0),
@@ -168,12 +170,16 @@ export const PurchaseDocumentPrint = React.forwardRef<
 						<th className="border-r-1 border-black p-2 w-24 text-center uppercase tracking-tighter">
 							Số lượng
 						</th>
+						{showMoney && (
+							<>
 						<th className="border-r-1 border-black p-2 w-28 text-center uppercase tracking-tighter">
 							Đơn giá
 						</th>
 						<th className="p-2 w-32 text-center uppercase tracking-tighter">
 							Thành tiền
 						</th>
+							</>
+						)}
 					</tr>
 				</thead>
 				<tbody>
@@ -204,16 +210,21 @@ export const PurchaseDocumentPrint = React.forwardRef<
 								<td className="border-r-1 border-black p-2 text-right font-bold pr-4">
 									{formatNumber(Number(d.quantity || 0))}
 								</td>
+								{showMoney && (
+									<>
 								<td className="border-r-1 border-black p-2 text-right pr-4">
 									{formatNumber(Number(d.unitPrice || 0))}
 								</td>
 								<td className="p-2 text-right font-bold pr-4">
 									{formatNumber(amount)}
 								</td>
+									</>
+								)}
 							</tr>
 						);
 					})}
 				</tbody>
+				{showMoney && (
 				<tfoot>
 					<tr className="font-bold  border-b bg-gray-100 uppercase italic">
 						<td
@@ -257,14 +268,17 @@ export const PurchaseDocumentPrint = React.forwardRef<
 						</td>
 					</tr>
 				</tfoot>
+				)}
 			</table>
 
-			<div className="text-sm italic mb-8">
-				<span className="text-gray-700">Số tiền bằng chữ: </span>
-				<span className="font-semibold">
-					{numberToVietnameseWords(totalAmount)}
-				</span>
-			</div>
+			{showMoney && (
+				<div className="text-sm italic mb-8">
+					<span className="text-gray-700">Số tiền bằng chữ: </span>
+					<span className="font-semibold">
+						{numberToVietnameseWords(totalAmount)}
+					</span>
+				</div>
+			)}
 
 			<DocumentSignatures signers={signers} />
 
