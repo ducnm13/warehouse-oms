@@ -72,6 +72,7 @@ const mapOrder = (row: any) => ({
   recipientName: row.recipientName,
   phone: row.phone,
   address: row.address,
+  note: row.note || null,
   shippingFee: Number(row.shippingFee || 0),
   totalAmount: Number(row.totalAmount || 0),
   status: row.status,
@@ -157,6 +158,7 @@ export const onlineService = {
         { recipientName: { contains: query.search } },
         { phone: { contains: query.search } },
         { address: { contains: query.search } },
+        { note: { contains: query.search } },
         { trackingNumber: { contains: query.search } },
       ];
     }
@@ -175,6 +177,7 @@ export const onlineService = {
   async createOrder(input: OnlineOrderInput, userId: number) {
     const subtotal = input.items.reduce((sum, line) => sum + Number(line.quantity) * Number(line.price), 0);
     const total = subtotal + Number(input.shippingFee || 0);
+    const note = (input.note || "").trim();
     let code = (input.orderCode || "").trim().toUpperCase();
     if (!code) code = (await this.nextCode()).code;
     const dup = await prisma.online_orders.findUnique({ where: { orderCode: code } });
@@ -185,6 +188,7 @@ export const onlineService = {
         recipientName: input.recipientName,
         phone: input.phone,
         address: input.address,
+        note: note || null,
         shippingFee: money(input.shippingFee),
         totalAmount: money(total),
         status: "Pending",
@@ -204,8 +208,9 @@ export const onlineService = {
     const itemsText = input.items
       .map(i => `- ${i.productName} (SL: ${i.quantity} ${i.unit || "Cái"}) - ${(Number(i.quantity) * Number(i.price)).toLocaleString("vi-VN")}đ`)
       .join("\n");
+    const noteText = note ? `\n📝 Ghi chú: ${note}` : "";
     await sendZaloNotification(
-      `🔔 *ĐƠN HÀNG MỚI: ${code}*\n👤 Người nhận: ${input.recipientName}\n📞 SĐT: ${input.phone}\n📍 Địa chỉ: ${input.address}\n📦 Sản phẩm:\n${itemsText}\n🚚 Phí vận chuyển: ${Number(input.shippingFee || 0).toLocaleString("vi-VN")}đ\n💰 *Tổng tiền: ${total.toLocaleString("vi-VN")}đ*`,
+      `🔔 *ĐƠN HÀNG MỚI: ${code}*\n👤 Người nhận: ${input.recipientName}\n📞 SĐT: ${input.phone}\n📍 Địa chỉ: ${input.address}${noteText}\n📦 Sản phẩm:\n${itemsText}\n🚚 Phí vận chuyển: ${Number(input.shippingFee || 0).toLocaleString("vi-VN")}đ\n💰 *Tổng tiền: ${total.toLocaleString("vi-VN")}đ*`,
     );
     return mapOrder(row);
   },

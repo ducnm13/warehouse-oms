@@ -59,6 +59,7 @@ interface OnlineOrder {
 	recipientName: string;
 	phone: string;
 	address: string;
+	note?: string | null;
 	shippingFee: number;
 	totalAmount: number;
 	status: string;
@@ -167,6 +168,7 @@ const OnlineOrders = () => {
 	const [recipientName, setRecipientName] = useState("");
 	const [phone, setPhone] = useState("");
 	const [address, setAddress] = useState("");
+	const [note, setNote] = useState("");
 	const [shippingFee, setShippingFee] = useState(30000);
 	const emptyItem = (): OnlineOrderItem => ({
 		productName: "",
@@ -516,6 +518,7 @@ const OnlineOrders = () => {
 				recipientName: recipientName.trim(),
 				phone: phone.trim(),
 				address: address.trim(),
+				note: note.trim(),
 				shippingFee: Number(shippingFee || 0),
 				items: items.map(i => ({
 					productName: i.productName.trim(),
@@ -550,6 +553,7 @@ const OnlineOrders = () => {
 			setRecipientName("");
 			setPhone("");
 			setAddress("");
+			setNote("");
 			setShippingFee(30000);
 			setItems([emptyItem()]);
 			fetchOrders();
@@ -568,6 +572,7 @@ const OnlineOrders = () => {
 		setRecipientName(order.recipientName || "");
 		setPhone(order.phone || "");
 		setAddress(order.address || "");
+		setNote(order.note || "");
 		setShippingFee(Number(order.shippingFee || 0));
 		setItems(
 			(order.items || []).map(item => ({
@@ -737,6 +742,11 @@ const OnlineOrders = () => {
 				{
 					header: "Địa chỉ",
 					value: (order: OnlineOrder) => order.address || "",
+					width: 36,
+				},
+				{
+					header: "Ghi chú",
+					value: (order: OnlineOrder) => order.note || "",
 					width: 36,
 				},
 				{
@@ -963,6 +973,17 @@ const OnlineOrders = () => {
 							value={address}
 							onChange={e => setAddress(e.target.value)}
 							placeholder="Số nhà, đường, phường/xã..."
+							className="w-full rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+						/>
+					</label>
+					<label className="block text-[13px] font-medium text-slate-700">
+						<span className="mb-1 block">Ghi chú</span>
+						<textarea
+							rows={3}
+							maxLength={1000}
+							value={note}
+							onChange={e => setNote(e.target.value)}
+							placeholder="VD: Giao giờ hành chính, gọi trước khi giao..."
 							className="w-full rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
 						/>
 					</label>
@@ -1197,6 +1218,11 @@ const OnlineOrders = () => {
 												<small className="block max-w-xs truncate text-slate-500">
 													{order.address}
 												</small>
+												{order.note && (
+													<small className="block max-w-xs truncate text-amber-600">
+														Ghi chú: {order.note}
+													</small>
+												)}
 											</td>
 											<td>
 												{(order.items || []).map((item, i) => (
@@ -1708,6 +1734,9 @@ const OnlineOrders = () => {
 								<div><small>SĐT</small><b className="block">{detailOrder.phone}</b></div>
 							</div>
 							<div><small>Địa chỉ</small><b className="block">{detailOrder.address}</b></div>
+							{detailOrder.note && (
+								<div><small>Ghi chú</small><b className="block whitespace-pre-wrap">{detailOrder.note}</b></div>
+							)}
 						<div>
 							<small className="mb-1 block">Cam kết giao hàng</small>
 							<DeliveryPromise address={detailOrder.address} status={detailOrder.status} />

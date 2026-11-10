@@ -25,6 +25,7 @@ export const onlineOrderSchema = z.object({
   recipientName: z.string().trim().min(1).max(100),
   phone: z.string().trim().min(1).max(20),
   address: z.string().trim().min(1).max(255),
+  note: z.string().trim().max(1000).optional().default(""),
   shippingFee: z.coerce.number().min(0).max(999999999).default(0),
   items: z.array(onlineOrderItemSchema).min(1).max(200),
 });
