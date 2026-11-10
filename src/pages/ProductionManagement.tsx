@@ -131,11 +131,11 @@ export default function ProductionManagement({
 }) {
 	const qc = useQueryClient();
 	const showMoney = useCanViewMoney();
-	const manage =
+	const managesProduction =
 		user.role === "ADMIN" ||
 		user.role === "P_MANAGER" ||
-		user.role === "W_MANAGER" ||
 		(user.permissions || []).includes("production.manage");
+	const manage = user.role !== "W_MANAGER" && managesProduction;
 	const [search, setSearch] = useState("");
 	const [filters, setFilters] = useState<FilterValues>({});
 	const { month, setMonth, range } = useMonthFilter();

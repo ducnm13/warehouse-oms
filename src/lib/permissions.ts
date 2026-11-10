@@ -54,7 +54,7 @@ export const getModuleAccess = (
 		priceBooks: has("catalog.manage") && !isWarehouseRole,
 		opening: has("inventory.opening") && !isWarehouseRole,
 		production: has("production.view"),
-		productionMgmt: has("production.manage"),
+		productionMgmt: has("production.manage") && !isWarehouseRole,
 		assembly: has("assembly.view"),
 		reports: has("report.view"),
 		users: has("iam.manage"),

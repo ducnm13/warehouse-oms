@@ -22,10 +22,14 @@ import { chatRouter } from "./modules/chat/chat.routes";
 import { devtoolsRouter } from "./modules/devtools/devtools.routes";
 import { documentCodePrefixes, nextDocumentCode } from "./common/document-code";
 import { asyncHandler } from "./common/async-handler";
+import { getMaintenanceState } from "./common/maintenance";
 
 export const v1Router = Router();
 v1Router.get("/health", (_req, res) => res.json({
   success: true, message: "Challenge ERP API hoạt động", data: { status: "ok", version: "v1" },
+}));
+v1Router.get("/maintenance", asyncHandler(async (_req: any, res: any) => {
+  res.json({ success: true, message: "OK", data: await getMaintenanceState() });
 }));
 v1Router.use("/auth", authRouter);
 v1Router.use("/purchase-documents", purchaseRouter);

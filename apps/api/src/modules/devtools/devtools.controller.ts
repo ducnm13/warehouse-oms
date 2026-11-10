@@ -1,4 +1,8 @@
 import { devtoolsService } from "./devtools.service";
+import {
+  getMaintenanceState,
+  setMaintenanceState,
+} from "../../common/maintenance";
 
 export const devtoolsController = {
   overview: async (_req: any, res: any) => {
@@ -62,6 +66,23 @@ export const devtoolsController = {
 
   backups: async (_req: any, res: any) => {
     res.json({ success: true, message: "OK", data: await devtoolsService.listBackups() });
+  },
+
+  maintenance: async (_req: any, res: any) => {
+    res.json({ success: true, message: "OK", data: await getMaintenanceState() });
+  },
+
+  updateMaintenance: async (req: any, res: any) => {
+    const data = await setMaintenanceState({
+      enabled: req.body?.enabled === true,
+      message: req.body?.message,
+      actor: req.auth?.username,
+    });
+    res.json({
+      success: true,
+      message: data.enabled ? "Đã bật chế độ bảo trì" : "Đã tắt chế độ bảo trì",
+      data,
+    });
   },
 
   restoreBackup: async (req: any, res: any) => {

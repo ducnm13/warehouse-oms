@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { Routes, Route, Navigate, useNavigate, Outlet } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { AppToaster } from './components/ui/toast';
 import Layout from './components/Layout';
 import Profile from './components/Profile';
@@ -54,9 +54,11 @@ import CatalogImport from './pages/CatalogImport';
 import WarehousesManager from './pages/WarehousesManager';
 import PriceBooks from './pages/PriceBooks';
 import MoneyReportGuard from './components/MoneyReportGuard';
+import MaintenanceNotice from './components/MaintenanceNotice';
 import { MaintenancePage, NotFoundPage, ServerErrorPage } from './pages/ErrorPages';
 import { User } from './types';
 import { useRealtimeSync } from './hooks/useRealtimeSync';
+import { useMaintenanceStatus } from './hooks/useMaintenanceStatus';
 
 interface AuthContextType {
   user: User | null;
@@ -158,7 +160,24 @@ const LoginPage = () => {
 const AppRoutes = () => {
   const { user, token, logout } = useContext(AuthContext);
   const navigate = useNavigate();
+  const location = useLocation();
   useRealtimeSync(Boolean(token && user));
+  const maintenance = useMaintenanceStatus();
+  const maintenanceBypass =
+    location.pathname === '/dev-tools' || location.pathname === '/login';
+  const canOpenDevTools = Boolean(
+    user?.permissions?.includes('devtools.use') ||
+      user?.permissions?.includes('system.admin'),
+  );
+
+  if (maintenance.data?.data.enabled && !maintenanceBypass) {
+    return (
+      <MaintenanceNotice
+        message={maintenance.data.data.message}
+        onDevTools={canOpenDevTools ? () => navigate('/dev-tools') : undefined}
+      />
+    );
+  }
 
 	return (
 		<>
@@ -204,12 +223,12 @@ const AppRoutes = () => {
           <Route path="/reports/promotions" element={<PromotionUsageReport />} />
           <Route path="/reports/online" element={<MoneyReportGuard><OnlineReport /></MoneyReportGuard>} />
           <Route path="/production" element={<Production user={user!} onNavigate={(tab) => navigate(`/${tab}`)} />} />
-          <Route path="/production-mgmt" element={<ProductionManagement user={user!} onNavigate={(tab) => navigate(`/${tab}`)} />} />
+          <Route path="/production-mgmt" element={user?.role === 'W_MANAGER' ? <Navigate to="/production" replace /> : <ProductionManagement user={user!} onNavigate={(tab) => navigate(`/${tab}`)} />} />
           <Route path="/assembly" element={<Assembly user={user!} />} />
           <Route path="/stock-take" element={<Stocktake />} />
           <Route path="/products" element={<CatalogProducts onOpenImport={() => navigate('/catalog-import')} />} />
           <Route path="/catalog-import" element={<CatalogImport onBack={() => navigate('/products')} />} />
-          <Route path="/price-books" element={<PriceBooks />} />
+          <Route path="/price-books" element={<MoneyReportGuard><PriceBooks /></MoneyReportGuard>} />
           <Route path="/warehouses" element={<WarehousesManager />} />
           <Route path="/opening-inventory" element={<MoneyReportGuard><OpeningInventory /></MoneyReportGuard>} />
           <Route path="/users" element={<Users />} />

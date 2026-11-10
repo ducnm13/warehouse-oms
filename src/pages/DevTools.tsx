@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	Activity,
 	AlertTriangle,
@@ -20,12 +20,17 @@ import {
 	Table2,
 	Terminal,
 	Trash2,
+	Wrench,
 } from "lucide-react";
 import { apiV1 } from "../lib/apiV1";
 import { confirm, prompt } from "../components/ui/confirm";
 import toast from "../components/ui/toast";
+import {
+	maintenanceQueryKey,
+	type MaintenanceState,
+} from "../hooks/useMaintenanceStatus";
 
-type Tab = "overview" | "database" | "scripts";
+type Tab = "overview" | "database" | "scripts" | "maintenance";
 
 interface Overview {
 	generatedAt: string;
@@ -213,6 +218,10 @@ const DevTools = () => {
 	const [scriptError, setScriptError] = useState<string | null>(null);
 	const [scriptParams, setScriptParams] = useState<Record<string, string>>({});
 	const [restoringFile, setRestoringFile] = useState<string | null>(null);
+	const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
+	const [maintenanceMessage, setMaintenanceMessage] = useState("");
+	const [maintenanceSaving, setMaintenanceSaving] = useState(false);
+	const queryClient = useQueryClient();
 
 	const access = useQuery({
 		queryKey: ["devtools-access"],
@@ -246,6 +255,18 @@ const DevTools = () => {
 		enabled: allowed && tab === "scripts",
 		staleTime: 10_000,
 	});
+	const maintenance = useQuery({
+		queryKey: ["devtools-maintenance"],
+		queryFn: () => apiV1<MaintenanceState>("/api/v1/devtools/maintenance"),
+		enabled: allowed && tab === "maintenance",
+		staleTime: 10_000,
+	});
+
+	useEffect(() => {
+		if (!maintenance.data?.data) return;
+		setMaintenanceEnabled(maintenance.data.data.enabled);
+		setMaintenanceMessage(maintenance.data.data.message);
+	}, [maintenance.data]);
 
 	useEffect(() => {
 		if (overview.isError) toast.error(`Không tải được thông tin hệ thống\n${(overview.error as Error).message}`);
@@ -457,6 +478,31 @@ const DevTools = () => {
 		}
 	};
 
+	const saveMaintenance = async () => {
+		setMaintenanceSaving(true);
+		try {
+			const response = await apiV1<MaintenanceState>(
+				"/api/v1/devtools/maintenance",
+				{
+					method: "PUT",
+					body: JSON.stringify({
+						enabled: maintenanceEnabled,
+						message: maintenanceMessage,
+					}),
+				},
+			);
+			setMaintenanceEnabled(response.data.enabled);
+			setMaintenanceMessage(response.data.message);
+			await queryClient.invalidateQueries({ queryKey: maintenanceQueryKey });
+			await maintenance.refetch();
+			toast.success(response.message);
+		} catch (error) {
+			toast.error(`Không lưu được cấu hình bảo trì\n${(error as Error).message}`);
+		} finally {
+			setMaintenanceSaving(false);
+		}
+	};
+
 	if (access.isLoading) {
 		return (
 			<div className="erp-page">
@@ -504,6 +550,7 @@ const DevTools = () => {
 					{ id: "overview" as Tab, label: "Tổng quan VPS", icon: Activity },
 					{ id: "database" as Tab, label: "Cơ sở dữ liệu", icon: Database },
 					{ id: "scripts" as Tab, label: "Script", icon: Terminal },
+					{ id: "maintenance" as Tab, label: "Bảo trì", icon: Wrench },
 				].map(item => {
 					const active = tab === item.id;
 					return (
@@ -1095,6 +1142,97 @@ const DevTools = () => {
 								))}
 							</div>
 						)}
+					</div>
+				</div>
+			) : null}
+
+			{tab === "maintenance" ? (
+				<div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+					<div className="erp-card p-5">
+						<div className="mb-4 flex items-center gap-2">
+							<Wrench size={18} className="text-[#422afb]" />
+							<div>
+								<h2 className="text-[14px] font-bold text-[#1b2559]">Chế độ bảo trì</h2>
+								<p className="text-[11.5px] text-[#a3aed0]">
+									Khi bật, toàn bộ ứng dụng sẽ hiển thị màn hình thông báo bảo trì.
+								</p>
+							</div>
+						</div>
+						{maintenance.isLoading ? (
+							<div className="flex items-center justify-center gap-2 p-10 text-[13px] text-[#a3aed0]">
+								<Loader2 className="animate-spin" size={18} /> Đang tải cấu hình...
+							</div>
+						) : maintenance.isError ? (
+							<div className="rounded-xl border border-[#fde3e3] bg-[#fff7f7] p-4 text-[12.5px] text-[#c02626]">
+								{(maintenance.error as Error).message}
+							</div>
+						) : (
+							<div className="space-y-4">
+								<label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-[#e9edf7] p-4">
+									<input
+										type="checkbox"
+										className="mt-0.5 h-4 w-4 accent-[#422afb]"
+										checked={maintenanceEnabled}
+										onChange={event => setMaintenanceEnabled(event.target.checked)}
+									/>
+									<span>
+										<b className="block text-[13px] text-[#1b2559]">Bật chế độ bảo trì</b>
+										<span className="text-[12px] text-[#707eae]">
+											Người dùng sẽ không thể sử dụng các chức năng cho đến khi tắt chế độ này.
+										</span>
+									</span>
+								</label>
+								<label className="block text-[13px] font-semibold text-[#707eae]">
+									<span className="mb-1 block">Thông báo hiển thị</span>
+									<textarea
+										value={maintenanceMessage}
+										onChange={event => setMaintenanceMessage(event.target.value)}
+										placeholder="Nhập nội dung thông báo cho người dùng..."
+										className="min-h-[150px] w-full"
+									/>
+								</label>
+								<div className="flex flex-wrap items-center justify-between gap-3">
+									<span className={`erp-badge ${maintenanceEnabled ? "erp-badge-danger" : "erp-badge-success"}`}>
+										{maintenanceEnabled ? "Đang bảo trì" : "Đang hoạt động"}
+									</span>
+									<button
+										type="button"
+										className="erp-btn erp-btn-primary"
+										onClick={() => void saveMaintenance()}
+										disabled={maintenanceSaving}
+									>
+										{maintenanceSaving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />}
+										{maintenanceSaving ? "Đang lưu..." : "Lưu cấu hình"}
+									</button>
+								</div>
+							</div>
+						)}
+					</div>
+					<div className="erp-card h-fit p-5">
+						<h2 className="text-[14px] font-bold text-[#1b2559]">Trạng thái hiện tại</h2>
+						<div className="mt-4 space-y-3 text-[12.5px]">
+							<div className="flex items-center justify-between border-b border-[#f1f4fb] pb-2">
+								<span className="text-[#a3aed0]">Chế độ</span>
+								<b className={maintenance.data?.data.enabled ? "text-[#c02626]" : "text-[#059669]"}>
+									{maintenance.data?.data.enabled ? "Bảo trì" : "Hoạt động"}
+								</b>
+							</div>
+							<div className="flex items-center justify-between border-b border-[#f1f4fb] pb-2">
+								<span className="text-[#a3aed0]">Cập nhật lúc</span>
+								<b className="text-[#2b3674]">
+									{maintenance.data?.data.updatedAt
+										? new Date(maintenance.data.data.updatedAt).toLocaleString("vi-VN")
+										: "-"}
+								</b>
+							</div>
+							<div className="flex items-center justify-between border-b border-[#f1f4fb] pb-2">
+								<span className="text-[#a3aed0]">Người cập nhật</span>
+								<b className="text-[#2b3674]">{maintenance.data?.data.updatedBy || "-"}</b>
+							</div>
+						</div>
+						<p className="mt-4 rounded-xl bg-[#f4f7fe] p-3 text-[11.5px] leading-relaxed text-[#707eae]">
+							Trang Dev Tools vẫn truy cập được khi bảo trì để quản trị viên có thể tắt chế độ sau khi hoàn tất cập nhật.
+						</p>
 					</div>
 				</div>
 			) : null}
