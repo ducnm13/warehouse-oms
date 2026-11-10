@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { Search } from "lucide-react";
 import ReportPeriodFilter from "../../components/ReportPeriodFilter";
 import { apiV1 } from "../../lib/apiV1";
+import { useCanViewMoney } from "../../hooks/useCanViewMoney";
 import type { InventorySummaryReportV1 } from "../../types";
 import {
 	ExportButton,
@@ -25,6 +26,7 @@ const monthStart = () => `${today().slice(0, 7)}-01`;
 
 export default function InventorySummaryReport() {
 	const navigate = useNavigate();
+	const showMoney = useCanViewMoney();
 	const [from, setFrom] = useState(monthStart());
 	const [to, setTo] = useState(today());
 	const [warehouseId, setWarehouseId] = useState(0);
@@ -71,7 +73,9 @@ export default function InventorySummaryReport() {
 				{ header: "Nhập (SL)", value: r => r.inboundQuantity, width: 14 },
 				{ header: "Xuất (SL)", value: r => r.outboundQuantity, width: 14 },
 				{ header: "Tồn cuối (SL)", value: r => r.closingQuantity, width: 14 },
-				{ header: "Giá trị tồn cuối", value: r => r.closingValue, width: 18 },
+				...(showMoney
+					? [{ header: "Giá trị tồn cuối", value: (r: InventorySummaryReportV1["rows"][number]) => r.closingValue, width: 18 }]
+					: []),
 			],
 			rows,
 		);
@@ -123,30 +127,30 @@ export default function InventorySummaryReport() {
 			<StatGrid>
 				<StatCard
 					label="Tồn đầu kỳ"
-					value={money(summary?.openingValue || 0)}
-					hint={`${qty(summary?.openingQuantity || 0)} SL`}
+					value={showMoney ? money(summary?.openingValue || 0) : `${qty(summary?.openingQuantity || 0)} SL`}
+					hint={showMoney ? `${qty(summary?.openingQuantity || 0)} SL` : undefined}
 				/>
 				<StatCard
 					label="Nhập trong kỳ"
-					value={money(summary?.inboundValue || 0)}
-					hint={`${qty(summary?.inboundQuantity || 0)} SL`}
+					value={showMoney ? money(summary?.inboundValue || 0) : `${qty(summary?.inboundQuantity || 0)} SL`}
+					hint={showMoney ? `${qty(summary?.inboundQuantity || 0)} SL` : undefined}
 					tone="positive"
 				/>
 				<StatCard
 					label="Xuất trong kỳ"
-					value={money(summary?.outboundValue || 0)}
-					hint={`${qty(summary?.outboundQuantity || 0)} SL`}
+					value={showMoney ? money(summary?.outboundValue || 0) : `${qty(summary?.outboundQuantity || 0)} SL`}
+					hint={showMoney ? `${qty(summary?.outboundQuantity || 0)} SL` : undefined}
 					tone="negative"
 				/>
 				<StatCard
 					label="Tồn cuối kỳ"
-					value={money(summary?.closingValue || 0)}
-					hint={`${qty(summary?.closingQuantity || 0)} SL`}
+					value={showMoney ? money(summary?.closingValue || 0) : `${qty(summary?.closingQuantity || 0)} SL`}
+					hint={showMoney ? `${qty(summary?.closingQuantity || 0)} SL` : undefined}
 					tone="info"
 				/>
 			</StatGrid>
 
-			{data && !data.valueCoverageComplete ? (
+			{data && showMoney && !data.valueCoverageComplete ? (
 				<p className="rounded-lg bg-amber-50 px-3 py-2 text-[12.5px] text-amber-700">
 					Một số mặt hàng chưa có tồn đầu kỳ (baseline) nên giá trị tồn có thể
 					chưa đầy đủ.
@@ -164,11 +168,11 @@ export default function InventorySummaryReport() {
 								<th className="text-right">Nhập</th>
 								<th className="text-right">Xuất</th>
 								<th className="text-right">Tồn cuối</th>
-								<th className="text-right">Giá trị tồn cuối</th>
+								{showMoney ? <th className="text-right">Giá trị tồn cuối</th> : null}
 							</tr>
 						</thead>
 						<TableState
-							colSpan={7}
+							colSpan={showMoney ? 7 : 6}
 							loading={query.isLoading}
 							error={query.isError ? (query.error as Error).message : null}
 							empty={!rows.length}
@@ -207,7 +211,7 @@ export default function InventorySummaryReport() {
 									<td className="text-right font-bold">
 										{qty(row.closingQuantity)} {row.unit || ""}
 									</td>
-									<td className="text-right">{money(row.closingValue)}</td>
+									{showMoney ? <td className="text-right">{money(row.closingValue)}</td> : null}
 								</tr>
 							))}
 						</TableState>

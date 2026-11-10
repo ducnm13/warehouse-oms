@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PackageX, Search } from "lucide-react";
 import { apiV1 } from "../../lib/apiV1";
+import { useCanViewMoney } from "../../hooks/useCanViewMoney";
 import type { StockOnHandReportV1 } from "../../types";
 import {
 	ExportButton,
@@ -19,6 +20,7 @@ import {
 } from "../../components/reports/ReportKit";
 
 export default function StockOnHandReport() {
+	const showMoney = useCanViewMoney();
 	const [warehouseId, setWarehouseId] = useState(0);
 	const [category, setCategory] = useState("");
 	const [search, setSearch] = useState("");
@@ -38,20 +40,24 @@ export default function StockOnHandReport() {
 	const summary = data?.summary;
 	const exportExcel = useReportExport();
 	const onExport = () =>
-		exportExcel(`Bao_cao_gia_tri_ton_kho.xlsx`, "Ton kho hien tai", [
+		exportExcel(showMoney ? `Bao_cao_gia_tri_ton_kho.xlsx` : `Bao_cao_ton_kho.xlsx`, "Ton kho hien tai", [
 			{ header: "Sản phẩm", value: (r: StockOnHandReportV1["rows"][number]) => r.productName, width: 30 },
 			{ header: "Quy cách", value: r => r.packagingName, width: 24 },
 			{ header: "SKU", value: r => r.sku || "", width: 16 },
 			{ header: "ĐVT", value: r => r.unit || "", width: 10 },
 			{ header: "Tồn hiện tại", value: r => r.stockQuantity, width: 14 },
 			{ header: "Tồn tối thiểu", value: r => r.minStock, width: 14 },
-			{ header: "Đơn giá nhập", value: r => r.unitCost, width: 16 },
-			{ header: "Giá trị tồn", value: r => r.stockValue, width: 18 },
+			...(showMoney
+				? [
+						{ header: "Đơn giá nhập", value: (r: StockOnHandReportV1["rows"][number]) => r.unitCost, width: 16 },
+						{ header: "Giá trị tồn", value: (r: StockOnHandReportV1["rows"][number]) => r.stockValue, width: 18 },
+					]
+				: []),
 			{ header: "Cảnh báo", value: r => (r.stockQuantity <= 0 ? "Hết hàng" : r.lowStock ? "Sắp hết" : ""), width: 14 },
 		], rows);
 
 	return (
-		<ReportShell title="Giá trị tồn kho & cảnh báo tồn thấp" description="Tồn hiện tại, đơn giá nhập gần nhất và giá trị tồn kho theo mặt hàng" actions={<ExportButton onClick={onExport} />}>
+		<ReportShell title={showMoney ? "Giá trị tồn kho & cảnh báo tồn thấp" : "Tồn kho & cảnh báo tồn thấp"} description={showMoney ? "Tồn hiện tại, đơn giá nhập gần nhất và giá trị tồn kho theo mặt hàng" : "Tồn hiện tại và cảnh báo tồn thấp theo mặt hàng"} actions={<ExportButton onClick={onExport} />}>
 			<FilterBar>
 				<WarehouseSelect value={warehouseId} onChange={setWarehouseId} warehouses={refs.data?.warehouses || []} />
 				<label>
@@ -77,7 +83,7 @@ export default function StockOnHandReport() {
 			</FilterBar>
 
 			<StatGrid>
-				<StatCard label="Giá trị tồn kho" value={money(summary?.stockValue || 0)} tone="info" />
+				{showMoney ? <StatCard label="Giá trị tồn kho" value={money(summary?.stockValue || 0)} tone="info" /> : null}
 				<StatCard label="Số mặt hàng" value={qty(summary?.items || 0)} />
 				<StatCard label="Sắp hết hàng" value={qty(summary?.lowStock || 0)} icon={PackageX} tone="warning" />
 				<StatCard label="Hết hàng" value={qty(summary?.outOfStock || 0)} icon={PackageX} tone="negative" />
@@ -92,20 +98,20 @@ export default function StockOnHandReport() {
 								<th>SKU</th>
 								<th className="text-right">Tồn hiện tại</th>
 								<th className="text-right">Tồn tối thiểu</th>
-								<th className="text-right">Đơn giá nhập</th>
-								<th className="text-right">Giá trị tồn</th>
+								{showMoney ? <th className="text-right">Đơn giá nhập</th> : null}
+								{showMoney ? <th className="text-right">Giá trị tồn</th> : null}
 								<th>Trạng thái</th>
 							</tr>
 						</thead>
-						<TableState colSpan={7} loading={query.isLoading} error={query.isError ? (query.error as Error).message : null} empty={!rows.length}>
+						<TableState colSpan={showMoney ? 7 : 5} loading={query.isLoading} error={query.isError ? (query.error as Error).message : null} empty={!rows.length}>
 							{rows.map(row => (
 								<tr key={row.packagingId}>
 									<td><b>{row.productName}</b><small>{row.packagingName}</small></td>
 									<td>{row.sku || "-"}</td>
 									<td className="text-right font-semibold">{qty(row.stockQuantity)} {row.unit || ""}</td>
 									<td className="text-right text-slate-500">{qty(row.minStock)}</td>
-									<td className="text-right">{money(row.unitCost)}</td>
-									<td className="text-right">{money(row.stockValue)}</td>
+									{showMoney ? <td className="text-right">{money(row.unitCost)}</td> : null}
+									{showMoney ? <td className="text-right">{money(row.stockValue)}</td> : null}
 									<td>
 										{row.stockQuantity <= 0 ? (
 											<span className="erp-badge erp-badge-danger">Hết hàng</span>

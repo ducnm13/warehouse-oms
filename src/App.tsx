@@ -54,6 +54,7 @@ import CatalogImport from './pages/CatalogImport';
 import WarehousesManager from './pages/WarehousesManager';
 import PriceBooks from './pages/PriceBooks';
 import MoneyReportGuard from './components/MoneyReportGuard';
+import WarehouseBlockedGuard from './components/WarehouseBlockedGuard';
 import MaintenanceNotice from './components/MaintenanceNotice';
 import { MaintenancePage, NotFoundPage, ServerErrorPage } from './pages/ErrorPages';
 import { User } from './types';
@@ -210,17 +211,17 @@ const AppRoutes = () => {
           <Route path="/reports/sales-returns" element={<MoneyReportGuard><SalesReturnsReport /></MoneyReportGuard>} />
           <Route path="/reports/purchases-supplier" element={<MoneyReportGuard><PurchasesBySupplierReport /></MoneyReportGuard>} />
           <Route path="/reports/purchases-product" element={<MoneyReportGuard><PurchasesByProductReport /></MoneyReportGuard>} />
-          <Route path="/reports/inventory-summary" element={<MoneyReportGuard><InventorySummaryReport /></MoneyReportGuard>} />
-          <Route path="/reports/stock-on-hand" element={<MoneyReportGuard><StockOnHandReport /></MoneyReportGuard>} />
-          <Route path="/reports/item-ledger" element={<MoneyReportGuard><ItemLedgerReport /></MoneyReportGuard>} />
+          <Route path="/reports/inventory-summary" element={<InventorySummaryReport />} />
+          <Route path="/reports/stock-on-hand" element={<StockOnHandReport />} />
+          <Route path="/reports/item-ledger" element={<ItemLedgerReport />} />
           <Route path="/reports/transfers" element={<TransfersReport />} />
           <Route path="/reports/production-overview" element={<ProductionOverviewReport />} />
-          <Route path="/reports/production-variance" element={<MoneyReportGuard><ProductionVarianceReport /></MoneyReportGuard>} />
-          <Route path="/reports/operations" element={<MoneyReportGuard><OperationsReport /></MoneyReportGuard>} />
-          <Route path="/reports/assembly-issues" element={<MoneyReportGuard><AssemblyIssueReport /></MoneyReportGuard>} />
+          <Route path="/reports/production-variance" element={<ProductionVarianceReport />} />
+          <Route path="/reports/operations" element={<OperationsReport />} />
+          <Route path="/reports/assembly-issues" element={<AssemblyIssueReport />} />
           <Route path="/reports/debt-receivable" element={<MoneyReportGuard><DebtAgingReport kind="receivable" /></MoneyReportGuard>} />
           <Route path="/reports/debt-payable" element={<MoneyReportGuard><DebtAgingReport kind="payable" /></MoneyReportGuard>} />
-          <Route path="/reports/promotions" element={<PromotionUsageReport />} />
+          <Route path="/reports/promotions" element={<WarehouseBlockedGuard><PromotionUsageReport /></WarehouseBlockedGuard>} />
           <Route path="/reports/online" element={<MoneyReportGuard><OnlineReport /></MoneyReportGuard>} />
           <Route path="/production" element={<Production user={user!} onNavigate={(tab) => navigate(`/${tab}`)} />} />
           <Route path="/production-mgmt" element={user?.role === 'W_MANAGER' ? <Navigate to="/production" replace /> : <ProductionManagement user={user!} onNavigate={(tab) => navigate(`/${tab}`)} />} />

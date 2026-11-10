@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { PackageMinus, Search } from "lucide-react";
 import ReportPeriodFilter from "../../components/ReportPeriodFilter";
 import { apiV1 } from "../../lib/apiV1";
+import { useCanViewMoney } from "../../hooks/useCanViewMoney";
 import { formatDate } from "../../lib/utils";
 import type { AssemblyIssueReportV1 } from "../../types";
 import {
@@ -24,6 +25,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 const monthStart = () => `${today().slice(0, 7)}-01`;
 
 export default function AssemblyIssueReport() {
+	const showMoney = useCanViewMoney();
 	const [from, setFrom] = useState(monthStart());
 	const [to, setTo] = useState(today());
 	const [warehouseId, setWarehouseId] = useState(0);
@@ -60,8 +62,12 @@ export default function AssemblyIssueReport() {
 				{ header: "Số lệnh", value: r => r.orders, width: 10 },
 				{ header: "Định mức", value: r => r.plannedQuantity, width: 14 },
 				{ header: "SL xuất kho", value: r => r.issuedQuantity, width: 14 },
-				{ header: "Đơn giá BQ", value: r => r.avgUnitCost, width: 14 },
-				{ header: "Giá trị xuất", value: r => r.totalValue, width: 16 },
+				...(showMoney
+					? [
+							{ header: "Đơn giá BQ", value: (r: AssemblyIssueReportV1["rows"][number]) => r.avgUnitCost, width: 14 },
+							{ header: "Giá trị xuất", value: (r: AssemblyIssueReportV1["rows"][number]) => r.totalValue, width: 16 },
+						]
+					: []),
 				{ header: "Phiếu xuất", value: r => r.documentCodes, width: 30 },
 				{ header: "Lần xuất cuối", value: r => r.lastIssuedAt, width: 16 },
 			],
@@ -120,11 +126,13 @@ export default function AssemblyIssueReport() {
 					value={qty(summary?.documents || 0)}
 					tone="warning"
 				/>
-				<StatCard
-					label="Tổng giá trị xuất"
-					value={money(summary?.totalValue || 0)}
-					tone="positive"
-				/>
+				{showMoney ? (
+					<StatCard
+						label="Tổng giá trị xuất"
+						value={money(summary?.totalValue || 0)}
+						tone="positive"
+					/>
+				) : null}
 			</StatGrid>
 
 			<ReportCard
@@ -141,12 +149,12 @@ export default function AssemblyIssueReport() {
 								<th className="text-right">Số lệnh</th>
 								<th className="text-right">Định mức</th>
 								<th className="text-right">SL xuất kho</th>
-								<th className="text-right">Giá trị xuất</th>
+								{showMoney ? <th className="text-right">Giá trị xuất</th> : null}
 								<th>Lần xuất cuối</th>
 							</tr>
 						</thead>
 						<TableState
-							colSpan={8}
+							colSpan={showMoney ? 8 : 7}
 							loading={query.isLoading}
 							error={query.isError ? (query.error as Error).message : null}
 							empty={!rows.length}
@@ -181,12 +189,14 @@ export default function AssemblyIssueReport() {
 									<td className="text-right font-semibold">
 										{qty(row.issuedQuantity)} {row.unit || ""}
 									</td>
-									<td className="text-right">
-										{money(row.totalValue)}
-										<small>
-											{money(row.avgUnitCost)} / {row.unit || "ĐVT"}
-										</small>
-									</td>
+									{showMoney ? (
+										<td className="text-right">
+											{money(row.totalValue)}
+											<small>
+												{money(row.avgUnitCost)} / {row.unit || "ĐVT"}
+											</small>
+										</td>
+									) : null}
 									<td>
 										{row.lastIssuedAt ? formatDate(row.lastIssuedAt) : "-"}
 										<small title={row.documentCodes}>

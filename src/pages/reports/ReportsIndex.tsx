@@ -183,29 +183,21 @@ const GROUPS: Array<{
 export default function ReportsIndex() {
 	const navigate = useNavigate();
 	const showMoney = useCanViewMoney();
-	const moneyPaths = new Set([
-		"/reports/financial",
-		"/reports/sales-profit",
-		"/reports/sales-customer",
-		"/reports/sales-product",
-		"/reports/sales-returns",
-		"/reports/purchases-supplier",
-		"/reports/purchases-product",
+	const warehouseReportPaths = new Set([
 		"/reports/inventory-summary",
 		"/reports/stock-on-hand",
 		"/reports/item-ledger",
+		"/reports/assembly-issues",
+		"/reports/transfers",
+		"/reports/production-overview",
 		"/reports/production-variance",
 		"/reports/operations",
-		"/reports/assembly-issues",
-		"/reports/debt-receivable",
-		"/reports/debt-payable",
-		"/reports/online",
 	]);
 	const groups = showMoney
 		? GROUPS
 		: GROUPS.map(group => ({
 				...group,
-				items: group.items.filter(item => !moneyPaths.has(item.path)),
+				items: group.items.filter(item => warehouseReportPaths.has(item.path)),
 			})).filter(group => group.items.length > 0);
 	return (
 		<div className="erp-page">

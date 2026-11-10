@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import ReportPeriodFilter from "../../components/ReportPeriodFilter";
 import { apiV1 } from "../../lib/apiV1";
+import { useCanViewMoney } from "../../hooks/useCanViewMoney";
 import { formatDate } from "../../lib/utils";
 import type { ProductionVarianceReportV1 } from "../../types";
 import {
@@ -24,6 +25,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 const monthStart = () => `${today().slice(0, 7)}-01`;
 
 export default function ProductionVarianceReport() {
+	const showMoney = useCanViewMoney();
 	const [from, setFrom] = useState(monthStart());
 	const [to, setTo] = useState(today());
 	const [warehouseId, setWarehouseId] = useState(0);
@@ -51,7 +53,9 @@ export default function ProductionVarianceReport() {
 			{ header: "Thực tế (SL)", value: r => r.actualMaterialQuantity, width: 14 },
 			{ header: "Chênh lệch (SL)", value: r => r.materialQuantityVariance, width: 14 },
 			{ header: "Chênh lệch (%)", value: r => r.materialVariancePercent, width: 12 },
-			{ header: "Chênh lệch (giá trị)", value: r => r.materialValueVariance, width: 18 },
+			...(showMoney
+				? [{ header: "Chênh lệch (giá trị)", value: (r: ProductionVarianceReportV1["rows"][number]) => r.materialValueVariance, width: 18 }]
+				: []),
 		], rows);
 
 	return (
@@ -87,10 +91,10 @@ export default function ProductionVarianceReport() {
 								<th className="text-right">Định mức</th>
 								<th className="text-right">Thực tế</th>
 								<th className="text-right">Chênh lệch</th>
-								<th className="text-right">Chênh lệch giá trị</th>
+								{showMoney ? <th className="text-right">Chênh lệch giá trị</th> : null}
 							</tr>
 						</thead>
-						<TableState colSpan={6} loading={query.isLoading} error={query.isError ? (query.error as Error).message : null} empty={!rows.length}>
+						<TableState colSpan={showMoney ? 6 : 5} loading={query.isLoading} error={query.isError ? (query.error as Error).message : null} empty={!rows.length}>
 							{rows.map(row => (
 								<tr key={`${row.orderId}-${row.materialId}`}>
 									<td><b>{row.code}</b><small>{row.productName} · {formatDate(row.completedAt)}</small></td>
@@ -101,7 +105,9 @@ export default function ProductionVarianceReport() {
 										{row.materialQuantityVariance > 0 ? "+" : ""}{qty(row.materialQuantityVariance)}
 										<small>{row.materialVariancePercent}%</small>
 									</td>
-									<td className={`text-right ${row.materialValueVariance > 0 ? "text-red-600" : "text-emerald-600"}`}>{money(row.materialValueVariance)}</td>
+									{showMoney ? (
+										<td className={`text-right ${row.materialValueVariance > 0 ? "text-red-600" : "text-emerald-600"}`}>{money(row.materialValueVariance)}</td>
+									) : null}
 								</tr>
 							))}
 						</TableState>

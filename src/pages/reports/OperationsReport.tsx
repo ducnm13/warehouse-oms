@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import ReportPeriodFilter from "../../components/ReportPeriodFilter";
 import { apiV1 } from "../../lib/apiV1";
+import { useCanViewMoney } from "../../hooks/useCanViewMoney";
 import { formatDate } from "../../lib/utils";
 import type { OperationsReportV1 } from "../../types";
 import {
@@ -29,6 +30,7 @@ const TYPE: Record<string, { label: string; cls: string }> = {
 };
 
 export default function OperationsReport() {
+	const showMoney = useCanViewMoney();
 	const [from, setFrom] = useState(monthStart());
 	const [to, setTo] = useState(today());
 	const [warehouseId, setWarehouseId] = useState(0);
@@ -55,8 +57,12 @@ export default function OperationsReport() {
 			{ header: "Hàng hóa", value: r => r.itemName || "", width: 30 },
 			{ header: "Kế hoạch", value: r => r.plannedQuantity, width: 12 },
 			{ header: "Thực tế", value: r => r.actualQuantity, width: 12 },
-			{ header: "Giá trị vào", value: r => r.inputValue, width: 16 },
-			{ header: "Giá trị ra", value: r => r.outputValue, width: 16 },
+			...(showMoney
+				? [
+						{ header: "Giá trị vào", value: (r: OperationsReportV1["rows"][number]) => r.inputValue, width: 16 },
+						{ header: "Giá trị ra", value: (r: OperationsReportV1["rows"][number]) => r.outputValue, width: 16 },
+					]
+				: []),
 			{ header: "Hao hụt", value: r => r.lossQuantity, width: 12 },
 		], rows);
 
@@ -88,8 +94,8 @@ export default function OperationsReport() {
 			<StatGrid>
 				<StatCard label="Số chứng từ" value={qty(summary?.orders || 0)} />
 				<StatCard label="Sản lượng thực tế" value={qty(summary?.actualQuantity || 0)} tone="info" />
-				<StatCard label="Giá trị đầu vào" value={money(summary?.inputValue || 0)} />
-				<StatCard label="Giá trị đầu ra" value={money(summary?.outputValue || 0)} tone="positive" />
+				{showMoney ? <StatCard label="Giá trị đầu vào" value={money(summary?.inputValue || 0)} /> : null}
+				{showMoney ? <StatCard label="Giá trị đầu ra" value={money(summary?.outputValue || 0)} tone="positive" /> : null}
 			</StatGrid>
 
 			<ReportCard title="Danh sách chứng từ vận hành" description={`${rows.length} chứng từ`}>
@@ -102,11 +108,11 @@ export default function OperationsReport() {
 								<th>Hàng hóa</th>
 								<th className="text-right">Kế hoạch</th>
 								<th className="text-right">Thực tế</th>
-								<th className="text-right">Giá trị vào</th>
-								<th className="text-right">Giá trị ra</th>
+								{showMoney ? <th className="text-right">Giá trị vào</th> : null}
+								{showMoney ? <th className="text-right">Giá trị ra</th> : null}
 							</tr>
 						</thead>
-						<TableState colSpan={7} loading={query.isLoading} error={query.isError ? (query.error as Error).message : null} empty={!rows.length}>
+						<TableState colSpan={showMoney ? 7 : 5} loading={query.isLoading} error={query.isError ? (query.error as Error).message : null} empty={!rows.length}>
 							{rows.map(row => (
 								<tr key={`${row.type}-${row.id}`}>
 									<td><span className={`erp-badge ${TYPE[row.type]?.cls || ""}`}>{TYPE[row.type]?.label || row.type}</span></td>
@@ -114,8 +120,8 @@ export default function OperationsReport() {
 									<td>{row.itemName || "-"}</td>
 									<td className="text-right">{qty(row.plannedQuantity)}</td>
 									<td className="text-right font-semibold">{qty(row.actualQuantity)}</td>
-									<td className="text-right">{money(row.inputValue)}</td>
-									<td className="text-right">{money(row.outputValue)}</td>
+									{showMoney ? <td className="text-right">{money(row.inputValue)}</td> : null}
+									{showMoney ? <td className="text-right">{money(row.outputValue)}</td> : null}
 								</tr>
 							))}
 						</TableState>

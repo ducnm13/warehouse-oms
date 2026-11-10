@@ -5,6 +5,7 @@ import ReportPeriodFilter from "../../components/ReportPeriodFilter";
 import SearchableSelect from "../../components/SearchableSelect";
 import RightDrawer from "../../components/RightDrawer";
 import { apiV1, legacyApi } from "../../lib/apiV1";
+import { useCanViewMoney } from "../../hooks/useCanViewMoney";
 import { formatDate, formatProductName } from "../../lib/utils";
 import { ledgerSourceTypeLabel } from "../../lib/ledger-labels";
 import type {
@@ -31,6 +32,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 const monthStart = () => `${today().slice(0, 7)}-01`;
 
 export default function ItemLedgerReport() {
+	const showMoney = useCanViewMoney();
 	const [searchParams] = useSearchParams();
 	const [from, setFrom] = useState(searchParams.get("from") || monthStart());
 	const [to, setTo] = useState(searchParams.get("to") || today());
@@ -141,9 +143,13 @@ export default function ItemLedgerReport() {
 				{ header: "Kho", value: r => r.warehouseName, width: 20 },
 				{ header: "Nhập SL", value: r => r.inboundQuantity, width: 12 },
 				{ header: "Xuất SL", value: r => r.outboundQuantity, width: 12 },
-				{ header: "Đơn giá", value: r => r.unitCost, width: 14 },
 				{ header: "Tồn SL", value: r => r.runningQuantity, width: 12 },
-				{ header: "Tồn giá trị", value: r => r.runningValue, width: 16 },
+				...(showMoney
+					? [
+							{ header: "Đơn giá", value: (r: ItemLedgerReportV1["rows"][number]) => r.unitCost, width: 14 },
+							{ header: "Tồn giá trị", value: (r: ItemLedgerReportV1["rows"][number]) => r.runningValue, width: 16 },
+						]
+					: []),
 			],
 			rows,
 		);
@@ -204,7 +210,7 @@ export default function ItemLedgerReport() {
 						<StatCard
 							label="Tồn đầu kỳ"
 							value={`${qty(data.openingQuantity)} ${data.packaging.unit || ""}`}
-							hint={money(data.openingValue)}
+							hint={showMoney ? money(data.openingValue) : undefined}
 						/>
 						{/* <StatCard label="Số phát sinh" value={qty(rows.length)} /> */}
 						<StatCard
@@ -220,7 +226,7 @@ export default function ItemLedgerReport() {
 						<StatCard
 							label="Tồn cuối kỳ"
 							value={`${qty(data.closingQuantity)} ${data.packaging.unit || ""}`}
-							hint={money(data.closingValue)}
+							hint={showMoney ? money(data.closingValue) : undefined}
 							tone="info"
 						/>
 					</StatGrid>
@@ -251,13 +257,13 @@ export default function ItemLedgerReport() {
 									<th>Kho</th>
 									<th className="text-right">Nhập</th>
 									<th className="text-right">Xuất</th>
-									<th className="text-right">Đơn giá</th>
+									{showMoney ? <th className="text-right">Đơn giá</th> : null}
 									<th className="text-right">Tồn SL</th>
-									<th className="text-right">Tồn giá trị</th>
+									{showMoney ? <th className="text-right">Tồn giá trị</th> : null}
 								</tr>
 							</thead>
 							<TableState
-								colSpan={10}
+								colSpan={showMoney ? 10 : 8}
 								loading={query.isLoading}
 								error={query.isError ? (query.error as Error).message : null}
 								empty={!rows.length}
@@ -297,11 +303,11 @@ export default function ItemLedgerReport() {
 										<td className="text-right text-red-600">
 											{row.outboundQuantity ? qty(row.outboundQuantity) : "-"}
 										</td>
-										<td className="text-right">{money(row.unitCost)}</td>
+										{showMoney ? <td className="text-right">{money(row.unitCost)}</td> : null}
 										<td className="text-right font-semibold">
 											{qty(row.runningQuantity)}
 										</td>
-										<td className="text-right">{money(row.runningValue)}</td>
+										{showMoney ? <td className="text-right">{money(row.runningValue)}</td> : null}
 									</tr>
 								))}
 							</TableState>
@@ -388,8 +394,8 @@ export default function ItemLedgerReport() {
 										<th>Tên hàng hóa</th>
 										<th>ĐVT</th>
 										<th className="text-right">Số lượng</th>
-										<th className="text-right">Đơn giá</th>
-										<th className="text-right">Thành tiền</th>
+										{showMoney ? <th className="text-right">Đơn giá</th> : null}
+										{showMoney ? <th className="text-right">Thành tiền</th> : null}
 										<th>Ghi chú</th>
 									</tr>
 								</thead>
@@ -418,22 +424,26 @@ export default function ItemLedgerReport() {
 														</small>
 													) : null}
 												</td>
-												<td className="text-right">
-													{line.unitCost == null
-														? "-"
-														: money(line.unitCost)}
-												</td>
-												<td className="text-right">
-													{line.totalValue == null
-														? "-"
-														: money(line.totalValue)}
-												</td>
+												{showMoney ? (
+													<td className="text-right">
+														{line.unitCost == null
+															? "-"
+															: money(line.unitCost)}
+													</td>
+												) : null}
+												{showMoney ? (
+													<td className="text-right">
+														{line.totalValue == null
+															? "-"
+															: money(line.totalValue)}
+													</td>
+												) : null}
 												<td>{line.note || "-"}</td>
 											</tr>
 										))
 									) : (
 										<tr>
-											<td colSpan={8} className="py-8 text-center text-slate-400">
+											<td colSpan={showMoney ? 8 : 6} className="py-8 text-center text-slate-400">
 												Không có dòng chi tiết
 											</td>
 										</tr>
