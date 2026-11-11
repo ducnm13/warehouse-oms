@@ -16,9 +16,9 @@ export const reportingRepository = {
       COALESCE(ob.quantity,0)+COALESCE(SUM(CASE WHEN l.occurredAt<? THEN CASE WHEN l.direction='IN' THEN l.quantity ELSE -l.quantity END ELSE 0 END),0) openingQuantity,
       COALESCE(SUM(CASE WHEN l.occurredAt>=? AND l.occurredAt<? AND l.direction='IN' THEN l.quantity ELSE 0 END),0) inboundQuantity,
       COALESCE(SUM(CASE WHEN l.occurredAt>=? AND l.occurredAt<? AND l.direction='OUT' THEN l.quantity ELSE 0 END),0) outboundQuantity,
-      COALESCE(SUM(CASE WHEN l.occurredAt<? THEN CASE WHEN l.direction='IN' THEN l.totalValue ELSE -l.totalValue END ELSE 0 END),0) openingValue,
-      COALESCE(SUM(CASE WHEN l.occurredAt>=? AND l.occurredAt<? AND l.direction='IN' THEN l.totalValue ELSE 0 END),0) inboundValue,
-      COALESCE(SUM(CASE WHEN l.occurredAt>=? AND l.occurredAt<? AND l.direction='OUT' THEN l.totalValue ELSE 0 END),0) outboundValue,
+      COALESCE(SUM(CASE WHEN l.occurredAt<? THEN CASE WHEN l.direction='IN' THEN ABS(l.totalValue) ELSE -ABS(l.totalValue) END ELSE 0 END),0) openingValue,
+      COALESCE(SUM(CASE WHEN l.occurredAt>=? AND l.occurredAt<? AND l.direction='IN' THEN ABS(l.totalValue) ELSE 0 END),0) inboundValue,
+      COALESCE(SUM(CASE WHEN l.occurredAt>=? AND l.occurredAt<? AND l.direction='OUT' THEN ABS(l.totalValue) ELSE 0 END),0) outboundValue,
       COALESCE(ob.quantity,0) openingBaselineQuantity,pw.stock_quantity projectionQuantity
       FROM productwarehouses pw JOIN productpackagings pp ON pp.id=pw.packagingId JOIN products p ON p.id=pp.productId JOIN warehouses w ON w.id=pw.warehouseId
       LEFT JOIN inventory_ledger_opening_balances ob ON ob.packagingId=pw.packagingId AND ob.warehouseId=pw.warehouseId
@@ -272,12 +272,16 @@ export const reportingRepository = {
     return prisma.$queryRawUnsafe<any[]>(`SELECT pp.id packagingId, pp.sku, pp.name packagingName, pp.unit, p.name productName,
       COUNT(DISTINCT po.id) orders,
       SUM(pd.quantity) plannedPacks, SUM(pd.actual_quantity) actualPacks,
-      SUM(CASE WHEN ordPlanned.totalPlanned>0 THEN po.total_powder_kg*pd.quantity/ordPlanned.totalPlanned ELSE 0 END) powderKg
+      SUM(CASE WHEN ordPlanned.totalPlanned>0 THEN po.total_powder_kg*pd.quantity/ordPlanned.totalPlanned ELSE 0 END) powderKg,
+      SUM(CASE WHEN COALESCE(ordActual.totalUnits,0)>0 THEN COALESCE(ordMaterials.materialValue,0)*(pd.actual_quantity*COALESCE(pp.packCount,1))/ordActual.totalUnits ELSE 0 END) materialValue,
+      SUM(CASE WHEN COALESCE(ordMaterials.materialValue,0)>0 THEN pd.actual_quantity ELSE 0 END) materialPacks
       FROM productiondetails pd
       JOIN productionorders po ON po.id=pd.orderId
       JOIN productpackagings pp ON pp.id=pd.packagingId
       JOIN products p ON p.id=pp.productId
       JOIN (SELECT orderId, SUM(quantity) totalPlanned FROM productiondetails GROUP BY orderId) ordPlanned ON ordPlanned.orderId=po.id
+      LEFT JOIN (SELECT pd2.orderId, SUM(pd2.actual_quantity*COALESCE(pp2.packCount,1)) totalUnits FROM productiondetails pd2 JOIN productpackagings pp2 ON pp2.id=pd2.packagingId GROUP BY pd2.orderId) ordActual ON ordActual.orderId=po.id
+      LEFT JOIN (SELECT orderId, SUM(totalValue) materialValue FROM production_order_materials_v1 GROUP BY orderId) ordMaterials ON ordMaterials.orderId=po.id
       WHERE ${clauses.join(" AND ")}
       GROUP BY pp.id, pp.sku, pp.name, pp.unit, p.name ORDER BY actualPacks DESC`, ...params);
   },

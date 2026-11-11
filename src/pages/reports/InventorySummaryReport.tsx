@@ -60,21 +60,58 @@ export default function InventorySummaryReport() {
 			`Bao_cao_tong_hop_ton_kho_${from}_${to}.xlsx`,
 			"Ton kho",
 			[
+				{ header: "SKU", value: r => r.sku || "", width: 16 },
 				{
 					header: "Sản phẩm",
 					value: (r: InventorySummaryReportV1["rows"][number]) => r.productName,
 					width: 30,
 				},
-				{ header: "Quy cách", value: r => r.packagingName, width: 24 },
-				{ header: "SKU", value: r => r.sku || "", width: 16 },
+				// { header: "Quy cách", value: r => r.packagingName, width: 24 },
 				{ header: "Kho", value: r => r.warehouseName, width: 20 },
 				{ header: "ĐVT", value: r => r.unit || "", width: 10 },
 				{ header: "Tồn đầu (SL)", value: r => r.openingQuantity, width: 14 },
+				...(showMoney
+					? [
+							{
+								header: "Giá trị tồn đầu",
+								value: (r: InventorySummaryReportV1["rows"][number]) =>
+									r.openingValue,
+								width: 18,
+							},
+						]
+					: []),
 				{ header: "Nhập (SL)", value: r => r.inboundQuantity, width: 14 },
+				...(showMoney
+					? [
+							{
+								header: "Giá trị nhập kho",
+								value: (r: InventorySummaryReportV1["rows"][number]) =>
+									r.inboundValue,
+								width: 18,
+							},
+						]
+					: []),
 				{ header: "Xuất (SL)", value: r => r.outboundQuantity, width: 14 },
+				...(showMoney
+					? [
+							{
+								header: "Giá trị xuất kho",
+								value: (r: InventorySummaryReportV1["rows"][number]) =>
+									r.outboundValue,
+								width: 18,
+							},
+						]
+					: []),
 				{ header: "Tồn cuối (SL)", value: r => r.closingQuantity, width: 14 },
 				...(showMoney
-					? [{ header: "Giá trị tồn cuối", value: (r: InventorySummaryReportV1["rows"][number]) => r.closingValue, width: 18 }]
+					? [
+							{
+								header: "Giá trị tồn cuối",
+								value: (r: InventorySummaryReportV1["rows"][number]) =>
+									r.closingValue,
+								width: 18,
+							},
+						]
 					: []),
 			],
 			rows,
@@ -124,7 +161,7 @@ export default function InventorySummaryReport() {
 				</label>
 			</FilterBar>
 
-			<StatGrid>
+			{/* <StatGrid>
 				<StatCard
 					label="Tồn đầu kỳ"
 					value={showMoney ? money(summary?.openingValue || 0) : `${qty(summary?.openingQuantity || 0)} SL`}
@@ -148,7 +185,7 @@ export default function InventorySummaryReport() {
 					hint={showMoney ? `${qty(summary?.closingQuantity || 0)} SL` : undefined}
 					tone="info"
 				/>
-			</StatGrid>
+			</StatGrid> */}
 
 			{data && showMoney && !data.valueCoverageComplete ? (
 				<p className="rounded-lg bg-amber-50 px-3 py-2 text-[12.5px] text-amber-700">
@@ -168,7 +205,9 @@ export default function InventorySummaryReport() {
 								<th className="text-right">Nhập</th>
 								<th className="text-right">Xuất</th>
 								<th className="text-right">Tồn cuối</th>
-								{showMoney ? <th className="text-right">Giá trị tồn cuối</th> : null}
+								{/* {showMoney ? (
+									<th className="text-right">Giá trị tồn cuối</th>
+								) : null} */}
 							</tr>
 						</thead>
 						<TableState
@@ -211,7 +250,9 @@ export default function InventorySummaryReport() {
 									<td className="text-right font-bold">
 										{qty(row.closingQuantity)} {row.unit || ""}
 									</td>
-									{showMoney ? <td className="text-right">{money(row.closingValue)}</td> : null}
+									{/* {showMoney ? (
+										<td className="text-right">{money(row.closingValue)}</td>
+									) : null} */}
 								</tr>
 							))}
 						</TableState>

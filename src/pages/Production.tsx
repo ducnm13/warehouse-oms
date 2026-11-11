@@ -304,12 +304,11 @@ export default function Production({
 					const code = item.sku || item.productSku;
 					return {
 						value: item.id,
-						label: code
-							? `${code} · ${item.productName}`
-							: item.productName,
+						label: code ? `${code}` : item.productName,
+						// label: code ? `${code} · ${item.productName}` : item.productName,
 						subLabel: [
 							item.name !== item.productName ? item.name : "",
-							item.unit || "",
+							// item.unit || "",
 						]
 							.filter(Boolean)
 							.join(" | "),
@@ -324,12 +323,11 @@ export default function Production({
 				const code = item.sku || item.productSku;
 				return {
 					value: item.id,
-					label: code
-						? `${code} · ${item.productName}`
-						: item.productName,
+					// label: code ? `${code} ` : item.productName,
+					label: code ? `${code} · ${item.productName}` : item.productName,
 					subLabel: [
 						item.name !== item.productName ? item.name : "",
-						item.unit || "",
+						// item.unit || "",
 					]
 						.filter(Boolean)
 						.join(" | "),
@@ -530,10 +528,7 @@ export default function Production({
 					note: line.note || "",
 				})),
 				materials: materials
-					.filter(
-						material =>
-							material.packagingId > 0 && material.quantity > 0,
-					)
+					.filter(material => material.packagingId > 0 && material.quantity > 0)
 					.map(material => ({
 						packagingId: material.packagingId,
 						plannedQuantity: material.quantity,
@@ -914,7 +909,17 @@ export default function Production({
 				</div>
 			</div>
 			<div className="erp-card overflow-hidden">
-				<ListToolbar month={month} onMonthChange={value => { setMonth(value); setFilters(current => { const next = { ...current }; delete next.dateFrom; delete next.dateTo; return next; }); }}
+				<ListToolbar
+					month={month}
+					onMonthChange={value => {
+						setMonth(value);
+						setFilters(current => {
+							const next = { ...current };
+							delete next.dateFrom;
+							delete next.dateTo;
+							return next;
+						});
+					}}
 					fields={PRODUCTION_FILTER_FIELDS}
 					values={filters}
 					onChange={setFilters}
@@ -1267,7 +1272,8 @@ export default function Production({
 											<div>
 												<b>Định mức nguyên liệu</b>
 												<p className="text-xs text-slate-500">
-													Có thể sửa số lượng hoặc thêm nguyên vật liệu nếu công thức thay đổi.
+													Có thể sửa số lượng hoặc thêm nguyên vật liệu nếu công
+													thức thay đổi.
 												</p>
 											</div>
 											<div className="flex items-center gap-2">
@@ -1304,7 +1310,7 @@ export default function Production({
 												>
 													<colgroup>
 														<col style={{ width: "48px" }} />
-														<col style={{ width: "140px" }} />
+														<col style={{ width: "240px" }} />
 														<col style={{ width: "480px" }} />
 														<col style={{ width: "80px" }} />
 														<col style={{ width: "140px" }} />
@@ -1336,16 +1342,10 @@ export default function Production({
 															const unit = row.unit || pkg?.unit || "";
 															const pkgUnit = pkg?.unit || unit;
 															const baseCost =
-																refs.data?.costMap.get(row.packagingId) ||
-																0;
+																refs.data?.costMap.get(row.packagingId) || 0;
 															const unitCost =
 																row.unitCost ??
-																baseCost *
-																	convertUnitValue(
-																		1,
-																		unit,
-																		pkgUnit,
-																	);
+																baseCost * convertUnitValue(1, unit, pkgUnit);
 															const packagingName =
 																row.packagingName ||
 																(pkg && pkg.name !== pkg.productName
@@ -1370,12 +1370,11 @@ export default function Production({
 																		/>
 																	</td>
 																	<td className="bom-name-cell font-medium text-slate-700">
-																		{row.productName ||
-																			pkg?.productName || (
-																				<span className="text-slate-400">
-																					Chưa chọn
-																				</span>
-																			)}
+																		{row.productName || pkg?.productName || (
+																			<span className="text-slate-400">
+																				Chưa chọn
+																			</span>
+																		)}
 																		{packagingName && (
 																			<small>{packagingName}</small>
 																		)}
@@ -1394,23 +1393,21 @@ export default function Production({
 																	</td>
 																	{showMoney && (
 																		<>
-																	<td className="text-right">
-																		{formatNumber(unitCost)}
-																	</td>
-																	<td className="text-right font-semibold text-emerald-700">
-																		{formatNumber(
-																			(row.quantity || 0) * unitCost,
-																		)}
-																	</td>
+																			<td className="text-right">
+																				{formatNumber(unitCost)}
+																			</td>
+																			<td className="text-right font-semibold text-emerald-700">
+																				{formatNumber(
+																					(row.quantity || 0) * unitCost,
+																				)}
+																			</td>
 																		</>
 																	)}
 																	<td>
 																		<button
 																			type="button"
 																			className="erp-icon-btn text-red-500"
-																			onClick={() =>
-																				removeMaterial(index)
-																			}
+																			onClick={() => removeMaterial(index)}
 																		>
 																			<Trash2 size={15} />
 																		</button>
@@ -1591,14 +1588,14 @@ export default function Production({
 												</td>
 												{showMoney && (
 													<>
-												<td className="text-right">
-													{formatNumber(convertedCost)}
-												</td>
-												<td className="text-right font-semibold text-emerald-700">
-													{formatNumber(
-														(x.plannedQuantity || 0) * convertedCost,
-													)}
-												</td>
+														<td className="text-right">
+															{formatNumber(convertedCost)}
+														</td>
+														<td className="text-right font-semibold text-emerald-700">
+															{formatNumber(
+																(x.plannedQuantity || 0) * convertedCost,
+															)}
+														</td>
 													</>
 												)}
 											</tr>

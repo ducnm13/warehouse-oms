@@ -91,12 +91,17 @@ async function releasePostedLedger(tx: any, id: number) {
 
 async function averageCost(tx: any, packagingId: number, warehouseId: number) {
   const rows = await tx.$queryRawUnsafe(
-    `SELECT COALESCE(SUM(CASE WHEN direction='IN' THEN quantity ELSE -quantity END),0) quantity,
-      COALESCE(SUM(CASE WHEN direction='IN' THEN totalValue ELSE -totalValue END),0) totalValue
+    `SELECT COALESCE(SUM(CASE WHEN direction='IN' THEN quantity ELSE 0 END),0) quantity,
+      COALESCE(SUM(CASE WHEN direction='IN' THEN totalValue ELSE 0 END),0) totalValue
      FROM inventory_ledger WHERE packagingId=? AND warehouseId=?`, packagingId, warehouseId,
   ) as any[];
   const quantity = Number(rows[0]?.quantity || 0), value = Number(rows[0]?.totalValue || 0);
-  return quantity > 0 && value > 0 ? value / quantity : 0;
+  if (quantity > 0 && value > 0) return value / quantity;
+  const price = await tx.product_prices.findFirst({
+    where: { packagingId, priceType: "COST", isActive: 1 },
+    select: { price: true },
+  });
+  return Number(price?.price || 0);
 }
 
 async function fillMissingSaleCosts(rows: any[]) {

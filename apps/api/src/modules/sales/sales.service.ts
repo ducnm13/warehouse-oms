@@ -75,8 +75,8 @@ async function averageCosts(tx: any, packagingIds: number[], warehouseId: number
   const placeholders = uniqueIds.map(() => "?").join(",");
   const rows = await tx.$queryRawUnsafe(
     `SELECT packagingId,
-            COALESCE(SUM(CASE WHEN direction='IN' THEN quantity ELSE -quantity END),0) quantity,
-            COALESCE(SUM(totalValue),0) totalValue
+            COALESCE(SUM(CASE WHEN direction='IN' THEN quantity ELSE 0 END),0) quantity,
+            COALESCE(SUM(CASE WHEN direction='IN' THEN totalValue ELSE 0 END),0) totalValue
      FROM inventory_ledger
      WHERE warehouseId=? AND packagingId IN (${placeholders})
      GROUP BY packagingId`,
@@ -359,7 +359,7 @@ export const salesService = {
         data: costByLine.map(({ line, quantity, unitCost, costAmount }) => ({
           sourceType: "SALE", sourceId: id, sourceLineId: line.id, documentCode: document.code, direction: "OUT",
           packagingId: line.packagingId, warehouseId: document.warehouseId, quantity: decimal(quantity),
-          unitCost: decimal(unitCost), totalValue: money(-costAmount), occurredAt: postedAt, createdBy: userId,
+          unitCost: decimal(unitCost), totalValue: money(costAmount), occurredAt: postedAt, createdBy: userId,
         })),
       });
       for (const { line, unitCost, costAmount } of costByLine) {

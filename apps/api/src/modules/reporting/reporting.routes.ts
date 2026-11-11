@@ -23,6 +23,9 @@ const moneyFields = new Set([
   "plannedMaterialValue",
   "actualMaterialValue",
   "materialValueVariance",
+  "materialValue",
+  "costPerUnit",
+  "avgCostPerUnit",
 ]);
 
 const stripMoneyFields = (value: unknown): unknown => {

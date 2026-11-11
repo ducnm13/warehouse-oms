@@ -346,7 +346,7 @@ export const purchaseService = {
               data: {
                 sourceType: "PURCHASE_CANCEL", sourceId: id, sourceLineId: line.id, documentCode: document.code,
                 direction: "OUT", packagingId: line.packagingId, warehouseId, quantity: decimal(Number(line.quantity)),
-                unitCost: originalLedger?.unitCost || decimal(0), totalValue: money(-Number(originalLedger?.totalValue || 0)),
+                unitCost: originalLedger?.unitCost || decimal(0), totalValue: money(Math.abs(Number(originalLedger?.totalValue || 0))),
                 reversalOfId: originalLedger?.id, occurredAt: cancelledAt, createdBy: userId,
               },
             });

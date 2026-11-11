@@ -368,6 +368,7 @@ export const productionService = {
       });
       if (value.linkType === "INVENTORY_ISSUE") {
         const issue = await tx.inventorytransactions.findUnique({ where: { id: value.linkedId }, select: { documentStatus: true } });
+        if (issue?.documentStatus === "DRAFT") await syncLinkedIssueMaterials(tx, id, u, t);
         await syncOrderMaterialsFromIssue(tx, value.linkedId, u, t, { markActual: issue?.documentStatus === "POSTED" });
       }
       await tx.audit_logs.create({ data: { action: "Liên kết phiếu kho lệnh sản xuất", details: `${id} -> ${value.linkedCode || value.linkedId}`, userId: u, userName: String(u), createdAt: t } });
@@ -498,6 +499,8 @@ export const productionService = {
       );
       if (!issueLink) throw new HttpError(400, "NO_ISSUE_LINK", "Lệnh chưa liên kết phiếu xuất kho");
 
+      const issue = await tx.inventorytransactions.findUnique({ where: { id: Number(issueLink.linkedId) }, select: { documentStatus: true } });
+      if (issue?.documentStatus === "DRAFT") await syncLinkedIssueMaterials(tx, id, u, now());
       await syncOrderMaterialsFromIssue(tx, Number(issueLink.linkedId), u, now(), { markActual: true });
       return mapOneProductionWithDocuments(tx, await tx.productionorders.findUnique({ where: { id }, include: productionInclude }));
     });

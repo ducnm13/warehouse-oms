@@ -1886,7 +1886,7 @@ export default function SalesOrders() {
 											}
 										/>
 									</label>
-									<label>
+									<label className="md:col-span-2">
 										Khách hàng
 										<div className="flex gap-2">
 											<div className="min-w-0 flex-1">

@@ -128,8 +128,13 @@ export const reportingService = {
   },
   async productionOverview(query: ProductionOverviewReportQuery) {
     const dates = range(query.from, query.to);
-    const rows = (await reportingRepository.productionOverview({ ...dates, warehouseId: query.warehouseId, search: query.search })).map(row => ({ packagingId: row.packagingId, sku: row.sku, packagingName: row.packagingName, unit: row.unit, productName: row.productName, orders: n(row.orders), plannedPacks: n(row.plannedPacks), actualPacks: n(row.actualPacks), powderKg: round(n(row.powderKg)) }));
-    return { rows, summary: rows.reduce((sum, row) => ({ plannedPacks: sum.plannedPacks + row.plannedPacks, actualPacks: sum.actualPacks + row.actualPacks, powderKg: round(sum.powderKg + row.powderKg) }), { plannedPacks: 0, actualPacks: 0, powderKg: 0 }) };
+    const raw = await reportingRepository.productionOverview({ ...dates, warehouseId: query.warehouseId, search: query.search });
+    const rows = raw.map(row => {
+      const actualPacks = n(row.actualPacks), materialPacks = n(row.materialPacks), materialValue = round(n(row.materialValue));
+      return { packagingId: row.packagingId, sku: row.sku, packagingName: row.packagingName, unit: row.unit, productName: row.productName, orders: n(row.orders), plannedPacks: n(row.plannedPacks), actualPacks, powderKg: round(n(row.powderKg)), materialValue, costPerUnit: materialPacks ? round(materialValue / materialPacks) : 0 };
+    });
+    const totalMaterialValue = round(rows.reduce((sum, row) => sum + row.materialValue, 0)), totalMaterialPacks = raw.reduce((sum, row) => sum + n(row.materialPacks), 0);
+    return { rows, summary: rows.reduce((sum, row) => ({ plannedPacks: sum.plannedPacks + row.plannedPacks, actualPacks: sum.actualPacks + row.actualPacks, powderKg: round(sum.powderKg + row.powderKg), materialValue: round(sum.materialValue + row.materialValue), avgCostPerUnit: totalMaterialPacks ? round(totalMaterialValue / totalMaterialPacks) : 0 }), { plannedPacks: 0, actualPacks: 0, powderKg: 0, materialValue: 0, avgCostPerUnit: 0 }) };
   },
   async transfers(query: TransferReportQuery) {
     const rows = await reportingRepository.transfers(query);

@@ -2,10 +2,12 @@ import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import ReportPeriodFilter from "../../components/ReportPeriodFilter";
+import { useCanViewMoney } from "../../hooks/useCanViewMoney";
 import { apiV1 } from "../../lib/apiV1";
 import {
 	ExportButton,
 	FilterBar,
+	money,
 	qty,
 	ReportCard,
 	ReportShell,
@@ -30,10 +32,12 @@ interface Row {
 	plannedPacks: number;
 	actualPacks: number;
 	powderKg: number;
+	materialValue: number;
+	costPerUnit: number;
 }
 interface Result {
 	rows: Row[];
-	summary: { plannedPacks: number; actualPacks: number; powderKg: number };
+	summary: { plannedPacks: number; actualPacks: number; powderKg: number; materialValue: number; avgCostPerUnit: number };
 }
 
 export default function ProductionOverviewReport() {
@@ -41,6 +45,7 @@ export default function ProductionOverviewReport() {
 	const [to, setTo] = useState(today());
 	const [warehouseId, setWarehouseId] = useState(0);
 	const [search, setSearch] = useState("");
+	const showMoney = useCanViewMoney();
 	const refs = useReportRefs();
 	const params = new URLSearchParams({ from, to });
 	if (warehouseId) params.set("warehouseId", String(warehouseId));
@@ -62,6 +67,12 @@ export default function ProductionOverviewReport() {
 			{ header: "Kế hoạch (gói)", value: r => r.plannedPacks, width: 16 },
 			{ header: "Thực tế (gói)", value: r => r.actualPacks, width: 16 },
 			{ header: "Bột (kg)", value: r => r.powderKg, width: 12 },
+			...(showMoney
+				? [
+						{ header: "Tổng giá trị NVL", value: (r: Row) => r.materialValue, width: 18 },
+						{ header: "Giá cost / đơn vị", value: (r: Row) => r.costPerUnit, width: 18 },
+					]
+				: []),
 		], rows);
 
 	return (
@@ -85,6 +96,8 @@ export default function ProductionOverviewReport() {
 				<StatCard label="Thực tế (gói)" value={qty(summary?.actualPacks || 0)} tone="info" />
 				<StatCard label="Tỷ lệ hoàn thành" value={`${summary?.plannedPacks ? Math.round((summary.actualPacks / summary.plannedPacks) * 10000) / 100 : 0}%`} tone="positive" />
 				<StatCard label="Bột sử dụng" value={`${qty(summary?.powderKg || 0)} kg`} />
+				{showMoney ? <StatCard label="Tổng giá trị NVL" value={money(summary?.materialValue || 0)} /> : null}
+				{showMoney ? <StatCard label="Giá cost bình quân" value={money(summary?.avgCostPerUnit || 0)} tone="info" /> : null}
 			</StatGrid>
 
 			<ReportCard title="Sản lượng theo mặt hàng" description={`${rows.length} mặt hàng`}>
@@ -98,9 +111,11 @@ export default function ProductionOverviewReport() {
 								<th className="text-right">Thực tế (gói)</th>
 								<th className="text-right">Chênh lệch</th>
 								<th className="text-right">Bột (kg)</th>
+								{showMoney ? <th className="text-right">Tổng giá trị NVL</th> : null}
+								{showMoney ? <th className="text-right">Giá cost / đơn vị</th> : null}
 							</tr>
 						</thead>
-						<TableState colSpan={6} loading={query.isLoading} error={query.isError ? (query.error as Error).message : null} empty={!rows.length}>
+						<TableState colSpan={showMoney ? 8 : 6} loading={query.isLoading} error={query.isError ? (query.error as Error).message : null} empty={!rows.length}>
 							{rows.map(row => {
 								const diff = row.actualPacks - row.plannedPacks;
 								return (
@@ -111,6 +126,8 @@ export default function ProductionOverviewReport() {
 										<td className="text-right font-semibold">{qty(row.actualPacks)}</td>
 										<td className={`text-right ${diff >= 0 ? "text-emerald-600" : "text-red-600"}`}>{diff > 0 ? "+" : ""}{qty(diff)}</td>
 										<td className="text-right">{qty(row.powderKg)}</td>
+										{showMoney ? <td className="text-right">{money(row.materialValue)}</td> : null}
+										{showMoney ? <td className="text-right font-semibold">{money(row.costPerUnit)}</td> : null}
 									</tr>
 								);
 							})}

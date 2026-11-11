@@ -36,7 +36,15 @@ interface Row {
 }
 interface Result {
 	rows: Row[];
-	summary: { orders: number; grossSales: number; discountAmount: number; netRevenue: number; taxAmount: number; cogs: number; grossProfit: number };
+	summary: {
+		orders: number;
+		grossSales: number;
+		discountAmount: number;
+		netRevenue: number;
+		taxAmount: number;
+		cogs: number;
+		grossProfit: number;
+	};
 }
 
 export default function SalesByCustomerReport() {
@@ -59,7 +67,8 @@ export default function SalesByCustomerReport() {
 			customerId,
 			groupId,
 		],
-		queryFn: () => apiV1<Result>(`/api/v1/reports/sales-by-customer?${params.toString()}`),
+		queryFn: () =>
+			apiV1<Result>(`/api/v1/reports/sales-by-customer?${params.toString()}`),
 	});
 	const customerOptions = useMemo(
 		() =>
@@ -75,29 +84,52 @@ export default function SalesByCustomerReport() {
 	const summary = data?.summary;
 	const exportExcel = useReportExport();
 	const onExport = () =>
-		exportExcel(`Bao_cao_ban_hang_theo_khach_${from}_${to}.xlsx`, "Theo KH", [
-			{ header: "Mã KH", value: (r: Row) => r.customerCode || "", width: 14 },
-			{ header: "Khách hàng", value: r => r.customerName, width: 30 },
-			{ header: "Nhóm", value: r => r.groupName || "", width: 18 },
-			{ header: "Số đơn", value: r => r.orders, width: 10 },
-			{ header: "Tiền hàng", value: r => r.grossSales, width: 16 },
-			{ header: "Chiết khấu", value: r => r.discountAmount, width: 14 },
-			{ header: "Doanh thu thuần", value: r => r.netRevenue, width: 16 },
-			{ header: "Giá vốn", value: r => r.cogs, width: 16 },
-			{ header: "Lợi nhuận gộp", value: r => r.grossProfit, width: 16 },
-			{ header: "Biên LN (%)", value: r => r.grossMarginPercent, width: 12 },
-		], rows);
+		exportExcel(
+			`Bao_cao_ban_hang_theo_khach_${from}_${to}.xlsx`,
+			"Theo KH",
+			[
+				{ header: "Mã KH", value: (r: Row) => r.customerCode || "", width: 14 },
+				{ header: "Khách hàng", value: r => r.customerName, width: 30 },
+				{ header: "Nhóm", value: r => r.groupName || "", width: 18 },
+				{ header: "Số đơn", value: r => r.orders, width: 10 },
+				{ header: "Tiền hàng", value: r => r.grossSales, width: 16 },
+				{ header: "Chiết khấu", value: r => r.discountAmount, width: 14 },
+				{ header: "Doanh thu thuần", value: r => r.netRevenue, width: 16 },
+				{ header: "Giá vốn", value: r => r.cogs, width: 16 },
+				{ header: "Lợi nhuận gộp", value: r => r.grossProfit, width: 16 },
+				{ header: "Biên LN (%)", value: r => r.grossMarginPercent, width: 12 },
+			],
+			rows,
+		);
 
 	return (
-		<ReportShell title="Bán hàng theo khách hàng" description="Doanh thu và lợi nhuận gộp theo khách hàng / nhóm khách hàng" actions={<ExportButton onClick={onExport} />}>
+		<ReportShell
+			title="Bán hàng theo khách hàng"
+			description="Doanh thu và lợi nhuận gộp theo khách hàng / nhóm khách hàng"
+			actions={<ExportButton onClick={onExport} />}
+		>
 			<FilterBar>
 				<div className="md:col-span-2">
-					<ReportPeriodFilter from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t); }} />
+					<ReportPeriodFilter
+						from={from}
+						to={to}
+						onChange={(f, t) => {
+							setFrom(f);
+							setTo(t);
+						}}
+					/>
 				</div>
-				<WarehouseSelect value={warehouseId} onChange={setWarehouseId} warehouses={refs.data?.warehouses || []} />
+				<WarehouseSelect
+					value={warehouseId}
+					onChange={setWarehouseId}
+					warehouses={refs.data?.warehouses || []}
+				/>
 				<label>
 					Nhóm khách hàng
-					<select value={groupId} onChange={e => setGroupId(Number(e.target.value))}>
+					<select
+						value={groupId}
+						onChange={e => setGroupId(Number(e.target.value))}
+					>
 						<option value={0}>Tất cả nhóm</option>
 						{(refs.data?.customerGroups || []).map(group => (
 							<option key={group.id} value={group.id}>
@@ -117,14 +149,17 @@ export default function SalesByCustomerReport() {
 				</label>
 			</FilterBar>
 
-			<StatGrid>
+			{/* <StatGrid>
 				<StatCard label="Doanh thu thuần" value={money(summary?.netRevenue || 0)} tone="positive" />
 				<StatCard label="Lợi nhuận gộp" value={money(summary?.grossProfit || 0)} tone="info" />
 				<StatCard label="Tổng số đơn" value={qty(summary?.orders || 0)} />
 				<StatCard label="Số khách hàng" value={qty(rows.length)} />
-			</StatGrid>
+			</StatGrid> */}
 
-			<ReportCard title="Chi tiết theo khách hàng" description={`${rows.length} khách hàng`}>
+			<ReportCard
+				title="Chi tiết theo khách hàng"
+				description={`${rows.length} khách hàng`}
+			>
 				<div className="overflow-x-auto">
 					<table className="erp-table">
 						<thead>
@@ -140,17 +175,28 @@ export default function SalesByCustomerReport() {
 								<th className="text-right">Biên LN</th>
 							</tr>
 						</thead>
-						<TableState colSpan={9} loading={query.isLoading} error={query.isError ? (query.error as Error).message : null} empty={!rows.length}>
+						<TableState
+							colSpan={9}
+							loading={query.isLoading}
+							error={query.isError ? (query.error as Error).message : null}
+							empty={!rows.length}
+						>
 							{rows.map(row => (
 								<tr key={row.customerId}>
-									<td><b>{row.customerCode || "-"}</b></td>
+									<td>
+										<b>{row.customerCode || "-"}</b>
+									</td>
 									<td>{row.customerName}</td>
 									<td>{row.groupName || "-"}</td>
 									<td className="text-right">{qty(row.orders)}</td>
 									<td className="text-right">{money(row.grossSales)}</td>
-									<td className="text-right font-semibold">{money(row.netRevenue)}</td>
+									<td className="text-right font-semibold">
+										{money(row.netRevenue)}
+									</td>
 									<td className="text-right">{money(row.cogs)}</td>
-									<td className="text-right font-bold text-emerald-600">{money(row.grossProfit)}</td>
+									<td className="text-right font-bold text-emerald-600">
+										{money(row.grossProfit)}
+									</td>
 									<td className="text-right">{row.grossMarginPercent}%</td>
 								</tr>
 							))}
