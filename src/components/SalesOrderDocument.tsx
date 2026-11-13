@@ -271,7 +271,7 @@ export const SalesOrderDocument = React.forwardRef<
 				</table>
 				{showMoney && (
 				<div className="mt-2 space-y-1 text-sm italic">
-					<span className=" text-gray-700">S��` ti��?n b���ng ch��_: </span>
+					<span className=" text-gray-700">Số tiền bằng chữ: </span>
 					<span className="font-semibold">
 						{numberToVietnameseWords(Number(order.totalAmount || 0))}
 					</span>
