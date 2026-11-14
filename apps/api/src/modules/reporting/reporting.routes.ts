@@ -1,5 +1,5 @@
 import { Router, type RequestHandler } from "express";
-import { assemblyIssueReportQuerySchema, financialSummaryReportQuerySchema, inventorySummaryReportQuerySchema, itemLedgerReportQuerySchema, ledgerDocumentReportQuerySchema, operationsReportQuerySchema, productionOverviewReportQuerySchema, productionVarianceReportQuerySchema, purchaseReportQuerySchema, salesByCustomerReportQuerySchema, salesByProductReportQuerySchema, salesProfitReportQuerySchema, salesReturnReportQuerySchema, stockOnHandReportQuerySchema, transferReportQuerySchema } from "@challenge/contracts";
+import { assemblyIssueReportQuerySchema, financialSummaryReportQuerySchema, inventoryByProductReportQuerySchema, inventorySummaryReportQuerySchema, itemLedgerReportQuerySchema, ledgerDocumentReportQuerySchema, operationsReportQuerySchema, productionOverviewReportQuerySchema, productionVarianceReportQuerySchema, purchaseReportQuerySchema, salesByCustomerItemsReportQuerySchema, salesByCustomerReportQuerySchema, salesByProductReportQuerySchema, salesProfitReportQuerySchema, salesReturnReportQuerySchema, stockOnHandReportQuerySchema, transferReportQuerySchema } from "@challenge/contracts";
 import { asyncHandler } from "../../common/async-handler";
 import { authenticateV1, requirePermission } from "../../common/authenticate";
 import { validateQuery } from "../../common/validate";
@@ -58,6 +58,7 @@ export const reportingRouter = Router();
 reportingRouter.use(authenticateV1, requirePermission("report.view"), maskWarehouseReportMoney);
 reportingRouter.get("/export-authorization", requirePermission("report.export"), (_req, res) => res.json({ data: { allowed: true } }));
 reportingRouter.get("/inventory-summary", validateQuery(inventorySummaryReportQuerySchema), asyncHandler(reportingController.inventorySummary));
+reportingRouter.get("/inventory-by-product", validateQuery(inventoryByProductReportQuerySchema), asyncHandler(reportingController.inventoryByProduct));
 reportingRouter.get("/item-ledger", validateQuery(itemLedgerReportQuerySchema), asyncHandler(reportingController.itemLedger));
 reportingRouter.get("/item-ledger/document", validateQuery(ledgerDocumentReportQuerySchema), asyncHandler(reportingController.ledgerDocument));
 reportingRouter.get("/assembly-issues", validateQuery(assemblyIssueReportQuerySchema), asyncHandler(reportingController.assemblyIssues));
@@ -65,6 +66,7 @@ reportingRouter.get("/sales-profit", denyWarehouseMoneyReport, validateQuery(sal
 reportingRouter.get("/operations", validateQuery(operationsReportQuerySchema), asyncHandler(reportingController.operations));
 reportingRouter.get("/production-variance", validateQuery(productionVarianceReportQuerySchema), asyncHandler(reportingController.productionVariance));
 reportingRouter.get("/sales-by-customer", denyWarehouseMoneyReport, validateQuery(salesByCustomerReportQuerySchema), asyncHandler(reportingController.salesByCustomer));
+reportingRouter.get("/sales-by-customer/items", denyWarehouseMoneyReport, validateQuery(salesByCustomerItemsReportQuerySchema), asyncHandler(reportingController.salesByCustomerItems));
 reportingRouter.get("/sales-by-product", denyWarehouseMoneyReport, validateQuery(salesByProductReportQuerySchema), asyncHandler(reportingController.salesByProduct));
 reportingRouter.get("/production-overview", validateQuery(productionOverviewReportQuerySchema), asyncHandler(reportingController.productionOverview));
 reportingRouter.get("/transfers", validateQuery(transferReportQuerySchema), asyncHandler(reportingController.transfers));

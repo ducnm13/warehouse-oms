@@ -514,6 +514,34 @@ export interface InventorySummaryReportV1 {
 	};
 	valueCoverageComplete: boolean;
 }
+export interface InventoryByProductReportV1 {
+	rows: Array<{
+		packagingId: number;
+		productId: number;
+		sku?: string;
+		productSku?: string;
+		packagingName: string;
+		unit?: string;
+		productName: string;
+		category?: string;
+		openingQuantity: number;
+		inboundQuantity: number;
+		inboundAssemblyQuantity: number;
+		outboundQuantity: number;
+		outboundAssemblyQuantity: number;
+		outboundSaleQuantity: number;
+		closingQuantity: number;
+	}>;
+	summary: {
+		items: number;
+		inboundQuantity: number;
+		inboundAssemblyQuantity: number;
+		outboundQuantity: number;
+		outboundAssemblyQuantity: number;
+		outboundSaleQuantity: number;
+		closingQuantity: number;
+	};
+}
 export interface ItemLedgerReportV1 {
 	packaging: {
 		id: number;

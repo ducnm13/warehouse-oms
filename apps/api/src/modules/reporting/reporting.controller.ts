@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { reportingService } from "./reporting.service";
 export const reportingController = {
   async inventorySummary(req: Request, res: Response) { res.json({ success: true, message: "Lấy báo cáo tổng hợp tồn kho thành công", data: await reportingService.inventorySummary(req.query as any) }); },
+  async inventoryByProduct(req: Request, res: Response) { res.json({ success: true, message: "Lấy báo cáo nhập xuất theo mã sản phẩm thành công", data: await reportingService.inventoryByProduct(req.query as any) }); },
   async itemLedger(req: Request, res: Response) { res.json({ success: true, message: "Lấy sổ chi tiết vật tư thành công", data: await reportingService.itemLedger(req.query as any) }); },
   async ledgerDocument(req: Request, res: Response) { const data = await reportingService.ledgerDocument(req.query as any); if (!data) { res.status(404).json({ success: false, message: "Không tìm thấy chứng từ nguồn", error: { code: "DOCUMENT_NOT_FOUND", message: "Không tìm thấy chứng từ nguồn" } }); return; } res.json({ success: true, message: "Lấy chi tiết chứng từ thành công", data }); },
   async assemblyIssues(req: Request, res: Response) { res.json({ success: true, message: "Lấy báo cáo xuất kho để lắp ráp thành công", data: await reportingService.assemblyIssues(req.query as any) }); },
@@ -9,6 +10,7 @@ export const reportingController = {
   async operations(req: Request, res: Response) { res.json({ success: true, message: "Lấy báo cáo sản xuất và lắp ráp thành công", data: await reportingService.operations(req.query as any) }); },
   async productionVariance(req: Request, res: Response) { res.json({ success: true, message: "Lấy báo cáo chênh lệch sản xuất thành công", data: await reportingService.productionVariance(req.query as any) }); },
   async salesByCustomer(req: Request, res: Response) { res.json({ success: true, message: "Lấy báo cáo bán hàng theo khách hàng thành công", data: await reportingService.salesByCustomer(req.query as any) }); },
+  async salesByCustomerItems(req: Request, res: Response) { res.json({ success: true, message: "Lấy danh sách hàng hóa đã bán theo khách hàng thành công", data: await reportingService.salesByCustomerItems(req.query as any) }); },
   async salesByProduct(req: Request, res: Response) { res.json({ success: true, message: "Lấy báo cáo bán hàng theo sản phẩm thành công", data: await reportingService.salesByProduct(req.query as any) }); },
   async productionOverview(req: Request, res: Response) { res.json({ success: true, message: "Lấy báo cáo tổng quan sản xuất thành công", data: await reportingService.productionOverview(req.query as any) }); },
   async transfers(req: Request, res: Response) { res.json({ success: true, message: "Lấy báo cáo chuyển kho thành công", data: await reportingService.transfers(req.query as any) }); },

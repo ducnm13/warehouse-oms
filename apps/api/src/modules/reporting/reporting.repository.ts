@@ -26,6 +26,55 @@ export const reportingRepository = {
       ${filter.sql} GROUP BY pw.packagingId,pw.warehouseId,p.id,pp.sku,pp.name,pp.unit,p.name,p.category,w.name,ob.quantity,pw.stock_quantity ORDER BY p.id,pp.id,w.name`,
       query.from, query.from, query.toExclusive, query.from, query.toExclusive, query.from, query.from, query.toExclusive, query.from, query.toExclusive, query.toExclusive, ...filter.params);
   },
+  inventoryByProduct(query: InventoryQuery) {
+    const warehouseFilter = query.warehouseId ? " AND warehouseId=?" : "";
+    const params: unknown[] = [];
+    if (query.warehouseId) params.push(query.warehouseId);
+    params.push(query.from, query.from, query.toExclusive, query.from, query.toExclusive, query.from, query.toExclusive, query.from, query.toExclusive, query.from, query.toExclusive, query.toExclusive, query.toExclusive);
+    if (query.warehouseId) params.push(query.warehouseId);
+    const filters: string[] = ["pp.isActive=1"];
+    if (query.search) {
+      filters.push("(p.name LIKE ? OR pp.name LIKE ? OR pp.sku LIKE ? OR p.sku LIKE ?)");
+      const value = `%${query.search}%`;
+      params.push(value, value, value, value);
+    }
+    if (query.category) { filters.push("p.category=?"); params.push(query.category); }
+    return prisma.$queryRawUnsafe<any[]>(`WITH opening AS (
+      SELECT packagingId, SUM(quantity) quantity FROM inventory_ledger_opening_balances
+      WHERE 1=1${warehouseFilter} GROUP BY packagingId
+    ), movements AS (
+      SELECT packagingId,
+        SUM(CASE WHEN occurredAt<? THEN CASE WHEN direction='IN' THEN quantity ELSE -quantity END ELSE 0 END) openingQuantity,
+        SUM(CASE WHEN occurredAt>=? AND occurredAt<? AND direction='IN' THEN quantity ELSE 0 END) inboundQuantity,
+        SUM(CASE WHEN occurredAt>=? AND occurredAt<? AND direction='OUT' THEN quantity ELSE 0 END) outboundQuantity,
+        SUM(CASE WHEN occurredAt>=? AND occurredAt<? AND (
+          sourceType IN ('ASSEMBLY_OUTPUT','ASSEMBLY_OUTPUT_CANCEL')
+          OR (sourceType IN ('INVENTORY_DOCUMENT','INVENTORY_DOCUMENT_CANCEL') AND EXISTS (
+            SELECT 1 FROM assembly_order_document_links al WHERE al.linkType='INVENTORY_RECEIPT' AND al.linkedId=inventory_ledger.sourceId
+          ))
+        ) THEN CASE WHEN direction='IN' THEN quantity ELSE -quantity END ELSE 0 END) inboundAssemblyQuantity,
+        SUM(CASE WHEN occurredAt>=? AND occurredAt<? AND (
+          sourceType IN ('ASSEMBLY_COMPONENT','ASSEMBLY_COMPONENT_CANCEL')
+          OR (sourceType IN ('INVENTORY_DOCUMENT','INVENTORY_DOCUMENT_CANCEL') AND EXISTS (
+            SELECT 1 FROM assembly_order_document_links al WHERE al.linkType='INVENTORY_ISSUE' AND al.linkedId=inventory_ledger.sourceId
+          ))
+        ) THEN CASE WHEN direction='OUT' THEN quantity ELSE -quantity END ELSE 0 END) outboundAssemblyQuantity,
+        SUM(CASE WHEN occurredAt>=? AND occurredAt<? AND sourceType IN ('SALE','SALE_CANCEL','SALE_UNPOST') THEN CASE WHEN direction='OUT' THEN quantity ELSE -quantity END ELSE 0 END) outboundSaleQuantity,
+        SUM(CASE WHEN occurredAt<? THEN CASE WHEN direction='IN' THEN quantity ELSE -quantity END ELSE 0 END) closingQuantity
+      FROM inventory_ledger WHERE occurredAt<?${warehouseFilter} GROUP BY packagingId
+    )
+    SELECT pp.id packagingId,p.id productId,p.sku productSku,pp.sku,pp.name packagingName,pp.unit,p.name productName,p.category,
+      COALESCE(o.quantity,0)+COALESCE(m.openingQuantity,0) openingQuantity,
+      COALESCE(m.inboundQuantity,0) inboundQuantity,COALESCE(m.outboundQuantity,0) outboundQuantity,
+      COALESCE(m.inboundAssemblyQuantity,0) inboundAssemblyQuantity,COALESCE(m.outboundAssemblyQuantity,0) outboundAssemblyQuantity,
+      COALESCE(m.outboundSaleQuantity,0) outboundSaleQuantity,
+      COALESCE(o.quantity,0)+COALESCE(m.closingQuantity,0) closingQuantity
+    FROM productpackagings pp JOIN products p ON p.id=pp.productId
+    LEFT JOIN opening o ON o.packagingId=pp.id LEFT JOIN movements m ON m.packagingId=pp.id
+    WHERE ${filters.join(" AND ")}
+    HAVING ABS(openingQuantity)>0.00005 OR ABS(inboundQuantity)>0.00005 OR ABS(outboundQuantity)>0.00005 OR ABS(closingQuantity)>0.00005
+    ORDER BY p.name,pp.name`, ...params);
+  },
   itemLedger(query: { from: Date; toExclusive: Date; packagingId: number; warehouseId?: number }) {
     return prisma.$queryRawUnsafe<any[]>(`SELECT l.id,l.occurredAt,l.documentCode,l.sourceType,l.sourceId,l.sourceLineId,l.reversalOfId,l.direction,l.quantity,l.unitCost,l.totalValue,l.warehouseId,w.name warehouseName,
       it.sourceModule sourceModule,
@@ -244,6 +293,33 @@ export const reportingRepository = {
       ${outer.length ? `WHERE ${outer.join(" AND ")}` : ""}
       GROUP BY c.id, c.code, c.name, cg.id, cg.name, r.returnSubtotal, r.returnTax, r.returnCost
       ORDER BY netRevenue DESC`, ...innerParams, ...outerParams);
+  },
+  salesByCustomerItems(query: { from: string; to: string; customerId: number; warehouseId?: number }) {
+    const salesClauses = ["so.status='FULFILLED'", "so.customerId=?", "so.orderDate>=?", "so.orderDate<=?"], salesParams: unknown[] = [query.customerId, query.from, query.to];
+    const returnClauses = ["sr.status='POSTED'", "sr.customerId=?", "sr.returnDate>=?", "sr.returnDate<=?"], returnParams: unknown[] = [query.customerId, query.from, query.to];
+    if (query.warehouseId) {
+      salesClauses.push("so.warehouseId=?"); salesParams.push(query.warehouseId);
+      returnClauses.push("sr.warehouseId=?"); returnParams.push(query.warehouseId);
+    }
+    return prisma.$queryRawUnsafe<any[]>(`SELECT sold.packagingId, sold.sku, sold.productName, sold.packagingName, sold.unit,
+      sold.quantity-COALESCE(ret.quantity,0) quantity
+      FROM (
+        SELECT sod.packagingId, pp.sku, pp.name packagingName, pp.unit, p.name productName, SUM(sod.quantity) quantity
+        FROM sales_order_details sod
+        JOIN sales_orders so ON so.id=sod.orderId
+        JOIN productpackagings pp ON pp.id=sod.packagingId
+        JOIN products p ON p.id=pp.productId
+        WHERE ${salesClauses.join(" AND ")}
+        GROUP BY sod.packagingId, pp.sku, pp.name, pp.unit, p.name
+      ) sold
+      LEFT JOIN (
+        SELECT srl.packagingId, SUM(srl.quantity) quantity
+        FROM sales_return_lines srl
+        JOIN sales_returns sr ON sr.id=srl.salesReturnId
+        WHERE ${returnClauses.join(" AND ")}
+        GROUP BY srl.packagingId
+      ) ret ON ret.packagingId=sold.packagingId
+      ORDER BY sold.productName, sold.packagingName`, ...salesParams, ...returnParams);
   },
   salesByProduct(query: { from: string; to: string; warehouseId?: number; search?: string }) {
     const clauses = ["so.status='FULFILLED'", "sod.lineType='SALE'", "so.orderDate>=?", "so.orderDate<=?"], params: unknown[] = [query.from, query.to];

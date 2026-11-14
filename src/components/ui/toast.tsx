@@ -31,10 +31,10 @@ interface ToastItem {
 }
 
 const DURATIONS: Record<ToastKind, number> = {
-	success: 4200,
-	error: 5200,
+	success: 2800,
+	error: 3800,
 	loading: Number.POSITIVE_INFINITY,
-	info: 4200,
+	info: 2800,
 };
 const LEAVE_MS = 450;
 const SWIPE_PX = 90;
@@ -291,12 +291,12 @@ export function AppToaster() {
 			if (!el) return;
 			el.classList.toggle("back", !open && i > 0);
 			if (open) {
-				el.style.setProperty("--y", `${-acc}px`);
+				el.style.setProperty("--y", `${acc}px`);
 				el.style.setProperty("--s", "1");
 				el.style.setProperty("--o", "1");
 				acc += el.offsetHeight + 8;
 			} else {
-				el.style.setProperty("--y", `${-(i * 14)}px`);
+				el.style.setProperty("--y", `${i * 14}px`);
 				el.style.setProperty("--s", (1 - i * 0.06).toFixed(2));
 				el.style.setProperty("--o", i > 2 ? "0" : "1");
 			}

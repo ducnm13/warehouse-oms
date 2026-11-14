@@ -35,6 +35,7 @@ import SalesReturnsReport from './pages/reports/SalesReturnsReport';
 import PurchasesBySupplierReport from './pages/reports/PurchasesBySupplierReport';
 import PurchasesByProductReport from './pages/reports/PurchasesByProductReport';
 import InventorySummaryReport from './pages/reports/InventorySummaryReport';
+import InventoryByProductReport from './pages/reports/InventoryByProductReport';
 import StockOnHandReport from './pages/reports/StockOnHandReport';
 import ItemLedgerReport from './pages/reports/ItemLedgerReport';
 import TransfersReport from './pages/reports/TransfersReport';
@@ -212,6 +213,7 @@ const AppRoutes = () => {
           <Route path="/reports/purchases-supplier" element={<MoneyReportGuard><PurchasesBySupplierReport /></MoneyReportGuard>} />
           <Route path="/reports/purchases-product" element={<MoneyReportGuard><PurchasesByProductReport /></MoneyReportGuard>} />
           <Route path="/reports/inventory-summary" element={<InventorySummaryReport />} />
+          <Route path="/reports/inventory-by-product" element={<InventoryByProductReport />} />
           <Route path="/reports/stock-on-hand" element={<StockOnHandReport />} />
           <Route path="/reports/item-ledger" element={<ItemLedgerReport />} />
           <Route path="/reports/transfers" element={<TransfersReport />} />

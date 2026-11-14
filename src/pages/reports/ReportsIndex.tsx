@@ -96,6 +96,12 @@ const GROUPS: Array<{
 				icon: Boxes,
 			},
 			{
+				title: "Nhập xuất theo mã sản phẩm",
+				description: "Nhập – xuất – tồn cuối và phân loại lắp ráp, bán hàng",
+				path: "/reports/inventory-by-product",
+				icon: Package,
+			},
+			{
 				title: "Giá trị tồn & tồn thấp",
 				description: "Giá trị tồn kho và cảnh báo hàng sắp hết",
 				path: "/reports/stock-on-hand",
@@ -185,6 +191,7 @@ export default function ReportsIndex() {
 	const showMoney = useCanViewMoney();
 	const warehouseReportPaths = new Set([
 		"/reports/inventory-summary",
+		"/reports/inventory-by-product",
 		"/reports/stock-on-hand",
 		"/reports/item-ledger",
 		"/reports/assembly-issues",

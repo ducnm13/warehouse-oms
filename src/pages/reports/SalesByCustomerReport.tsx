@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import ReportPeriodFilter from "../../components/ReportPeriodFilter";
 import SearchableSelect from "../../components/SearchableSelect";
+import RightDrawer from "../../components/RightDrawer";
 import { apiV1 } from "../../lib/apiV1";
 import {
 	ExportButton,
@@ -46,6 +47,21 @@ interface Result {
 		grossProfit: number;
 	};
 }
+interface CustomerItem {
+	packagingId: number;
+	sku?: string;
+	productName: string;
+	packagingName: string;
+	unit?: string;
+	quantity: number;
+}
+interface CustomerItemsResult {
+	rows: CustomerItem[];
+	summary: {
+		items: number;
+		quantity: number;
+	};
+}
 
 export default function SalesByCustomerReport() {
 	const [from, setFrom] = useState(`${today().slice(0, 7)}-01`);
@@ -53,6 +69,7 @@ export default function SalesByCustomerReport() {
 	const [warehouseId, setWarehouseId] = useState(0);
 	const [customerId, setCustomerId] = useState(0);
 	const [groupId, setGroupId] = useState(0);
+	const [customerDetail, setCustomerDetail] = useState<Row | null>(null);
 	const refs = useReportRefs();
 	const params = new URLSearchParams({ from, to });
 	if (warehouseId) params.set("warehouseId", String(warehouseId));
@@ -70,6 +87,26 @@ export default function SalesByCustomerReport() {
 		queryFn: () =>
 			apiV1<Result>(`/api/v1/reports/sales-by-customer?${params.toString()}`),
 	});
+	const detailParams = new URLSearchParams({
+		from,
+		to,
+		customerId: String(customerDetail?.customerId || 0),
+	});
+	if (warehouseId) detailParams.set("warehouseId", String(warehouseId));
+	const detailQuery = useQuery({
+		queryKey: [
+			"report-sales-customer-items",
+			customerDetail?.customerId,
+			from,
+			to,
+			warehouseId,
+		],
+		enabled: !!customerDetail,
+		queryFn: () =>
+			apiV1<CustomerItemsResult>(
+				`/api/v1/reports/sales-by-customer/items?${detailParams.toString()}`,
+			),
+	});
 	const customerOptions = useMemo(
 		() =>
 			(refs.data?.customers || []).map(customer => ({
@@ -82,6 +119,8 @@ export default function SalesByCustomerReport() {
 	const data = query.data?.data;
 	const rows = data?.rows || [];
 	const summary = data?.summary;
+	const detail = detailQuery.data?.data;
+	const detailRows = detail?.rows || [];
 	const exportExcel = useReportExport();
 	const onExport = () =>
 		exportExcel(
@@ -184,7 +223,14 @@ export default function SalesByCustomerReport() {
 							{rows.map(row => (
 								<tr key={row.customerId}>
 									<td>
-										<b>{row.customerCode || "-"}</b>
+										<button
+											type="button"
+											title="Xem danh sách hàng hóa đã bán"
+											className="font-bold text-[#422afb] hover:underline"
+											onClick={() => setCustomerDetail(row)}
+										>
+											{row.customerCode || "-"}
+										</button>
 									</td>
 									<td>{row.customerName}</td>
 									<td>{row.groupName || "-"}</td>
@@ -204,6 +250,73 @@ export default function SalesByCustomerReport() {
 					</table>
 				</div>
 			</ReportCard>
+
+			<RightDrawer
+				open={!!customerDetail}
+				title="Hàng hóa đã bán"
+				subtitle={
+					customerDetail
+						? `${customerDetail.customerCode || "-"} · ${customerDetail.customerName} · ${from} → ${to}`
+						: undefined
+				}
+				widthClass="max-w-[64rem]"
+				onClose={() => setCustomerDetail(null)}
+			>
+				<div className="space-y-4">
+					<div className="grid gap-3 sm:grid-cols-2">
+						<div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+							<small>Số mặt hàng</small>
+							<b className="block text-lg">{qty(detail?.summary.items || 0)}</b>
+						</div>
+						<div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+							<small>Tổng số lượng đã bán</small>
+							<b className="block text-lg">{qty(detail?.summary.quantity || 0)}</b>
+						</div>
+					</div>
+					<div className="overflow-x-auto rounded-lg border border-slate-200">
+						<table className="erp-table w-full min-w-[720px]">
+							<thead>
+								<tr>
+									<th>STT</th>
+									<th>Mã hàng</th>
+									<th>Tên hàng hóa</th>
+									<th>Quy cách</th>
+									<th>ĐVT</th>
+									<th className="text-right">Số lượng đã bán</th>
+								</tr>
+							</thead>
+							<TableState
+								colSpan={6}
+								loading={detailQuery.isLoading}
+								error={
+									detailQuery.isError
+										? (detailQuery.error as Error).message
+										: null
+								}
+								empty={!detailRows.length}
+							>
+								{detailRows.map((item, index) => (
+									<tr key={item.packagingId}>
+										<td>{index + 1}</td>
+										<td className="font-mono font-semibold">
+											{item.sku || "-"}
+										</td>
+										<td>{item.productName}</td>
+										<td>{item.packagingName}</td>
+										<td>{item.unit || "-"}</td>
+										<td className="text-right font-semibold">
+											{qty(item.quantity)}
+										</td>
+									</tr>
+								))}
+							</TableState>
+						</table>
+					</div>
+					<p className="text-xs text-slate-500">
+						Số lượng đã bán đã trừ các phiếu trả hàng đã lưu trong cùng kỳ.
+					</p>
+				</div>
+			</RightDrawer>
 		</ReportShell>
 	);
 }

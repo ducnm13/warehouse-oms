@@ -1,4 +1,4 @@
-import type { AssemblyIssueReportQuery, FinancialSummaryReportQuery, InventorySummaryReportQuery, ItemLedgerReportQuery, LedgerDocumentReportQuery, OperationsReportQuery, ProductionOverviewReportQuery, ProductionVarianceReportQuery, PurchaseReportQuery, SalesByCustomerReportQuery, SalesByProductReportQuery, SalesProfitReportQuery, SalesReturnReportQuery, StockOnHandReportQuery, TransferReportQuery } from "@challenge/contracts";
+import type { AssemblyIssueReportQuery, FinancialSummaryReportQuery, InventoryByProductReportQuery, InventorySummaryReportQuery, ItemLedgerReportQuery, LedgerDocumentReportQuery, OperationsReportQuery, ProductionOverviewReportQuery, ProductionVarianceReportQuery, PurchaseReportQuery, SalesByCustomerItemsReportQuery, SalesByCustomerReportQuery, SalesByProductReportQuery, SalesProfitReportQuery, SalesReturnReportQuery, StockOnHandReportQuery, TransferReportQuery } from "@challenge/contracts";
 import { HttpError } from "../../common/http-error";
 import { reportingRepository } from "./reporting.repository";
 
@@ -16,6 +16,37 @@ export const reportingService = {
     });
     const summary = rows.reduce((sum, row) => ({ openingQuantity: sum.openingQuantity + row.openingQuantity, inboundQuantity: sum.inboundQuantity + row.inboundQuantity, outboundQuantity: sum.outboundQuantity + row.outboundQuantity, closingQuantity: sum.closingQuantity + row.closingQuantity, openingValue: sum.openingValue + row.openingValue, inboundValue: sum.inboundValue + row.inboundValue, outboundValue: sum.outboundValue + row.outboundValue, closingValue: sum.closingValue + row.closingValue, projectionDifference: sum.projectionDifference + row.projectionDifference }), { openingQuantity: 0, inboundQuantity: 0, outboundQuantity: 0, closingQuantity: 0, openingValue: 0, inboundValue: 0, outboundValue: 0, closingValue: 0, projectionDifference: 0 });
     return { rows, summary, valueCoverageComplete: rows.every(row => row.valueCoverageComplete) };
+  },
+  async inventoryByProduct(query: InventoryByProductReportQuery) {
+    const rows = (await reportingRepository.inventoryByProduct({ ...range(query.from, query.to), warehouseId: query.warehouseId, category: query.category, search: query.search })).map(row => ({
+      packagingId: row.packagingId,
+      productId: row.productId,
+      sku: row.sku || undefined,
+      productSku: row.productSku || undefined,
+      packagingName: row.packagingName,
+      unit: row.unit || undefined,
+      productName: row.productName,
+      category: row.category || undefined,
+      openingQuantity: n(row.openingQuantity),
+      inboundQuantity: n(row.inboundQuantity),
+      inboundAssemblyQuantity: n(row.inboundAssemblyQuantity),
+      outboundQuantity: n(row.outboundQuantity),
+      outboundAssemblyQuantity: n(row.outboundAssemblyQuantity),
+      outboundSaleQuantity: n(row.outboundSaleQuantity),
+      closingQuantity: n(row.closingQuantity),
+    }));
+    return {
+      rows,
+      summary: rows.reduce((sum, row) => ({
+        items: sum.items + 1,
+        inboundQuantity: sum.inboundQuantity + row.inboundQuantity,
+        inboundAssemblyQuantity: sum.inboundAssemblyQuantity + row.inboundAssemblyQuantity,
+        outboundQuantity: sum.outboundQuantity + row.outboundQuantity,
+        outboundAssemblyQuantity: sum.outboundAssemblyQuantity + row.outboundAssemblyQuantity,
+        outboundSaleQuantity: sum.outboundSaleQuantity + row.outboundSaleQuantity,
+        closingQuantity: sum.closingQuantity + row.closingQuantity,
+      }), { items: 0, inboundQuantity: 0, inboundAssemblyQuantity: 0, outboundQuantity: 0, outboundAssemblyQuantity: 0, outboundSaleQuantity: 0, closingQuantity: 0 }),
+    };
   },
   async assemblyIssues(query: AssemblyIssueReportQuery) {
     const rows = (await reportingRepository.assemblyIssues({ ...range(query.from, query.to), warehouseId: query.warehouseId, search: query.search })).map(row => {
@@ -121,6 +152,23 @@ export const reportingService = {
   async salesByCustomer(query: SalesByCustomerReportQuery) {
     const rows = (await reportingRepository.salesByCustomer(query)).map(row => ({ customerId: row.customerId, customerCode: row.customerCode, customerName: row.customerName, groupId: row.groupId, groupName: row.groupName, orders: n(row.orders), grossSales: round(n(row.grossSales)), discountAmount: round(n(row.discountAmount)), netRevenue: round(n(row.netRevenue)), taxAmount: round(n(row.taxAmount)), cogs: round(n(row.cogs)), grossProfit: round(n(row.netRevenue) - n(row.cogs)), grossMarginPercent: n(row.netRevenue) ? round((n(row.netRevenue) - n(row.cogs)) / n(row.netRevenue) * 100) : 0 }));
     return { rows, summary: rows.reduce((sum, row) => ({ orders: sum.orders + row.orders, grossSales: sum.grossSales + row.grossSales, discountAmount: sum.discountAmount + row.discountAmount, netRevenue: sum.netRevenue + row.netRevenue, taxAmount: sum.taxAmount + row.taxAmount, cogs: sum.cogs + row.cogs, grossProfit: sum.grossProfit + row.grossProfit }), { orders: 0, grossSales: 0, discountAmount: 0, netRevenue: 0, taxAmount: 0, cogs: 0, grossProfit: 0 }) };
+  },
+  async salesByCustomerItems(query: SalesByCustomerItemsReportQuery) {
+    const rows = (await reportingRepository.salesByCustomerItems(query)).map(row => ({
+      packagingId: row.packagingId,
+      sku: row.sku,
+      productName: row.productName,
+      packagingName: row.packagingName,
+      unit: row.unit,
+      quantity: round(n(row.quantity)),
+    }));
+    return {
+      rows,
+      summary: {
+        items: rows.length,
+        quantity: round(rows.reduce((sum, row) => sum + row.quantity, 0)),
+      },
+    };
   },
   async salesByProduct(query: SalesByProductReportQuery) {
     const rows = (await reportingRepository.salesByProduct(query)).map(row => ({ packagingId: row.packagingId, sku: row.sku, packagingName: row.packagingName, unit: row.unit, productName: row.productName, quantity: n(row.quantity), grossSales: round(n(row.grossSales)), discountAmount: round(n(row.discountAmount)), netRevenue: round(n(row.netRevenue)), cogs: round(n(row.cogs)), grossProfit: round(n(row.netRevenue) - n(row.cogs)), grossMarginPercent: n(row.netRevenue) ? round((n(row.netRevenue) - n(row.cogs)) / n(row.netRevenue) * 100) : 0 }));
