@@ -1,25 +1,63 @@
-import { Prisma } from "@challenge/database";
+import { decimal, money, toDecimal } from "@challenge/database";
 import type { PurchaseCancelInput, PurchaseDraftInput, PurchaseUpdateInput } from "@challenge/contracts";
 import { HttpError } from "../../common/http-error";
 import { mapPurchaseDocument } from "./purchase.mapper";
 import { prisma, purchaseInclude, purchaseRepository } from "./purchase.repository";
 import { nextDocumentCode } from "../../common/document-code";
+import { FIELD_LABELS, diffFields, diffLines, recordAudit, snapshotFields, type AuditField } from "../../common/audit";
 
-const decimal = (value: number) => new Prisma.Decimal(value.toFixed(4));
-const money = (value: number) => new Prisma.Decimal(value.toFixed(2));
 const dateAtNoon = (date: string) => new Date(`${date}T12:00:00.000Z`);
 const nowIso = () => new Date().toISOString();
+const HUNDRED = toDecimal(100);
 
-function calculate(input: PurchaseDraftInput) {
+const HEADER_AUDIT_FIELDS: AuditField[] = [
+  { key: "code", label: FIELD_LABELS.code },
+  { key: "documentDate", label: FIELD_LABELS.documentDate },
+  { key: "dueDate", label: FIELD_LABELS.dueDate },
+  { key: "type", label: FIELD_LABELS.type },
+  { key: "supplierId", label: FIELD_LABELS.supplierId },
+  { key: "paymentIntent", label: FIELD_LABELS.paymentIntent },
+  { key: "paymentMethod", label: FIELD_LABELS.paymentMethod },
+  { key: "invoiceOption", label: "Hình thức hóa đơn" },
+  { key: "deliveryPerson", label: "Người giao hàng" },
+  { key: "buyerName", label: "Người mua" },
+  { key: "description", label: FIELD_LABELS.description },
+  { key: "goodsAmount", label: "Tiền hàng" },
+  { key: "taxAmount", label: FIELD_LABELS.taxAmount },
+  { key: "purchaseCost", label: FIELD_LABELS.purchaseCost },
+  { key: "totalAmount", label: FIELD_LABELS.totalAmount },
+  { key: "inventoryValue", label: FIELD_LABELS.inventoryValue },
+  { key: "documentStatus", label: FIELD_LABELS.documentStatus },
+  { key: "paymentStatus", label: FIELD_LABELS.paymentStatus },
+  { key: "paidAmount", label: FIELD_LABELS.paidAmount },
+];
+const LINE_AUDIT_FIELDS: AuditField[] = [
+  { key: "packagingId", label: FIELD_LABELS.packagingId },
+  { key: "warehouseId", label: FIELD_LABELS.warehouseId },
+  { key: "quantity", label: FIELD_LABELS.quantity },
+  { key: "unitPrice", label: FIELD_LABELS.unitPrice },
+  { key: "taxRate", label: FIELD_LABELS.taxRate },
+  { key: "lineAmount", label: FIELD_LABELS.lineAmount },
+  { key: "taxAmount", label: FIELD_LABELS.taxAmount },
+  { key: "note", label: FIELD_LABELS.note },
+];
+
+// Tính tiền phía server hoàn toàn bằng Decimal: không phụ thuộc số client gửi lên.
+export function calculate(input: PurchaseDraftInput) {
+  const purchaseCost = money(input.purchaseCost);
   const details = input.details.map(line => {
-    const lineAmount = line.quantity * line.unitPrice;
-    const taxAmount = lineAmount * line.taxRate / 100;
-    return { ...line, lineAmount, taxAmount };
+    const quantity = decimal(line.quantity);
+    const unitPrice = decimal(line.unitPrice);
+    const taxRate = decimal(line.taxRate);
+    const lineAmount = money(quantity.mul(unitPrice));
+    const taxAmount = money(lineAmount.mul(taxRate).div(HUNDRED));
+    return { ...line, quantity, unitPrice, taxRate, lineAmount, taxAmount };
   });
-  const goodsAmount = details.reduce((sum, line) => sum + line.lineAmount, 0);
-  const taxAmount = details.reduce((sum, line) => sum + line.taxAmount, 0);
-  const totalAmount = goodsAmount + taxAmount + input.purchaseCost;
-  return { details, goodsAmount, taxAmount, totalAmount, inventoryValue: input.type === "DOMESTIC_INVENTORY" ? goodsAmount + input.purchaseCost : 0 };
+  const goodsAmount = details.reduce((sum, line) => sum.add(line.lineAmount), money(0));
+  const taxAmount = details.reduce((sum, line) => sum.add(line.taxAmount), money(0));
+  const totalAmount = money(goodsAmount.add(taxAmount).add(purchaseCost));
+  const inventoryValue = input.type === "DOMESTIC_INVENTORY" ? money(goodsAmount.add(purchaseCost)) : money(0);
+  return { details, purchaseCost, goodsAmount, taxAmount, totalAmount, inventoryValue };
 }
 
 async function validateMasterData(input: PurchaseDraftInput) {
@@ -36,11 +74,11 @@ async function validateMasterData(input: PurchaseDraftInput) {
 const lineData = (line: ReturnType<typeof calculate>["details"][number]) => ({
   packagingId: line.packagingId,
   warehouseId: line.warehouseId || null,
-  quantity: line.quantity,
-  unitPrice: line.unitPrice,
-  taxRate: line.taxRate,
-  lineAmount: line.lineAmount,
-  taxAmount: line.taxAmount,
+  quantity: decimal(line.quantity),
+  unitPrice: decimal(line.unitPrice),
+  taxRate: decimal(line.taxRate),
+  lineAmount: money(line.lineAmount),
+  taxAmount: money(line.taxAmount),
   note: line.note || "",
 });
 
@@ -74,11 +112,21 @@ export const purchaseService = {
       documentStatus: "DRAFT", paymentStatus: "UNPAID", paymentIntent: input.paymentIntent,
       paymentMethod: input.paymentMethod, invoiceOption: input.invoiceOption, deliveryPerson: input.deliveryPerson,
       buyerName: input.buyerName || fullName, description: input.description,
-      goodsAmount: totals.goodsAmount, taxAmount: totals.taxAmount, purchaseCost: input.purchaseCost,
+      goodsAmount: totals.goodsAmount, taxAmount: totals.taxAmount, purchaseCost: totals.purchaseCost,
       totalAmount: totals.totalAmount, inventoryValue: totals.inventoryValue, paidAmount: 0,
       createdAt: nowIso(), updatedAt: nowIso(), suppliers: { connect: { id: input.supplierId } },
       users: { connect: { id: userId } }, purchase_document_details: { create: totals.details.map(lineData) },
     } as any);
+    await recordAudit(prisma, {
+      action: "Tạo nháp mua hàng v1",
+      details: code,
+      entityType: "PURCHASE_DOCUMENT",
+      entityId: row.id,
+      entityCode: code,
+      userId,
+      createdAt: row.createdAt || nowIso(),
+      changes: snapshotFields(row, HEADER_AUDIT_FIELDS),
+    });
     return mapPurchaseDocument(row);
   },
   async updateDraft(id: number, input: PurchaseUpdateInput, userId: number) {
@@ -90,6 +138,8 @@ export const purchaseService = {
       if (!current) throw new HttpError(404, "PURCHASE_NOT_FOUND", "Không tìm thấy chứng từ");
       if (current.documentStatus !== "DRAFT") throw new HttpError(409, "PURCHASE_NOT_DRAFT", "Chỉ được sửa chứng từ nháp");
       if (Number(current.version) !== input.version) throw new HttpError(409, "VERSION_CONFLICT", "Chứng từ đã được người khác cập nhật");
+      const before = await tx.purchase_documents.findUnique({ where: { id }, include: purchaseInclude });
+      if (!before) throw new HttpError(404, "PURCHASE_NOT_FOUND", "Không tìm thấy chứng từ");
       await tx.purchase_document_details.deleteMany({ where: { documentId: id } });
       const updated = await tx.purchase_documents.update({
         where: { id },
@@ -98,11 +148,23 @@ export const purchaseService = {
           paymentIntent: input.paymentIntent, paymentMethod: input.paymentMethod, invoiceOption: input.invoiceOption,
           supplierId: input.supplierId, deliveryPerson: input.deliveryPerson, buyerName: input.buyerName,
           description: input.description, goodsAmount: totals.goodsAmount, taxAmount: totals.taxAmount,
-          purchaseCost: input.purchaseCost, totalAmount: totals.totalAmount, inventoryValue: totals.inventoryValue,
+          purchaseCost: totals.purchaseCost, totalAmount: totals.totalAmount, inventoryValue: totals.inventoryValue,
           version: { increment: 1 }, updatedAt: nowIso(), purchase_document_details: { create: totals.details.map(lineData) },
         }, include: purchaseInclude,
       });
-      await tx.audit_logs.create({ data: { action: "Cập nhật nháp mua hàng v1", details: updated.code, userId, userName: String(userId), createdAt: nowIso() } });
+      await recordAudit(tx, {
+        action: "Cập nhật nháp mua hàng v1",
+        details: updated.code,
+        entityType: "PURCHASE_DOCUMENT",
+        entityId: id,
+        entityCode: updated.code,
+        userId,
+        createdAt: nowIso(),
+        changes: [
+          ...diffFields(before, updated, HEADER_AUDIT_FIELDS),
+          ...diffLines(before.purchase_document_details, updated.purchase_document_details, LINE_AUDIT_FIELDS),
+        ],
+      });
       return mapPurchaseDocument(updated);
     });
   },
@@ -210,7 +272,7 @@ export const purchaseService = {
         await tx.supplier_payments.create({
           data: {
             supplierId: document.supplierId, purchaseDocumentId: id, paymentDate: document.documentDate,
-            amount: paidAmount, method: document.paymentMethod || "CASH", note: `Thanh toán v1 ${document.code}`,
+            amount: money(paidAmount), method: document.paymentMethod || "CASH", note: `Thanh toán v1 ${document.code}`,
             createdBy: userId, createdAt: now,
           },
         });
@@ -226,7 +288,16 @@ export const purchaseService = {
           version: { increment: 1 }, updatedAt: now,
         }, include: purchaseInclude,
       });
-      await tx.audit_logs.create({ data: { action: "Lưu mua hàng v1", details: document.code, userId, userName: String(userId), createdAt: now } });
+      await recordAudit(tx, {
+        action: "Lưu mua hàng v1",
+        details: document.code,
+        entityType: "PURCHASE_DOCUMENT",
+        entityId: id,
+        entityCode: document.code,
+        userId,
+        createdAt: now,
+        changes: diffFields(document, updated, HEADER_AUDIT_FIELDS),
+      });
       return mapPurchaseDocument(updated);
     }, { timeout: 30_000 });
   },
@@ -302,7 +373,16 @@ export const purchaseService = {
           version: { increment: 1 }, updatedAt: now,
         }, include: purchaseInclude,
       });
-      await tx.audit_logs.create({ data: { action: "Hủy lưu mua hàng v1", details: document.code, userId, userName: String(userId), createdAt: now } });
+      await recordAudit(tx, {
+        action: "Hủy lưu mua hàng v1",
+        details: document.code,
+        entityType: "PURCHASE_DOCUMENT",
+        entityId: id,
+        entityCode: document.code,
+        userId,
+        createdAt: now,
+        changes: diffFields(document, updated, HEADER_AUDIT_FIELDS),
+      });
       return mapPurchaseDocument(updated);
     }, { timeout: 30_000 });
   },
@@ -388,7 +468,7 @@ export const purchaseService = {
         await tx.supplier_payments.create({
           data: {
             supplierId: document.supplierId, purchaseDocumentId: id, paymentDate: now.slice(0, 10),
-            amount: -Number(document.paidAmount), method: document.paymentMethod || "CASH",
+            amount: money(-Number(document.paidAmount)), method: document.paymentMethod || "CASH",
             note: `Hoàn nguyên thanh toán v1 ${document.code}`, createdBy: userId, createdAt: now,
           },
         });
@@ -402,7 +482,19 @@ export const purchaseService = {
           paymentStatus: "UNPAID", paidAmount: 0, version: { increment: 1 }, updatedAt: now,
         }, include: purchaseInclude,
       });
-      await tx.audit_logs.create({ data: { action: "Hủy mua hàng v1", details: `${document.code}: ${input.reason}`, userId, userName: String(userId), createdAt: now } });
+      await recordAudit(tx, {
+        action: "Hủy mua hàng v1",
+        details: `${document.code}: ${input.reason}`,
+        entityType: "PURCHASE_DOCUMENT",
+        entityId: id,
+        entityCode: document.code,
+        userId,
+        createdAt: now,
+        changes: [
+          ...diffFields(document, updated, HEADER_AUDIT_FIELDS),
+          { field: "cancelReason", label: FIELD_LABELS.reason, oldValue: null, newValue: input.reason },
+        ],
+      });
       return mapPurchaseDocument(updated);
     }, { timeout: 30_000 });
   },
@@ -424,7 +516,16 @@ export const purchaseService = {
       } else {
         throw new HttpError(409, "PURCHASE_NOT_DELETABLE", "Chỉ được xóa chứng từ ở trạng thái nháp hoặc đã hủy");
       }
-      await tx.audit_logs.create({ data: { action: "Xóa chứng từ mua hàng v1", details: current.code, userId, userName: String(userId), createdAt: nowIso() } });
+      await recordAudit(tx, {
+        action: "Xóa chứng từ mua hàng v1",
+        details: current.code,
+        entityType: "PURCHASE_DOCUMENT",
+        entityId: id,
+        entityCode: current.code,
+        userId,
+        createdAt: nowIso(),
+        changes: [{ field: "documentStatus", label: FIELD_LABELS.documentStatus, oldValue: current.documentStatus, newValue: "DELETED" }],
+      });
       return { id };
     });
   },

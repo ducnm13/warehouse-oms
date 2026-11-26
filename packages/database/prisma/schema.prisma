@@ -8,17 +8,23 @@ datasource db {
 }
 
 model audit_logs {
-  id        Int     @id @default(autoincrement())
-  action    String  @db.Text
-  details   String? @db.Text
-  userId    Int?
-  userName  String? @db.Text
-  ipAddress String? @db.VarChar(50)
-  userAgent String? @db.Text
-  createdAt String? @db.Text
-  users     users?  @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "audit_logs_ibfk_1")
+  id         Int     @id @default(autoincrement())
+  action     String  @db.Text
+  details    String? @db.Text
+  entityType String? @db.VarChar(80)
+  entityId   String? @db.VarChar(80)
+  entityCode String? @db.VarChar(120)
+  changes    String? @db.Text
+  userId     Int?
+  userName   String? @db.Text
+  ipAddress  String? @db.VarChar(50)
+  userAgent  String? @db.Text
+  createdAt  String? @db.Text
+  users      users?  @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "audit_logs_ibfk_1")
 
   @@index([userId], map: "userId")
+  @@index([entityType, entityId, createdAt(length: 24)], map: "audit_logs_entity_idx")
+  @@index([createdAt(length: 24)], map: "audit_logs_created_idx")
 }
 
 model customer_payments {
@@ -26,7 +32,7 @@ model customer_payments {
   customerId   Int
   salesOrderId Int
   paymentDate  String       @db.Text
-  amount       Float
+  amount       Decimal      @db.Decimal(18, 2)
   method       String?      @db.VarChar(30)
   note         String?      @db.Text
   createdBy    Int
@@ -68,7 +74,7 @@ model inventorytransactiondetails {
   id                    Int                    @id @default(autoincrement())
   transactionId         Int?
   packagingId           Int?
-  quantity              Float
+  quantity              Decimal                @db.Decimal(18, 4)
   unitCost              Decimal                @default(0.0000) @db.Decimal(18, 4)
   totalValue            Decimal                @default(0.00) @db.Decimal(18, 2)
   note                  String?                @db.Text
@@ -126,7 +132,7 @@ model product_boms {
   id                                                                    Int                @id @default(autoincrement())
   productPackagingId                                                    Int?
   materialPackagingId                                                   Int?
-  quantity                                                              Float?             @default(0)
+  quantity                                                              Decimal?           @default(0.0000) @db.Decimal(18, 4)
   unit                                                                  String?            @default("kg") @db.VarChar(50)
   productpackagings_product_boms_productPackagingIdToproductpackagings  productpackagings? @relation("product_boms_productPackagingIdToproductpackagings", fields: [productPackagingId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "product_boms_ibfk_1")
   productpackagings_product_boms_materialPackagingIdToproductpackagings productpackagings? @relation("product_boms_materialPackagingIdToproductpackagings", fields: [materialPackagingId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "product_boms_ibfk_2")
@@ -139,9 +145,9 @@ model productiondetails {
   id                 Int                @id @default(autoincrement())
   orderId            Int?
   packagingId        Int?
-  quantity           Float?             @default(0)
-  actual_quantity    Float?             @default(0)
-  allocation_percent Float?             @default(0)
+  quantity           Decimal?           @default(0.0000) @db.Decimal(18, 4)
+  actual_quantity    Decimal?           @default(0.0000) @db.Decimal(18, 4)
+  allocation_percent Decimal?           @default(0.00) @db.Decimal(5, 2)
   createdAt          String?            @db.Text
   updatedAt          String?            @db.Text
   note               String?            @db.Text
@@ -158,12 +164,12 @@ model productionorders {
   id                                 Int                                  @id @default(autoincrement())
   code                               String?                              @unique(map: "code") @db.VarChar(255)
   productId                          Int?
-  total_powder_kg                    Float?                               @default(0)
+  total_powder_kg                    Decimal?                             @default(0.0000) @db.Decimal(18, 4)
   total_sachets                      Int?                                 @default(0)
   mfg_date                           String?                              @db.Text
   exp_date                           String?                              @db.Text
   status                             String?                              @default("DRAFT") @db.VarChar(50)
-  loss_percent                       Float?                               @default(0)
+  loss_percent                       Decimal?                             @default(0.00) @db.Decimal(5, 2)
   createdAt                          String?                              @db.Text
   updatedAt                          String?                              @db.Text
   target_sachets                     Int?                                 @default(0)
@@ -185,6 +191,7 @@ model productionorders {
   production_order_document_links_v1 production_order_document_links_v1[]
   production_order_materials_v1      production_order_materials_v1[]
   productiondetails                  productiondetails[]
+  cost_entries                       production_cost_entries[]            @relation("cost_entry_production_order")
   products                           products?                            @relation(fields: [productId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "productionorders_ibfk_1")
 
   @@index([productId], map: "productId")
@@ -229,10 +236,10 @@ model productpackagings {
   name                                                             String                          @db.Text
   sku                                                              String?                         @db.VarChar(255)
   packCount                                                        Int?                            @default(1)
-  defaultRatio                                                     Float?                          @default(0)
+  defaultRatio                                                     Decimal?                        @default(0.0000) @db.Decimal(18, 4)
   initial_stock                                                    Int?                            @default(0)
   min_stock                                                        Int?                            @default(0)
-  netWeight                                                        Float?                          @default(0)
+  netWeight                                                        Decimal?                        @default(0.0000) @db.Decimal(18, 4)
   shelfLifeMonths                                                  Int?                            @default(24)
   barcode                                                          String?                         @db.VarChar(100)
   warehouseId                                                      Int?
@@ -261,6 +268,7 @@ model productpackagings {
   online_products                                                  online_products[]
   production_order_materials_v1                                    production_order_materials_v1[]
   productiondetails                                                productiondetails[]
+  cost_sheet_lines                                                 product_cost_sheet_lines[]
   products                                                         products?                       @relation(fields: [productId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "productpackagings_ibfk_1")
   warehouse                                                        warehouses?                     @relation(fields: [warehouseId], references: [id], onUpdate: Restrict, map: "productpackagings_ibfk_3")
   productwarehouses                                                productwarehouses[]
@@ -283,7 +291,7 @@ model products {
   sku                 String?                  @db.VarChar(255)
   name                String                   @db.Text
   category            String?                  @default("PRODUCT") @db.VarChar(50)
-  netWeight           Float?                   @default(0)
+  netWeight           Decimal?                 @default(0.0000) @db.Decimal(18, 4)
   shelfLifeMonths     Int?                     @default(24)
   isActive            Int?                     @default(1)
   canManageInventory  Int                      @default(1)
@@ -309,7 +317,7 @@ model products {
 model productwarehouses {
   packagingId       Int
   warehouseId       Int
-  stock_quantity    Float?            @default(0)
+  stock_quantity    Decimal?          @default(0.0000) @db.Decimal(18, 4)
   updatedAt         String?           @db.Text
   productpackagings productpackagings @relation(fields: [packagingId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "productwarehouses_ibfk_1")
   warehouses        warehouses        @relation(fields: [warehouseId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "productwarehouses_ibfk_2")
@@ -323,11 +331,11 @@ model purchase_document_details {
   documentId         Int
   packagingId        Int
   warehouseId        Int?
-  quantity           Float
-  unitPrice          Float?             @default(0)
-  taxRate            Float?             @default(0)
-  lineAmount         Float?             @default(0)
-  taxAmount          Float?             @default(0)
+  quantity           Decimal            @db.Decimal(18, 4)
+  unitPrice          Decimal?           @default(0.0000) @db.Decimal(18, 4)
+  taxRate            Decimal?           @default(0.00) @db.Decimal(5, 2)
+  lineAmount         Decimal?           @default(0.00) @db.Decimal(18, 2)
+  taxAmount          Decimal?           @default(0.00) @db.Decimal(18, 2)
   note               String?            @db.Text
   purchase_documents purchase_documents @relation(fields: [documentId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "purchase_document_details_ibfk_1")
   productpackagings  productpackagings  @relation(fields: [packagingId], references: [id], onUpdate: Restrict, map: "purchase_document_details_ibfk_2")
@@ -351,12 +359,12 @@ model purchase_documents {
   deliveryPerson             String?                      @db.Text
   buyerName                  String?                      @db.Text
   description                String?                      @db.Text
-  goodsAmount                Float?                       @default(0)
-  taxAmount                  Float?                       @default(0)
-  purchaseCost               Float?                       @default(0)
-  totalAmount                Float?                       @default(0)
-  inventoryValue             Float?                       @default(0)
-  paidAmount                 Float?                       @default(0)
+  goodsAmount                Decimal?                     @default(0.00) @db.Decimal(18, 2)
+  taxAmount                  Decimal?                     @default(0.00) @db.Decimal(18, 2)
+  purchaseCost               Decimal?                     @default(0.00) @db.Decimal(18, 2)
+  totalAmount                Decimal?                     @default(0.00) @db.Decimal(18, 2)
+  inventoryValue             Decimal?                     @default(0.00) @db.Decimal(18, 2)
+  paidAmount                 Decimal?                     @default(0.00) @db.Decimal(18, 2)
   inventoryTransactionId     Int?
   createdBy                  Int
   createdAt                  String?                      @db.Text
@@ -537,10 +545,10 @@ model sales_order_details {
   id                   Int                    @id @default(autoincrement())
   orderId              Int
   packagingId          Int
-  quantity             Float
-  unitPrice            Float?                 @default(0)
-  discountRate         Float?                 @default(0)
-  lineTotal            Float?                 @default(0)
+  quantity             Decimal                @db.Decimal(18, 4)
+  unitPrice            Decimal?               @default(0.0000) @db.Decimal(18, 4)
+  discountRate         Decimal?               @default(0.00) @db.Decimal(5, 2)
+  lineTotal            Decimal?               @default(0.00) @db.Decimal(18, 2)
   note                 String?                @db.Text
   unitCost             Decimal                @default(0.0000) @db.Decimal(18, 4)
   costAmount           Decimal                @default(0.00) @db.Decimal(18, 2)
@@ -569,17 +577,17 @@ model sales_orders {
   status                               String?                   @default("DRAFT") @db.VarChar(30)
   note                                 String?                   @db.Text
   rejectionReason                      String?                   @db.Text
-  subtotal                             Float?                    @default(0)
-  discountAmount                       Float?                    @default(0)
-  taxAmount                            Float?                    @default(0)
-  totalAmount                          Float?                    @default(0)
+  subtotal                             Decimal?                  @default(0.00) @db.Decimal(18, 2)
+  discountAmount                       Decimal?                  @default(0.00) @db.Decimal(18, 2)
+  taxAmount                            Decimal?                  @default(0.00) @db.Decimal(18, 2)
+  totalAmount                          Decimal?                  @default(0.00) @db.Decimal(18, 2)
   createdBy                            Int
   approvedBy                           Int?
   approvedAt                           String?                   @db.Text
   fulfilledAt                          String?                   @db.Text
   inventoryTransactionId               Int?
   dueDate                              String?                   @db.Text
-  paidAmount                           Float?                    @default(0)
+  paidAmount                           Decimal?                  @default(0.00) @db.Decimal(18, 2)
   paymentStatus                        String?                   @default("UNPAID") @db.VarChar(30)
   createdAt                            String?                   @db.Text
   updatedAt                            String?                   @db.Text
@@ -796,9 +804,9 @@ model stocktake_details {
   id                Int                @id @default(autoincrement())
   stocktakeId       Int?
   packagingId       Int?
-  expected_qty      Float?             @default(0)
-  actual_qty        Float?             @default(0)
-  difference        Float?             @default(0)
+  expected_qty      Decimal?           @default(0.0000) @db.Decimal(18, 4)
+  actual_qty        Decimal?           @default(0.0000) @db.Decimal(18, 4)
+  difference        Decimal?           @default(0.0000) @db.Decimal(18, 4)
   stocktakes        stocktakes?        @relation(fields: [stocktakeId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "stocktake_details_ibfk_1")
   productpackagings productpackagings? @relation(fields: [packagingId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "stocktake_details_ibfk_2")
 
@@ -850,7 +858,7 @@ model supplier_payments {
   supplierId         Int
   purchaseDocumentId Int
   paymentDate        String             @db.Text
-  amount             Float
+  amount             Decimal            @db.Decimal(18, 2)
   method             String?            @db.VarChar(30)
   note               String?            @db.Text
   createdBy          Int
@@ -908,6 +916,9 @@ model users {
   chat_messages                               chat_messages[]
   chat_reactions                              chat_reactions[]
   chat_typing                                 chat_typing[]
+  technical_incidents                         technical_incidents[]         @relation("technical_incident_creator")
+  production_cost_entries                     production_cost_entries[]     @relation("cost_entry_creator")
+  product_cost_sheets                         product_cost_sheets[]         @relation("cost_sheet_creator")
 }
 
 model chat_conversations {
@@ -921,28 +932,28 @@ model chat_conversations {
 }
 
 model chat_participants {
-  conversationId    Int
-  userId            Int
-  lastReadMessageId Int                 @default(0)
+  conversationId     Int
+  userId             Int
+  lastReadMessageId  Int                @default(0)
   chat_conversations chat_conversations @relation(fields: [conversationId], references: [id], onDelete: Cascade, onUpdate: Restrict)
-  users             users               @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  users              users              @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Restrict)
 
   @@id([conversationId, userId])
   @@index([userId], map: "chat_participants_user_fk")
 }
 
 model chat_messages {
-  id               Int                @id @default(autoincrement())
-  conversationId   Int
-  senderId         Int
-  body             String             @db.Text
-  replyToId        Int?
-  createdAt        DateTime           @default(now())
+  id                 Int                @id @default(autoincrement())
+  conversationId     Int
+  senderId           Int
+  body               String             @db.Text
+  replyToId          Int?
+  createdAt          DateTime           @default(now())
   chat_conversations chat_conversations @relation(fields: [conversationId], references: [id], onDelete: Cascade, onUpdate: Restrict)
-  users            users              @relation(fields: [senderId], references: [id], onDelete: Cascade, onUpdate: Restrict)
-  replyTo          chat_messages?     @relation("message_replies", fields: [replyToId], references: [id], onDelete: SetNull, onUpdate: Restrict)
-  replies          chat_messages[]    @relation("message_replies")
-  chat_reactions   chat_reactions[]
+  users              users              @relation(fields: [senderId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  replyTo            chat_messages?     @relation("message_replies", fields: [replyToId], references: [id], onDelete: SetNull, onUpdate: Restrict)
+  replies            chat_messages[]    @relation("message_replies")
+  chat_reactions     chat_reactions[]
 
   @@index([conversationId, id], map: "chat_messages_conversation_idx")
 }
@@ -950,9 +961,9 @@ model chat_messages {
 model chat_reactions {
   messageId     Int
   userId        Int
-  emoji         String          @db.VarChar(16)
-  chat_messages chat_messages   @relation(fields: [messageId], references: [id], onDelete: Cascade, onUpdate: Restrict)
-  users         users           @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  emoji         String        @db.VarChar(16)
+  chat_messages chat_messages @relation(fields: [messageId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  users         users         @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Restrict)
 
   @@id([messageId, userId, emoji])
 }
@@ -960,9 +971,9 @@ model chat_reactions {
 model chat_typing {
   conversationId     Int
   userId             Int
-  updatedAt          DateTime          @default(now()) @updatedAt
+  updatedAt          DateTime           @default(now()) @updatedAt
   chat_conversations chat_conversations @relation(fields: [conversationId], references: [id], onDelete: Cascade, onUpdate: Restrict)
-  users              users             @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  users              users              @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Restrict)
 
   @@id([conversationId, userId])
 }
@@ -1033,7 +1044,7 @@ model warehouse_transfer_details {
   id                  Int                 @id @default(autoincrement())
   transferId          Int
   packagingId         Int
-  quantity            Float
+  quantity            Decimal             @db.Decimal(18, 4)
   note                String?             @db.Text
   unitCost            Decimal             @default(0.0000) @db.Decimal(18, 4)
   totalValue          Decimal             @default(0.00) @db.Decimal(18, 2)
@@ -1120,6 +1131,8 @@ model warehouses {
   warehouse_transfers_warehouse_transfers_fromWarehouseIdTowarehouses warehouse_transfers[]         @relation("warehouse_transfers_fromWarehouseIdTowarehouses")
   warehouse_transfers_warehouse_transfers_toWarehouseIdTowarehouses   warehouse_transfers[]         @relation("warehouse_transfers_toWarehouseIdTowarehouses")
   warehouse_zones                                                     warehouse_zones[]
+  production_cost_entries                                             production_cost_entries[]     @relation("cost_entry_warehouse")
+  product_cost_sheets                                                 product_cost_sheets[]         @relation("cost_sheet_warehouse")
 }
 
 model product_prices {
@@ -1137,31 +1150,31 @@ model product_prices {
 }
 
 model price_books {
-  id            Int              @id @default(autoincrement())
-  code          String           @unique @db.VarChar(50)
-  name          String           @db.VarChar(255)
-  description   String?          @db.Text
-  isDefault     Boolean          @default(false)
-  isActive      Boolean          @default(true)
-  validFrom     DateTime?        @db.DateTime(3)
-  validTo       DateTime?        @db.DateTime(3)
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
-  items         price_book_items[]
+  id             Int                @id @default(autoincrement())
+  code           String             @unique @db.VarChar(50)
+  name           String             @db.VarChar(255)
+  description    String?            @db.Text
+  isDefault      Boolean            @default(false)
+  isActive       Boolean            @default(true)
+  validFrom      DateTime?          @db.DateTime(3)
+  validTo        DateTime?          @db.DateTime(3)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  items          price_book_items[]
   customerGroups customer_groups[]
 }
 
 model price_book_items {
-  id            Int         @id @default(autoincrement())
-  priceBookId   Int
-  packagingId   Int
-  costPrice     Decimal     @default(0.0000) @db.Decimal(18, 4)
-  salePrice     Decimal     @default(0.0000) @db.Decimal(18, 4)
-  currency      String      @default("VND") @db.VarChar(10)
-  validFrom     DateTime?   @db.DateTime(3)
-  validTo       DateTime?   @db.DateTime(3)
-  priceBook     price_books @relation(fields: [priceBookId], references: [id], onDelete: Cascade, onUpdate: Restrict)
-  packaging     productpackagings @relation(fields: [packagingId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  id          Int               @id @default(autoincrement())
+  priceBookId Int
+  packagingId Int
+  costPrice   Decimal           @default(0.0000) @db.Decimal(18, 4)
+  salePrice   Decimal           @default(0.0000) @db.Decimal(18, 4)
+  currency    String            @default("VND") @db.VarChar(10)
+  validFrom   DateTime?         @db.DateTime(3)
+  validTo     DateTime?         @db.DateTime(3)
+  priceBook   price_books       @relation(fields: [priceBookId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  packaging   productpackagings @relation(fields: [packagingId], references: [id], onDelete: Cascade, onUpdate: Restrict)
 
   @@unique([priceBookId, packagingId], map: "price_book_item_unique")
   @@index([priceBookId], map: "price_book_items_book_idx")
@@ -1169,10 +1182,10 @@ model price_book_items {
 }
 
 model customer_group_prices {
-  id              Int               @id @default(autoincrement())
+  id              Int             @id @default(autoincrement())
   customerGroupId Int
-  priceType       String            @db.VarChar(20)
-  customerGroup   customer_groups   @relation(fields: [customerGroupId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  priceType       String          @db.VarChar(20)
+  customerGroup   customer_groups @relation(fields: [customerGroupId], references: [id], onDelete: Cascade, onUpdate: Restrict)
 
   @@unique([customerGroupId], map: "customer_group_price_unique")
   @@index([customerGroupId], map: "customer_group_prices_group_idx")
@@ -1227,38 +1240,39 @@ model company_print_settings {
 }
 
 model employees {
-  id        Int       @id @default(autoincrement())
-  code      String    @unique(map: "code") @db.VarChar(100)
-  fullName  String    @db.VarChar(255)
-  jobTitle  String?   @db.VarChar(255)
-  status    String    @default("ACTIVE") @db.VarChar(30)
-  workUnit  String?   @db.VarChar(255)
-  userId    Int?      @unique(map: "userId")
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @default(now()) @updatedAt
-  deletedAt DateTime?
-  user      users?    @relation(fields: [userId], references: [id], onUpdate: Restrict, map: "employee_user_fk")
+  id                  Int                   @id @default(autoincrement())
+  code                String                @unique(map: "code") @db.VarChar(100)
+  fullName            String                @db.VarChar(255)
+  jobTitle            String?               @db.VarChar(255)
+  status              String                @default("ACTIVE") @db.VarChar(30)
+  workUnit            String?               @db.VarChar(255)
+  userId              Int?                  @unique(map: "userId")
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @default(now()) @updatedAt
+  deletedAt           DateTime?
+  user                users?                @relation(fields: [userId], references: [id], onUpdate: Restrict, map: "employee_user_fk")
+  technical_incidents technical_incidents[] @relation("technical_incident_assignee")
 
   @@index([status, workUnit], map: "employees_status_unit_idx")
 }
 
 model customer_groups {
-  id           Int               @id @default(autoincrement())
-  code         String            @unique(map: "code") @db.VarChar(100)
-  name         String            @db.VarChar(255)
+  id           Int                     @id @default(autoincrement())
+  code         String                  @unique(map: "code") @db.VarChar(100)
+  name         String                  @db.VarChar(255)
   parentId     Int?
   priceBookId  Int?
-  isTeam       Boolean           @default(false)
-  isActive     Int               @default(1)
-  displayOrder Int               @default(0)
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @default(now()) @updatedAt
-  parent       customer_groups?  @relation("customer_group_tree", fields: [parentId], references: [id], onUpdate: Restrict, map: "customer_group_parent_fk")
-  children     customer_groups[] @relation("customer_group_tree")
-  customers    customers[]       @relation("CustomerGroup")
-  teamMembers  customers[]       @relation("CustomerTeam")
+  isTeam       Boolean                 @default(false)
+  isActive     Int                     @default(1)
+  displayOrder Int                     @default(0)
+  createdAt    DateTime                @default(now())
+  updatedAt    DateTime                @default(now()) @updatedAt
+  parent       customer_groups?        @relation("customer_group_tree", fields: [parentId], references: [id], onUpdate: Restrict, map: "customer_group_parent_fk")
+  children     customer_groups[]       @relation("customer_group_tree")
+  customers    customers[]             @relation("CustomerGroup")
+  teamMembers  customers[]             @relation("CustomerTeam")
   groupPrices  customer_group_prices[]
-  priceBook     price_books?      @relation(fields: [priceBookId], references: [id], onDelete: SetNull, onUpdate: Cascade, map: "customer_groups_price_book_fk")
+  priceBook    price_books?            @relation(fields: [priceBookId], references: [id], onDelete: SetNull, onUpdate: Cascade, map: "customer_groups_price_book_fk")
 
   @@index([parentId], map: "customer_group_parent_idx")
   @@index([priceBookId], map: "customer_groups_price_book_idx")
@@ -1407,6 +1421,7 @@ model assembly_orders {
   links                assembly_order_document_links[]
   lines                assembly_order_lines[]
   outputs              assembly_order_outputs[]
+  cost_entries         production_cost_entries[]       @relation("cost_entry_assembly_order")
   bom                  assembly_bom_headers?           @relation(fields: [bomId], references: [id], onDelete: Restrict)
   componentWarehouse   warehouses                      @relation("assembly_component_warehouse", fields: [componentWarehouseId], references: [id])
   output               productpackagings               @relation(fields: [outputPackagingId], references: [id])
@@ -1577,9 +1592,9 @@ model inventory_balances {
   id                Int               @id @default(autoincrement())
   packagingId       Int
   warehouseId       Int
-  quantity          Float?            @default(0)
-  unitCost          Float?            @default(0)
-  totalValue        Float?            @default(0)
+  quantity          Decimal?          @default(0.0000) @db.Decimal(18, 4)
+  unitCost          Decimal?          @default(0.0000) @db.Decimal(18, 4)
+  totalValue        Decimal?          @default(0.00) @db.Decimal(18, 2)
   lastTransactionId Int?
   updatedAt         String?           @db.Text
   productpackagings productpackagings @relation(fields: [packagingId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "inventory_balances_ibfk_1")
@@ -1614,12 +1629,12 @@ model system_settings {
 }
 
 model unit_conversions {
-  id                                       Int   @id @default(autoincrement())
+  id                                       Int     @id @default(autoincrement())
   fromUnitId                               Int
   toUnitId                                 Int
-  ratio                                    Float
-  units_unit_conversions_fromUnitIdTounits units @relation("unit_conversions_fromUnitIdTounits", fields: [fromUnitId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "unit_conversions_ibfk_1")
-  units_unit_conversions_toUnitIdTounits   units @relation("unit_conversions_toUnitIdTounits", fields: [toUnitId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "unit_conversions_ibfk_2")
+  ratio                                    Decimal @db.Decimal(18, 4)
+  units_unit_conversions_fromUnitIdTounits units   @relation("unit_conversions_fromUnitIdTounits", fields: [fromUnitId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "unit_conversions_ibfk_1")
+  units_unit_conversions_toUnitIdTounits   units   @relation("unit_conversions_toUnitIdTounits", fields: [toUnitId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "unit_conversions_ibfk_2")
 
   @@unique([fromUnitId, toUnitId], map: "fromUnitId")
   @@index([toUnitId], map: "toUnitId")
@@ -1647,49 +1662,186 @@ model warehouse_zones {
 
 // ── Bán hàng online (gộp từ dự án SPX) ─────────────────────────────
 model online_products {
-  id          Int      @id @default(autoincrement())
-  packagingId Int?
-  name        String   @db.VarChar(255)
-  price       Decimal  @default(0) @db.Decimal(10, 2)
-  unit        String?  @default("Cái") @db.VarChar(50)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                Int                @id @default(autoincrement())
+  packagingId       Int?
+  name              String             @db.VarChar(255)
+  price             Decimal            @default(0) @db.Decimal(10, 2)
+  unit              String?            @default("Cái") @db.VarChar(50)
+  isActive          Boolean            @default(true)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
   productpackagings productpackagings? @relation(fields: [packagingId], references: [id], onUpdate: Restrict, map: "online_product_packaging_fk")
 
   @@index([packagingId], map: "online_product_packaging_idx")
 }
 
 model online_orders {
-  id             Int      @id @default(autoincrement())
-  orderCode      String   @unique(map: "orderCode") @db.VarChar(50)
-  orderDate      DateTime @default(now())
-  recipientName  String   @db.VarChar(100)
-  phone          String   @db.VarChar(20)
-  address        String   @db.VarChar(255)
-  note           String?  @db.Text
-  shippingFee    Decimal  @default(0) @db.Decimal(10, 2)
-  totalAmount    Decimal  @default(0) @db.Decimal(10, 2)
-  status         String   @default("Pending") @db.VarChar(20)
-  trackingNumber String?  @db.VarChar(100)
+  id               Int                  @id @default(autoincrement())
+  orderCode        String               @unique(map: "orderCode") @db.VarChar(50)
+  orderDate        DateTime             @default(now())
+  recipientName    String               @db.VarChar(100)
+  phone            String               @db.VarChar(20)
+  address          String               @db.VarChar(255)
+  note             String?              @db.Text
+  shippingFee      Decimal              @default(0) @db.Decimal(10, 2)
+  totalAmount      Decimal              @default(0) @db.Decimal(10, 2)
+  status           String               @default("Pending") @db.VarChar(20)
+  trackingNumber   String?              @db.VarChar(100)
   trackingSyncedAt DateTime?
-  createdBy      Int?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  items          online_order_items[]
+  createdBy        Int?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  items            online_order_items[]
 
   @@index([status], map: "online_order_status_idx")
 }
 
 model online_order_items {
-  id            Int      @id @default(autoincrement())
+  id            Int           @id @default(autoincrement())
   orderId       Int
   packagingId   Int?
-  productName   String   @db.VarChar(255)
-  quantity      Int      @default(1)
-  price         Decimal  @default(0) @db.Decimal(10, 2)
-  unit          String?  @default("Cái") @db.VarChar(50)
+  productName   String        @db.VarChar(255)
+  quantity      Int           @default(1)
+  price         Decimal       @default(0) @db.Decimal(10, 2)
+  unit          String?       @default("Cái") @db.VarChar(50)
   online_orders online_orders @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "online_item_order_fk")
 
   @@index([orderId], map: "online_item_order_idx")
+}
+
+model technical_incidents {
+  id            Int                         @id @default(autoincrement())
+  code          String                      @unique(map: "code") @db.VarChar(100)
+  title         String                      @db.VarChar(255)
+  equipmentName String?                     @db.VarChar(255)
+  location      String?                     @db.VarChar(255)
+  category      String                      @default("REPAIR") @db.VarChar(30)
+  severity      String                      @default("MEDIUM") @db.VarChar(30)
+  status        String                      @default("OPEN") @db.VarChar(30)
+  occurredAt    DateTime
+  assigneeId    Int?
+  assigneeName  String?                     @db.VarChar(255)
+  cause         String?                     @db.Text
+  solution      String?                     @db.Text
+  cost          Decimal                     @default(0.00) @db.Decimal(18, 2)
+  note          String?                     @db.VarChar(500)
+  resolvedAt    DateTime?
+  createdBy     Int
+  createdAt     DateTime                    @default(now())
+  updatedAt     DateTime                    @default(now()) @updatedAt
+  deletedAt     DateTime?
+  version       Int                         @default(1)
+  assignee      employees?                  @relation("technical_incident_assignee", fields: [assigneeId], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "technical_incident_assignee_fk")
+  creator       users                       @relation("technical_incident_creator", fields: [createdBy], references: [id], onUpdate: Restrict, map: "technical_incident_creator_fk")
+  images        technical_incident_images[]
+  cost_entries  production_cost_entries[]   @relation("cost_entry_incident")
+
+  @@index([occurredAt, status], map: "technical_incident_time_status_idx")
+  @@index([status, severity], map: "technical_incident_status_severity_idx")
+  @@index([assigneeId], map: "technical_incident_assignee_idx")
+  @@index([createdBy], map: "technical_incident_creator_idx")
+}
+
+model technical_incident_images {
+  id         Int                 @id @default(autoincrement())
+  incidentId Int
+  fileName   String              @db.VarChar(255)
+  mimeType   String              @db.VarChar(100)
+  size       Int
+  dataUrl    String              @db.LongText
+  createdAt  DateTime            @default(now())
+  incident   technical_incidents @relation(fields: [incidentId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "technical_incident_image_fk")
+
+  @@index([incidentId], map: "technical_incident_image_incident_idx")
+}
+
+model cost_centers {
+  id                      Int                        @id @default(autoincrement())
+  code                    String                     @unique(map: "code") @db.VarChar(50)
+  name                    String                     @db.VarChar(255)
+  category                String                     @default("OTHER") @db.VarChar(40)
+  defaultAllocationMethod String                     @default("BY_ACTUAL_QTY") @db.VarChar(40)
+  description             String?                    @db.Text
+  isActive                Boolean                    @default(true)
+  createdAt               DateTime                   @default(now())
+  updatedAt               DateTime                   @default(now()) @updatedAt
+  entries                 production_cost_entries[]
+  sheetLines              product_cost_sheet_lines[]
+
+  @@index([category, isActive], map: "cost_center_category_active_idx")
+}
+
+model production_cost_entries {
+  id                Int                  @id @default(autoincrement())
+  code              String               @unique(map: "code") @db.VarChar(100)
+  costDate          DateTime             @db.Date
+  periodMonth       String?              @db.VarChar(7)
+  costCenterId      Int
+  warehouseId       Int?
+  productionOrderId Int?
+  assemblyOrderId   Int?
+  incidentId        Int?
+  costTier          String               @default("PACK") @db.VarChar(20)
+  amount            Decimal              @default(0.00) @db.Decimal(18, 2)
+  allocationMethod  String?              @db.VarChar(40)
+  note              String?              @db.VarChar(500)
+  status            String               @default("POSTED") @db.VarChar(30)
+  createdBy         Int
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @default(now()) @updatedAt
+  costCenter        cost_centers         @relation(fields: [costCenterId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "cost_entry_center_fk")
+  warehouse         warehouses?          @relation("cost_entry_warehouse", fields: [warehouseId], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "cost_entry_warehouse_fk")
+  productionOrder   productionorders?    @relation("cost_entry_production_order", fields: [productionOrderId], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "cost_entry_production_order_fk")
+  assemblyOrder     assembly_orders?     @relation("cost_entry_assembly_order", fields: [assemblyOrderId], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "cost_entry_assembly_order_fk")
+  incident          technical_incidents? @relation("cost_entry_incident", fields: [incidentId], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "cost_entry_incident_fk")
+  creator           users                @relation("cost_entry_creator", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "cost_entry_creator_fk")
+
+  @@index([costDate, status], map: "cost_entry_date_status_idx")
+  @@index([periodMonth], map: "cost_entry_period_idx")
+  @@index([costCenterId], map: "cost_entry_center_idx")
+  @@index([warehouseId], map: "cost_entry_warehouse_idx")
+  @@index([productionOrderId], map: "cost_entry_order_idx")
+  @@index([assemblyOrderId], map: "cost_entry_assembly_order_idx")
+  @@index([costTier, costDate], map: "cost_entry_tier_date_idx")
+  @@index([incidentId], map: "cost_entry_incident_idx")
+  @@index([createdBy], map: "cost_entry_creator_idx")
+}
+
+model product_cost_sheets {
+  id          Int                        @id @default(autoincrement())
+  code        String                     @unique(map: "code") @db.VarChar(100)
+  fromDate    DateTime                   @db.Date
+  toDate      DateTime                   @db.Date
+  warehouseId Int?
+  status      String                     @default("DRAFT") @db.VarChar(30)
+  note        String?                    @db.VarChar(500)
+  createdBy   Int
+  createdAt   DateTime                   @default(now())
+  postedAt    DateTime?
+  warehouse   warehouses?                @relation("cost_sheet_warehouse", fields: [warehouseId], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "cost_sheet_warehouse_fk")
+  creator     users                      @relation("cost_sheet_creator", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "cost_sheet_creator_fk")
+  lines       product_cost_sheet_lines[]
+
+  @@index([fromDate, toDate, status], map: "cost_sheet_period_status_idx")
+  @@index([warehouseId], map: "cost_sheet_warehouse_idx")
+  @@index([createdBy], map: "cost_sheet_creator_idx")
+}
+
+model product_cost_sheet_lines {
+  id              Int                 @id @default(autoincrement())
+  sheetId         Int
+  packagingId     Int
+  costCenterId    Int?
+  costComponent   String              @db.VarChar(40)
+  tier            String              @default("PACK") @db.VarChar(20)
+  actualQty       Decimal             @default(0.0000) @db.Decimal(18, 4)
+  allocatedAmount Decimal             @default(0.00) @db.Decimal(18, 2)
+  unitCost        Decimal             @default(0.0000) @db.Decimal(18, 4)
+  sheet           product_cost_sheets @relation(fields: [sheetId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "cost_sheet_line_sheet_fk")
+  packaging       productpackagings   @relation(fields: [packagingId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "cost_sheet_line_packaging_fk")
+  costCenter      cost_centers?       @relation(fields: [costCenterId], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "cost_sheet_line_center_fk")
+
+  @@index([sheetId], map: "cost_sheet_line_sheet_idx")
+  @@index([packagingId], map: "cost_sheet_line_packaging_idx")
+  @@index([costCenterId], map: "cost_sheet_line_center_idx")
 }

@@ -31,6 +31,7 @@ import { useDocumentShortcuts } from "../hooks/useDocumentShortcuts";
 import { DateInput } from "../components/DateRangeCalendar";
 import TableActions from "../components/TableActions";
 import DetailOptionsMenu from "../components/DetailOptionsMenu";
+import { EntityHistoryButton } from "../components/EntityHistoryButton";
 import ListToolbar from "../components/ListToolbar";
 import type { FilterField, FilterValues } from "../components/FilterDrawer";
 import { exportExcelFile } from "../lib/excelExport";
@@ -994,9 +995,16 @@ export default function Stocktake() {
 							</button>
 						</div>
 						<div className="erp-modal-body space-y-4">
-							<span className={`erp-badge ${statusMeta[selected.status].css}`}>
-								{statusMeta[selected.status].label}
-							</span>
+							<div className="flex flex-wrap items-center gap-2">
+								<span className={`erp-badge ${statusMeta[selected.status].css}`}>
+									{statusMeta[selected.status].label}
+								</span>
+								<EntityHistoryButton
+									entityType="STOCKTAKE"
+									entityId={selected.id}
+									entityCode={selected.code}
+								/>
+							</div>
 							<table className="erp-table">
 								<thead>
 									<tr>
@@ -1175,9 +1183,11 @@ export default function Stocktake() {
 						</div>
 					</div>
 					<div className="flex-1 overflow-auto bg-gray-200/50 p-8">
-						<div className="sales-print-view mx-auto mb-8 w-[210mm] max-w-full bg-white shadow-2xl">
+						<div
+							ref={printRef}
+							className="sales-print-view mx-auto mb-8 w-[210mm] max-w-full bg-white shadow-2xl"
+						>
 							<StocktakeDocument
-								ref={printRef}
 								stocktake={printTarget}
 								company={companyQuery.data}
 							/>

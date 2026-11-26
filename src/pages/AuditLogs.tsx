@@ -18,10 +18,21 @@ import type { FilterField, FilterValues } from "../components/FilterDrawer";
 import { exportExcelFile } from "../lib/excelExport";
 import { useMonthFilter } from "../hooks/useMonthFilter";
 
+interface AuditChange {
+	field: string;
+	label: string;
+	oldValue: unknown;
+	newValue: unknown;
+}
+
 interface AuditLog {
 	id: number;
 	action: string;
 	details: string | null;
+	entityType?: string | null;
+	entityId?: string | null;
+	entityCode?: string | null;
+	changes?: AuditChange[];
 	userId: number | null;
 	userName: string | null;
 	username?: string | null;
@@ -30,6 +41,35 @@ interface AuditLog {
 	userAgent?: string | null;
 	createdAt: string;
 }
+
+const ENTITY_LABELS: Record<string, string> = {
+	SALES_ORDER: "Đơn bán hàng",
+	PURCHASE_DOCUMENT: "Phiếu mua hàng",
+	DEBT_RECEIPT: "Phiếu thu",
+	DEBT_VOUCHER: "Phiếu chi",
+	INVENTORY_DOCUMENT: "Phiếu kho",
+	STOCKTAKE: "Phiếu kiểm kê",
+	WAREHOUSE_TRANSFER: "Chuyển kho",
+	SALES_RETURN: "Trả hàng bán",
+	OPENING_INVENTORY: "Tồn đầu kỳ",
+	PRODUCTION_ORDER: "Lệnh sản xuất",
+	ASSEMBLY_ORDER: "Lệnh lắp ráp",
+	DISASSEMBLY_ORDER: "Lệnh tháo dỡ",
+	ASSEMBLY_BOM: "BOM lắp ráp",
+	PROMOTION: "Khuyến mãi",
+	TECHNICAL_INCIDENT: "Sự cố kỹ thuật",
+	COST_CENTER: "Đối tượng chi phí",
+	COST_ENTRY: "Chứng từ chi phí sản xuất",
+	COST_SHEET: "Bảng tính giá thành",
+	ROLE: "Vai trò",
+	USER: "Tài khoản",
+};
+
+const displayValue = (value: unknown) => {
+	if (value === null || value === undefined || value === "") return "—";
+	if (typeof value === "boolean") return value ? "Có" : "Không";
+	return String(value);
+};
 
 interface UserRow {
 	id: number;
@@ -99,6 +139,7 @@ const AuditLogs = () => {
 	const [filters, setFilters] = useState<FilterValues>({});
 	const { month, setMonth, range } = useMonthFilter();
 	const actionFilter = filters.action || "";
+	const entityFilter = filters.entityType || "";
 	const userFilter = filters.userId || "";
 	const fromDate = filters.dateFrom || range.dateFrom;
 	const toDate = filters.dateTo || range.dateTo;
@@ -113,11 +154,11 @@ const AuditLogs = () => {
 
 	useEffect(() => {
 		setPage(1);
-	}, [debouncedSearch, actionFilter, userFilter, fromDate, toDate, limit]);
+	}, [debouncedSearch, actionFilter, entityFilter, userFilter, fromDate, toDate, limit]);
 
 	const filtersQuery = useQuery({
 		queryKey: ["audit-logs-filters"],
-		queryFn: () => apiV1<{ actions: string[] }>("/api/audit-logs/filters"),
+		queryFn: () => apiV1<{ actions: string[]; entityTypes: string[] }>("/api/v1/audit-logs/filters"),
 		staleTime: 5 * 60_000,
 	});
 
@@ -131,15 +172,16 @@ const AuditLogs = () => {
 		const params = new URLSearchParams({ page: String(page), limit: String(limit) });
 		if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
 		if (actionFilter) params.set("action", actionFilter);
+		if (entityFilter) params.set("entityType", entityFilter);
 		if (userFilter) params.set("userId", userFilter);
 		if (fromDate) params.set("from", fromDate);
 		if (toDate) params.set("to", toDate);
 		return params.toString();
-	}, [page, limit, debouncedSearch, actionFilter, userFilter, fromDate, toDate]);
+	}, [page, limit, debouncedSearch, actionFilter, entityFilter, userFilter, fromDate, toDate]);
 
 	const logsQuery = useQuery({
 		queryKey: ["audit-logs", queryString],
-		queryFn: () => apiV1<AuditLog[]>(`/api/audit-logs?${queryString}`),
+		queryFn: () => apiV1<AuditLog[]>(`/api/v1/audit-logs?${queryString}`),
 		placeholderData: keepPreviousData,
 	});
 
@@ -158,6 +200,15 @@ const AuditLogs = () => {
 			options: (filtersQuery.data?.data?.actions || []).map(name => ({
 				value: name,
 				label: name,
+			})),
+		},
+		{
+			type: "select",
+			key: "entityType",
+			label: "Đối tượng",
+			options: (filtersQuery.data?.data?.entityTypes || []).map(code => ({
+				value: code,
+				label: ENTITY_LABELS[code] || code,
 			})),
 		},
 		{
@@ -190,9 +241,27 @@ const AuditLogs = () => {
 				},
 				{ header: "Hành động", value: (log: AuditLog) => log.action },
 				{
+					header: "Đối tượng",
+					value: (log: AuditLog) =>
+						log.entityCode
+							? `${ENTITY_LABELS[log.entityType || ""] || log.entityType || ""} ${log.entityCode}`.trim()
+							: log.entityType
+								? ENTITY_LABELS[log.entityType] || log.entityType
+								: "",
+					width: 28,
+				},
+				{
 					header: "Chi tiết",
 					value: (log: AuditLog) => log.details || "",
 					width: 48,
+				},
+				{
+					header: "Thay đổi",
+					value: (log: AuditLog) =>
+						(log.changes || [])
+							.map(change => `${change.label}: ${displayValue(change.oldValue)} → ${displayValue(change.newValue)}`)
+							.join("; "),
+					width: 60,
 				},
 				{
 					header: "Nhân viên",
@@ -255,6 +324,7 @@ const AuditLogs = () => {
 								{[
 									"Thời gian",
 									"Hành động",
+									"Đối tượng",
 									"Chi tiết",
 									"Nhân viên",
 									"IP",
@@ -274,7 +344,7 @@ const AuditLogs = () => {
 							{logsQuery.isLoading ? (
 								<tr>
 									<td
-										colSpan={7}
+										colSpan={8}
 										className="animate-pulse px-6 py-12 text-center text-sm font-bold uppercase tracking-widest text-slate-400"
 									>
 										Đang tải dữ liệu...
@@ -283,7 +353,7 @@ const AuditLogs = () => {
 							) : logsQuery.isError ? (
 								<tr>
 									<td
-										colSpan={7}
+										colSpan={8}
 										className="px-6 py-12 text-center text-sm font-bold text-red-500"
 									>
 										Không tải được nhật ký:{" "}
@@ -313,9 +383,28 @@ const AuditLogs = () => {
 												</span>
 											</td>
 											<td className="px-4 py-3">
+												{log.entityType || log.entityCode ? (
+													<div className="flex flex-col">
+														<span className="text-[11px] font-black text-slate-700">
+															{ENTITY_LABELS[log.entityType || ""] || log.entityType}
+														</span>
+														<span className="text-[10px] font-bold text-slate-400">
+															{log.entityCode || log.entityId || "—"}
+														</span>
+													</div>
+												) : (
+													<span className="text-xs font-medium text-slate-400">—</span>
+												)}
+											</td>
+											<td className="px-4 py-3">
 												<p className="max-w-md truncate text-xs font-medium text-slate-600">
 													{log.details || "—"}
 												</p>
+												{log.changes && log.changes.length > 0 && (
+													<span className="mt-1 inline-flex items-center rounded-full bg-[#e6f7ef] px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-[#05a660]">
+														{log.changes.length} trường thay đổi
+													</span>
+												)}
 											</td>
 											<td className="px-4 py-3">
 												<div className="flex items-center gap-2">
@@ -351,7 +440,7 @@ const AuditLogs = () => {
 								})
 							) : (
 								<tr>
-									<td colSpan={7} className="px-6 py-24 text-center">
+									<td colSpan={8} className="px-6 py-24 text-center">
 										<History
 											className="mx-auto mb-4 text-slate-200"
 											size={48}
@@ -409,7 +498,7 @@ const AuditLogs = () => {
 					onClick={() => setDetail(null)}
 				>
 					<div
-						className="erp-modal max-w-2xl"
+						className="erp-modal max-w-4xl"
 						onClick={e => e.stopPropagation()}
 					>
 						<div className="erp-modal-header">
@@ -432,6 +521,54 @@ const AuditLogs = () => {
 									{formatDateTime(detail.createdAt).time}
 								</span>
 							</div>
+							{(detail.entityType || detail.entityCode) && (
+								<div className="rounded-[14px] border border-[#e9edf7] bg-[#f9fbff] p-4">
+									<p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
+										Đối tượng bị thay đổi
+									</p>
+									<p className="text-sm font-bold text-slate-800">
+										{ENTITY_LABELS[detail.entityType || ""] || detail.entityType || "—"}
+										{detail.entityCode ? ` · ${detail.entityCode}` : ""}
+									</p>
+									<p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+										ID: {detail.entityId || "—"}
+									</p>
+								</div>
+							)}
+							{detail.changes && detail.changes.length > 0 && (
+								<div className="rounded-[14px] border border-[#e9edf7] p-4">
+									<p className="mb-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
+										Chi tiết thay đổi theo trường
+									</p>
+									<div className="overflow-x-auto">
+										<table className="w-full text-left text-xs">
+											<thead>
+												<tr className="border-b border-[#e9edf7]">
+													<th className="py-2 pr-3 font-black uppercase tracking-wider text-slate-400">Trường</th>
+													<th className="py-2 pr-3 font-black uppercase tracking-wider text-slate-400">Trước</th>
+													<th className="py-2 font-black uppercase tracking-wider text-slate-400">Sau</th>
+												</tr>
+											</thead>
+											<tbody>
+												{detail.changes.map((change, index) => (
+													<tr key={`${change.field}-${index}`} className="border-b border-[#f1f4fb] last:border-0">
+														<td className="py-2 pr-3 align-top">
+															<span className="block font-bold text-slate-700">{change.label}</span>
+															<span className="block font-mono text-[10px] text-slate-400">{change.field}</span>
+														</td>
+														<td className="py-2 pr-3 align-top font-semibold text-[#d14343]">
+															{displayValue(change.oldValue)}
+														</td>
+														<td className="py-2 align-top font-semibold text-[#05a660]">
+															{displayValue(change.newValue)}
+														</td>
+													</tr>
+												))}
+											</tbody>
+										</table>
+									</div>
+								</div>
+							)}
 							<div className="rounded-[14px] border border-[#e9edf7] bg-[#f9fbff] p-4">
 								<p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
 									Nội dung / chi tiết

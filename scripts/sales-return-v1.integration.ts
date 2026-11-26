@@ -141,7 +141,7 @@ async function main() {
     ok(response.status === 200 && response.body.data.status === "POSTED", "post return");
     const cancelVersion = response.body.data.version as number;
     const balances = await prisma.productwarehouses.findMany({ where: { warehouseId, packagingId: { in: [salePackagingId, giftPackagingId] } } });
-    ok(balances.find(row => row.packagingId === salePackagingId)?.stock_quantity === 92 && balances.find(row => row.packagingId === giftPackagingId)?.stock_quantity === 96, "restore SALE and PROMOTION stock");
+    ok(Number(balances.find(row => row.packagingId === salePackagingId)?.stock_quantity) === 92 && Number(balances.find(row => row.packagingId === giftPackagingId)?.stock_quantity) === 96, "restore SALE and PROMOTION stock");
     const inboundLedger = await prisma.inventory_ledger.findMany({ where: { sourceType: "SALES_RETURN", sourceId: postedReturnId } });
     ok(inboundLedger.length === 2 && inboundLedger.every(row => row.direction === "IN") && near(inboundLedger.reduce((sum, row) => sum + Number(row.totalValue), 0), 120), "inventory receipt ledger snapshots");
     let outstandingRows = await prisma.$queryRawUnsafe<any[]>("SELECT SUM(amount) outstanding FROM receivable_transactions WHERE sourceId=? AND customerId=?", sale.id, customerId);
@@ -184,7 +184,7 @@ async function main() {
     response = await request(`/api/v1/sales-returns/${postedReturnId}/cancel`, "POST", { version: cancelVersion, reason: "Integration reversal" });
     ok(response.status === 200 && response.body.data.status === "CANCELLED", "cancel return");
     const finalBalances = await prisma.productwarehouses.findMany({ where: { warehouseId, packagingId: { in: [salePackagingId, giftPackagingId] } } });
-    ok(finalBalances.find(row => row.packagingId === salePackagingId)?.stock_quantity === 90 && finalBalances.find(row => row.packagingId === giftPackagingId)?.stock_quantity === 95, "return cancellation restores stock balances");
+    ok(Number(finalBalances.find(row => row.packagingId === salePackagingId)?.stock_quantity) === 90 && Number(finalBalances.find(row => row.packagingId === giftPackagingId)?.stock_quantity) === 95, "return cancellation restores stock balances");
     const outboundLedger = await prisma.inventory_ledger.findMany({ where: { sourceType: "SALES_RETURN_CANCEL", sourceId: postedReturnId } });
     ok(outboundLedger.length === 2 && outboundLedger.every(row => row.direction === "OUT" && row.reversalOfId !== null), "inventory reversal links originals");
     const credit = await prisma.receivable_transactions.findFirstOrThrow({ where: { sourceType: "SALES_RETURN", sourceId: sale.id, sourceCode: response.body.data.code } });

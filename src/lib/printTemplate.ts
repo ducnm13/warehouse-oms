@@ -603,10 +603,10 @@ export const expandDataRows = (
 	}
 	for (const m of bottom) worksheet.unMergeCells(m.key);
 	const styleSource = worksheet.getRow(dataStartRow);
-	worksheet.insertRows(
+	worksheet.spliceRows(
 		dataStartRow + 1,
-		Array.from({ length: extra }, () => []),
-		"h",
+		0,
+		...Array.from({ length: extra }, () => []),
 	);
 	for (let i = 0; i < extra; i++) {
 		const target = worksheet.getRow(dataStartRow + 1 + i);

@@ -225,7 +225,7 @@ async function startServer() {
       sku VARCHAR(100) UNIQUE NOT NULL,
       name VARCHAR(255) NOT NULL,
       category VARCHAR(50) DEFAULT 'PRODUCT', -- 'PRODUCT', 'MATERIAL', 'PACKAGING', 'SERVICE'
-      netWeight DOUBLE DEFAULT 0,
+      netWeight DECIMAL(18,4) DEFAULT 0.0000,
       shelfLifeMonths INT DEFAULT 24,
       isActive INT DEFAULT 1, -- 1: active, 0: inactive
       canManageInventory INT DEFAULT 1, -- 1: có quản lý tồn kho, 0: không
@@ -257,7 +257,7 @@ async function startServer() {
       id INT AUTO_INCREMENT PRIMARY KEY,
       fromUnitId INT NOT NULL,
       toUnitId INT NOT NULL,
-      ratio DOUBLE NOT NULL,
+      ratio DECIMAL(18,4) NOT NULL,
       FOREIGN KEY (fromUnitId) REFERENCES units(id) ON DELETE CASCADE,
       FOREIGN KEY (toUnitId) REFERENCES units(id) ON DELETE CASCADE,
       UNIQUE KEY (fromUnitId, toUnitId)
@@ -283,10 +283,10 @@ async function startServer() {
       sku VARCHAR(100) UNIQUE,
       unitId INT,
       packCount INT DEFAULT 1, -- Số lượng trong 1 đơn vị đóng gói
-      defaultRatio DOUBLE DEFAULT 1, -- Tỷ lệ quy đổi
+      defaultRatio DECIMAL(18,4) DEFAULT 1.0000, -- Tỷ lệ quy đổi
       initial_stock DOUBLE DEFAULT 0, -- Tồn đầu kỳ
       min_stock DOUBLE DEFAULT 0, -- Tồn tối thiểu
-      netWeight DOUBLE DEFAULT 0,
+      netWeight DECIMAL(18,4) DEFAULT 0.0000,
       shelfLifeMonths INT DEFAULT 24,
       barcode VARCHAR(100),
       warehouseId INT, -- Kho ngầm định
@@ -303,7 +303,7 @@ async function startServer() {
       id INT AUTO_INCREMENT PRIMARY KEY,
       packagingId INT NOT NULL,
       priceType VARCHAR(20) NOT NULL, -- 'SALE_1', 'SALE_2', 'SALE_3', 'COST'
-      price DOUBLE NOT NULL,
+      price DECIMAL(18,4) NOT NULL,
       currency VARCHAR(10) DEFAULT 'VND',
       validFrom TEXT,
       validTo TEXT,
@@ -361,9 +361,9 @@ async function startServer() {
       id INT AUTO_INCREMENT PRIMARY KEY,
       transactionId INT NOT NULL,
       packagingId INT NOT NULL,
-      quantity DOUBLE NOT NULL,
-      unitCost DOUBLE DEFAULT 0,
-      totalValue DOUBLE DEFAULT 0,
+      quantity DECIMAL(18,4) NOT NULL,
+      unitCost DECIMAL(18,4) DEFAULT 0.0000,
+      totalValue DECIMAL(18,2) DEFAULT 0.00,
       note TEXT,
       batchNumber VARCHAR(100),
       expiryDate TEXT,
@@ -377,9 +377,9 @@ async function startServer() {
       id INT AUTO_INCREMENT PRIMARY KEY,
       packagingId INT NOT NULL,
       warehouseId INT NOT NULL,
-      quantity DOUBLE DEFAULT 0,
-      unitCost DOUBLE DEFAULT 0,
-      totalValue DOUBLE DEFAULT 0,
+      quantity DECIMAL(18,4) DEFAULT 0.0000,
+      unitCost DECIMAL(18,4) DEFAULT 0.0000,
+      totalValue DECIMAL(18,2) DEFAULT 0.00,
       lastTransactionId INT,
       updatedAt TEXT,
       FOREIGN KEY (packagingId) REFERENCES productpackagings(id) ON DELETE CASCADE,
@@ -391,12 +391,12 @@ async function startServer() {
       id INT AUTO_INCREMENT PRIMARY KEY,
       code VARCHAR(255) UNIQUE,
       productId INT,
-      total_powder_kg DOUBLE DEFAULT 0,
+      total_powder_kg DECIMAL(18,4) DEFAULT 0.0000,
       total_sachets INT DEFAULT 0,
       mfg_date TEXT,
       exp_date TEXT,
       status VARCHAR(50) DEFAULT 'DRAFT', -- 'DRAFT', 'COMPLETED'
-      loss_percent DOUBLE DEFAULT 0,
+      loss_percent DECIMAL(5,2) DEFAULT 0.00,
       createdAt TEXT,
       updatedAt TEXT,
       FOREIGN KEY (productId) REFERENCES products (id)
@@ -406,9 +406,9 @@ async function startServer() {
       id INT AUTO_INCREMENT PRIMARY KEY,
       orderId INT,
       packagingId INT,
-      quantity INT DEFAULT 0, -- Plannned
-      actual_quantity INT DEFAULT 0, -- Actual
-      allocation_percent DOUBLE DEFAULT 0,
+      quantity DECIMAL(18,4) DEFAULT 0.0000, -- Plannned
+      actual_quantity DECIMAL(18,4) DEFAULT 0.0000, -- Actual
+      allocation_percent DECIMAL(5,2) DEFAULT 0.00,
       createdAt TEXT,
       updatedAt TEXT,
       FOREIGN KEY (orderId) REFERENCES productionorders (id) ON DELETE CASCADE,
@@ -459,7 +459,7 @@ async function startServer() {
     CREATE TABLE IF NOT EXISTS productwarehouses (
       packagingId INT,
       warehouseId INT,
-      stock_quantity INT DEFAULT 0,
+      stock_quantity DECIMAL(18,4) DEFAULT 0.0000,
       updatedAt TEXT,
       PRIMARY KEY (packagingId, warehouseId),
       FOREIGN KEY (packagingId) REFERENCES productpackagings (id) ON DELETE CASCADE,
@@ -481,9 +481,9 @@ async function startServer() {
       id INT AUTO_INCREMENT PRIMARY KEY,
       stocktakeId INT,
       packagingId INT,
-      expected_qty DOUBLE DEFAULT 0, -- Tồn sổ sách
-      actual_qty DOUBLE DEFAULT 0,  -- Tồn thực tế
-      difference DOUBLE DEFAULT 0,  -- Chênh lệch
+      expected_qty DECIMAL(18,4) DEFAULT 0.0000, -- Tồn sổ sách
+      actual_qty DECIMAL(18,4) DEFAULT 0.0000,  -- Tồn thực tế
+      difference DECIMAL(18,4) DEFAULT 0.0000,  -- Chênh lệch
       FOREIGN KEY (stocktakeId) REFERENCES stocktakes (id) ON DELETE CASCADE,
       FOREIGN KEY (packagingId) REFERENCES productpackagings (id)
     );
@@ -498,17 +498,17 @@ async function startServer() {
       status VARCHAR(30) DEFAULT 'DRAFT',
       note TEXT,
       rejectionReason TEXT,
-      subtotal DOUBLE DEFAULT 0,
-      discountAmount DOUBLE DEFAULT 0,
-      taxAmount DOUBLE DEFAULT 0,
-      totalAmount DOUBLE DEFAULT 0,
+      subtotal DECIMAL(18,2) DEFAULT 0.00,
+      discountAmount DECIMAL(18,2) DEFAULT 0.00,
+      taxAmount DECIMAL(18,2) DEFAULT 0.00,
+      totalAmount DECIMAL(18,2) DEFAULT 0.00,
       createdBy INT NOT NULL,
       approvedBy INT,
       approvedAt TEXT,
       fulfilledAt TEXT,
       inventoryTransactionId INT,
       dueDate TEXT,
-      paidAmount DOUBLE DEFAULT 0,
+      paidAmount DECIMAL(18,2) DEFAULT 0.00,
       paymentStatus VARCHAR(30) DEFAULT 'UNPAID',
       createdAt TEXT,
       updatedAt TEXT,
@@ -522,10 +522,10 @@ async function startServer() {
       id INT AUTO_INCREMENT PRIMARY KEY,
       orderId INT NOT NULL,
       packagingId INT NOT NULL,
-      quantity DOUBLE NOT NULL,
-      unitPrice DOUBLE DEFAULT 0,
-      discountRate DOUBLE DEFAULT 0,
-      lineTotal DOUBLE DEFAULT 0,
+      quantity DECIMAL(18,4) NOT NULL,
+      unitPrice DECIMAL(18,4) DEFAULT 0.0000,
+      discountRate DECIMAL(5,2) DEFAULT 0.00,
+      lineTotal DECIMAL(18,2) DEFAULT 0.00,
       note TEXT,
       FOREIGN KEY (orderId) REFERENCES sales_orders (id) ON DELETE CASCADE,
       FOREIGN KEY (packagingId) REFERENCES productpackagings (id)
@@ -552,7 +552,7 @@ async function startServer() {
       id INT AUTO_INCREMENT PRIMARY KEY,
       transferId INT NOT NULL,
       packagingId INT NOT NULL,
-      quantity DOUBLE NOT NULL,
+      quantity DECIMAL(18,4) NOT NULL,
       note TEXT,
       FOREIGN KEY (transferId) REFERENCES warehouse_transfers (id) ON DELETE CASCADE,
       FOREIGN KEY (packagingId) REFERENCES productpackagings (id)
@@ -586,12 +586,12 @@ async function startServer() {
       deliveryPerson TEXT,
       buyerName TEXT,
       description TEXT,
-      goodsAmount DOUBLE DEFAULT 0,
-      taxAmount DOUBLE DEFAULT 0,
-      purchaseCost DOUBLE DEFAULT 0,
-      totalAmount DOUBLE DEFAULT 0,
-      inventoryValue DOUBLE DEFAULT 0,
-      paidAmount DOUBLE DEFAULT 0,
+      goodsAmount DECIMAL(18,2) DEFAULT 0.00,
+      taxAmount DECIMAL(18,2) DEFAULT 0.00,
+      purchaseCost DECIMAL(18,2) DEFAULT 0.00,
+      totalAmount DECIMAL(18,2) DEFAULT 0.00,
+      inventoryValue DECIMAL(18,2) DEFAULT 0.00,
+      paidAmount DECIMAL(18,2) DEFAULT 0.00,
       inventoryTransactionId INT,
       createdBy INT NOT NULL,
       createdAt TEXT,
@@ -605,11 +605,11 @@ async function startServer() {
       documentId INT NOT NULL,
       packagingId INT NOT NULL,
       warehouseId INT,
-      quantity DOUBLE NOT NULL,
-      unitPrice DOUBLE DEFAULT 0,
-      taxRate DOUBLE DEFAULT 0,
-      lineAmount DOUBLE DEFAULT 0,
-      taxAmount DOUBLE DEFAULT 0,
+      quantity DECIMAL(18,4) NOT NULL,
+      unitPrice DECIMAL(18,4) DEFAULT 0.0000,
+      taxRate DECIMAL(5,2) DEFAULT 0.00,
+      lineAmount DECIMAL(18,2) DEFAULT 0.00,
+      taxAmount DECIMAL(18,2) DEFAULT 0.00,
       note TEXT,
       FOREIGN KEY (documentId) REFERENCES purchase_documents (id) ON DELETE CASCADE,
       FOREIGN KEY (packagingId) REFERENCES productpackagings (id),
@@ -621,7 +621,7 @@ async function startServer() {
       supplierId INT NOT NULL,
       purchaseDocumentId INT NOT NULL,
       paymentDate TEXT NOT NULL,
-      amount DOUBLE NOT NULL,
+      amount DECIMAL(18,2) NOT NULL,
       method VARCHAR(30),
       note TEXT,
       createdBy INT NOT NULL,
@@ -646,7 +646,7 @@ async function startServer() {
       customerId INT NOT NULL,
       salesOrderId INT NOT NULL,
       paymentDate TEXT NOT NULL,
-      amount DOUBLE NOT NULL,
+      amount DECIMAL(18,2) NOT NULL,
       method VARCHAR(30),
       note TEXT,
       createdBy INT NOT NULL,
@@ -669,7 +669,7 @@ async function startServer() {
 	} catch (e) {}
 	try {
 		await db.run(
-			"ALTER TABLE productpackagings ADD COLUMN netWeight DOUBLE DEFAULT 0",
+			"ALTER TABLE productpackagings ADD COLUMN netWeight DECIMAL(18,4) DEFAULT 0.0000",
 		);
 	} catch (e) {}
 	try {
@@ -679,7 +679,7 @@ async function startServer() {
 	} catch (e) {}
 	try {
 		await db.run(
-			"ALTER TABLE productiondetails ADD COLUMN actual_quantity INT DEFAULT 0",
+			"ALTER TABLE productiondetails ADD COLUMN actual_quantity DECIMAL(18,4) DEFAULT 0.0000",
 		);
 	} catch (e) {}
 	try {
@@ -914,7 +914,7 @@ async function startServer() {
         id INT AUTO_INCREMENT PRIMARY KEY,
         productPackagingId INT,
         materialPackagingId INT,
-        quantity DOUBLE DEFAULT 0,
+        quantity DECIMAL(18,4) DEFAULT 0.0000,
         unit VARCHAR(50) DEFAULT 'kg',
         FOREIGN KEY (productPackagingId) REFERENCES productpackagings (id) ON DELETE CASCADE,
         FOREIGN KEY (materialPackagingId) REFERENCES productpackagings (id) ON DELETE CASCADE
@@ -931,42 +931,42 @@ async function startServer() {
 
 		try {
 			await db.exec(
-				"ALTER TABLE inventorytransactiondetails MODIFY COLUMN quantity DOUBLE NOT NULL",
+				"ALTER TABLE inventorytransactiondetails MODIFY COLUMN quantity DECIMAL(18,4) NOT NULL",
 			);
 		} catch (e) {}
 		try {
 			await db.exec(
-				"ALTER TABLE productwarehouses MODIFY COLUMN stock_quantity DOUBLE DEFAULT 0",
+				"ALTER TABLE productwarehouses MODIFY COLUMN stock_quantity DECIMAL(18,4) DEFAULT 0.0000",
 			);
 		} catch (e) {}
 		try {
 			await db.exec(
-				"ALTER TABLE productiondetails MODIFY COLUMN quantity DOUBLE DEFAULT 0",
+				"ALTER TABLE productiondetails MODIFY COLUMN quantity DECIMAL(18,4) DEFAULT 0.0000",
 			);
 		} catch (e) {}
 		try {
 			await db.exec(
-				"ALTER TABLE productiondetails MODIFY COLUMN actual_quantity DOUBLE DEFAULT 0",
+				"ALTER TABLE productiondetails MODIFY COLUMN actual_quantity DECIMAL(18,4) DEFAULT 0.0000",
 			);
 		} catch (e) {}
 		try {
 			await db.exec(
-				"ALTER TABLE inventorytransactiondetails MODIFY COLUMN quantity DOUBLE NOT NULL",
+				"ALTER TABLE inventorytransactiondetails MODIFY COLUMN quantity DECIMAL(18,4) NOT NULL",
 			);
 		} catch (e) {}
 		try {
 			await db.exec(
-				"ALTER TABLE productwarehouses MODIFY COLUMN stock_quantity DOUBLE DEFAULT 0",
+				"ALTER TABLE productwarehouses MODIFY COLUMN stock_quantity DECIMAL(18,4) DEFAULT 0.0000",
 			);
 		} catch (e) {}
 		try {
 			await db.exec(
-				"ALTER TABLE productiondetails MODIFY COLUMN quantity DOUBLE DEFAULT 0",
+				"ALTER TABLE productiondetails MODIFY COLUMN quantity DECIMAL(18,4) DEFAULT 0.0000",
 			);
 		} catch (e) {}
 		try {
 			await db.exec(
-				"ALTER TABLE productiondetails MODIFY COLUMN actual_quantity DOUBLE DEFAULT 0",
+				"ALTER TABLE productiondetails MODIFY COLUMN actual_quantity DECIMAL(18,4) DEFAULT 0.0000",
 			);
 		} catch (e) {}
 	} catch (e) {
@@ -1041,7 +1041,7 @@ async function startServer() {
 	}
 	if (!salesOrderColumns.find((col: any) => col.Field === "paidAmount")) {
 		await db.exec(
-			"ALTER TABLE sales_orders ADD COLUMN paidAmount DOUBLE DEFAULT 0",
+			"ALTER TABLE sales_orders ADD COLUMN paidAmount DECIMAL(18,2) DEFAULT 0.00",
 		);
 	}
 	if (!salesOrderColumns.find((col: any) => col.Field === "paymentStatus")) {
@@ -2466,7 +2466,7 @@ async function startServer() {
 			const now = new Date().toISOString();
 
 			for (const d of details) {
-				const stockAdjustment = tx.type === "IMPORT" ? -d.quantity : d.quantity;
+				const stockAdjustment = tx.type === "IMPORT" ? -Number(d.quantity) : Number(d.quantity);
 
 				// Cập nhật câu lệnh cho MySQL
 				await db.run(
@@ -2569,7 +2569,7 @@ async function startServer() {
 					[txId, d.packagingId, d.quantity, d.note || "", now, now],
 				);
 
-				const stockChange = type === "IMPORT" ? d.quantity : -d.quantity;
+				const stockChange = type === "IMPORT" ? Number(d.quantity) : -Number(d.quantity);
 				// Cập nhật câu lệnh cho MySQL
 				await db.run(
 					`INSERT INTO productwarehouses (packagingId, warehouseId, stock_quantity, updatedAt)
@@ -2630,14 +2630,14 @@ async function startServer() {
 
 			// Hoàn trả số lượng cũ (Nếu cũ là IMPORT thì trừ đi, EXPORT thì cộng lại)
 			for (const d of oldDetails) {
-				const revertStock = oldTx.type === "IMPORT" ? -d.quantity : d.quantity;
+				const revertStock = oldTx.type === "IMPORT" ? -Number(d.quantity) : Number(d.quantity);
 				const key = `${oldTx.warehouseId}_${d.packagingId}`;
 				stockChanges.set(key, (stockChanges.get(key) || 0) + revertStock);
 			}
 
 			// Áp dụng số lượng mới (Nếu mới là IMPORT thì cộng vào, EXPORT thì trừ đi)
 			for (const d of details) {
-				const applyStock = type === "IMPORT" ? d.quantity : -d.quantity;
+				const applyStock = type === "IMPORT" ? Number(d.quantity) : -Number(d.quantity);
 				const key = `${warehouseId}_${d.packagingId}`;
 				stockChanges.set(key, (stockChanges.get(key) || 0) + applyStock);
 			}
@@ -2650,7 +2650,7 @@ async function startServer() {
 						"SELECT stock_quantity FROM productwarehouses WHERE warehouseId = ? AND packagingId = ?",
 						[wId, pId],
 					);
-					const currentStock = currentStockRow?.stock_quantity || 0;
+					const currentStock = Number(currentStockRow?.stock_quantity || 0);
 
 					if (currentStock + netChange < 0) {
 						return res.status(400).json({
@@ -4386,12 +4386,15 @@ async function startServer() {
 				totalRow2.getCell(3).value = "TỔNG CỘNG";
 				totalRow2.getCell(5).value = {
 					formula: `SUM(E${dataStartRow2}:E${lastDataRow2})`,
+					date1904: false,
 				};
 				totalRow2.getCell(7).value = {
 					formula: `SUM(G${dataStartRow2}:G${lastDataRow2})`,
+					date1904: false,
 				};
 				totalRow2.getCell(8).value = {
 					formula: `SUM(H${dataStartRow2}:H${lastDataRow2})`,
+					date1904: false,
 				};
 
 				totalRow2.eachCell((cell, colIdx) => {
@@ -4764,15 +4767,19 @@ async function startServer() {
 
 					ws.getCell(`I${rowNum}`).value = {
 						formula: `SUM(I${dataStartRow}:I${lastDataRow})`,
+						date1904: false,
 					}; // SL theo LSX
 					ws.getCell(`J${rowNum}`).value = {
 						formula: `SUM(J${dataStartRow}:J${lastDataRow})`,
+						date1904: false,
 					}; // SL Đóng gói
 					ws.getCell(`K${rowNum}`).value = {
 						formula: `SUM(K${dataStartRow}:K${lastDataRow})`,
+						date1904: false,
 					}; // Quy đổi
 					ws.getCell(`L${rowNum}`).value = {
 						formula: `SUM(L${dataStartRow}:L${lastDataRow})`,
+						date1904: false,
 					}; // Hao hụt
 
 					totalRow.eachCell({ includeEmpty: true }, (cell, colIdx) => {
@@ -5064,15 +5071,19 @@ async function startServer() {
 					// Áp dụng tính tổng theo vị trí cột mới
 					totalRow.getCell(4).value = {
 						formula: `SUM(D${dataStartRow}:D${lastDataRow})`,
+						date1904: false,
 					}; // Bột dùng
 					totalRow.getCell(9).value = {
 						formula: `SUM(I${dataStartRow}:I${lastDataRow})`,
+						date1904: false,
 					}; // SL theo LSX
 					totalRow.getCell(10).value = {
 						formula: `SUM(J${dataStartRow}:J${lastDataRow})`,
+						date1904: false,
 					}; // SL Đóng gói
 					totalRow.getCell(11).value = {
 						formula: `SUM(K${dataStartRow}:K${lastDataRow})`,
+						date1904: false,
 					}; // Quy đổi
 
 					totalRow.eachCell((cell, colIdx) => {

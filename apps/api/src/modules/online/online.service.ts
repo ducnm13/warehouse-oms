@@ -2,12 +2,8 @@ import type {
 	OnlineOrderInput,
 	OnlineProductInput,
 } from "@challenge/contracts";
-import { Prisma } from "@challenge/database";
-import { prisma } from "@challenge/database";
+import { money, prisma } from "@challenge/database";
 import { HttpError } from "../../common/http-error";
-
-const money = (value: number) =>
-	new Prisma.Decimal(Number(value || 0).toFixed(2));
 
 // Zalo: ưu tiên biến mới, fallback tên biến cũ của dự án SPX
 const ZALO_BOT_TOKEN =

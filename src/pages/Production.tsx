@@ -1541,6 +1541,9 @@ export default function Production({
 										);
 										const pkgUnit = pkg?.unit || x.unit;
 										const bomUnit = x.bomUnit || x.unit;
+										const actualQty = Number((x as any).actualQuantity || 0);
+										const totalVal = Number((x as any).totalValue || 0);
+
 										const convertToBaseUnit = (
 											value: number,
 											fromUnit: string,
@@ -1551,50 +1554,54 @@ export default function Production({
 											const from = normalize(fromUnit);
 											const to = normalize(toUnit);
 											if (from === to) return value;
-											// Mass units: g, gram, gr -> base gram; kg, kilogram, kilo -> base kilogram
 											const massFrom = ["g", "gram", "gr"].includes(from);
 											const massTo = ["g", "gram", "gr"].includes(to);
 											const kgFrom = ["kg", "kilogram", "kilo"].includes(from);
 											const kgTo = ["kg", "kilogram", "kilo"].includes(to);
-											// Volume units: ml, mililit, mililít -> base mililiter; l, lit, liter -> base liter
 											const mlFrom = ["ml", "mililit", "mililít"].includes(
 												from,
 											);
 											const mlTo = ["ml", "mililit", "mililít"].includes(to);
 											const lFrom = ["l", "lit", "liter", "lít"].includes(from);
 											const lTo = ["l", "lit", "liter", "lít"].includes(to);
-											// g <-> kg conversion
 											if (massFrom && kgTo) return value / 1000;
 											if (kgFrom && massTo) return value * 1000;
-											// ml <-> l conversion
 											if (mlFrom && lTo) return value / 1000;
 											if (lFrom && mlTo) return value * 1000;
 											return value;
 										};
-										// Hiển thị đúng ĐVT định mức; đổi đơn giá vốn sang ĐVT đó để thành tiền đúng
-										const convertedCost =
-											(x.unitCost || 0) *
-											convertToBaseUnit(1, bomUnit, pkgUnit);
+
+										const displayUnit =
+											totalVal > 0 && x.unit ? x.unit : bomUnit;
+										const displayQty =
+											actualQty > 0
+												? actualQty
+												: Number(x.plannedQuantity || 0);
+										const displayUnitCost =
+											actualQty > 0 && totalVal > 0
+												? totalVal / actualQty
+												: (x.unitCost || 0) *
+													convertToBaseUnit(1, bomUnit, pkgUnit);
+										const displayTotal =
+											totalVal > 0 ? totalVal : displayQty * displayUnitCost;
+
 										return (
 											<tr key={x.id}>
 												<td className="text-center">{index + 1}</td>
 												<td>
-													{/* {x.sku} - {x.productName} - {x.packagingName} */}
 													{x.sku} - {x.productName}
 												</td>
-												<td>{bomUnit}</td>
+												<td>{displayUnit}</td>
 												<td className="text-right">
-													{formatNumber(x.plannedQuantity || 0)}
+													{formatNumber(displayQty)}
 												</td>
 												{showMoney && (
 													<>
 														<td className="text-right">
-															{formatNumber(convertedCost)}
+															{formatNumber(displayUnitCost)}
 														</td>
 														<td className="text-right font-semibold text-emerald-700">
-															{formatNumber(
-																(x.plannedQuantity || 0) * convertedCost,
-															)}
+															{formatNumber(displayTotal)}
 														</td>
 													</>
 												)}

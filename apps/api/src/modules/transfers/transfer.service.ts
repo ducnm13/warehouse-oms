@@ -1,13 +1,27 @@
 import type { TransferCancelInput, TransferDraftInput, TransferUpdateInput } from "@challenge/contracts";
-import { Prisma } from "@challenge/database";
+import { decimal, money, Prisma } from "@challenge/database";
 import { HttpError } from "../../common/http-error";
 import { mapTransfer } from "./transfer.mapper";
 import { prisma, transferInclude, transferRepository } from "./transfer.repository";
 import { nextDocumentCode } from "../../common/document-code";
+import { FIELD_LABELS, diffFields, diffLines, recordAudit, snapshotFields, type AuditField } from "../../common/audit";
 
-const decimal = (value: number) => new Prisma.Decimal(value.toFixed(4));
-const money = (value: number) => new Prisma.Decimal(value.toFixed(2));
 const nowIso = () => new Date().toISOString();
+const HEADER_AUDIT_FIELDS: AuditField[] = [
+  { key: "code", label: FIELD_LABELS.code },
+  { key: "transferDate", label: "Ngày chuyển kho" },
+  { key: "fromWarehouseId", label: FIELD_LABELS.fromWarehouseId },
+  { key: "toWarehouseId", label: FIELD_LABELS.toWarehouseId },
+  { key: "note", label: FIELD_LABELS.note },
+  { key: "status", label: FIELD_LABELS.status },
+];
+const LINE_AUDIT_FIELDS: AuditField[] = [
+  { key: "packagingId", label: FIELD_LABELS.packagingId },
+  { key: "quantity", label: FIELD_LABELS.quantity },
+  { key: "unitCost", label: FIELD_LABELS.unitCost },
+  { key: "totalValue", label: "Thành tiền" },
+  { key: "note", label: FIELD_LABELS.note },
+];
 
 async function validateMaster(input: TransferDraftInput) {
   const packagingIds = input.details.map(line => line.packagingId);
@@ -115,7 +129,19 @@ export const transferService = {
         createdBy: userId, createdAt: now,
         warehouse_transfer_details: { create: input.details.map(line => ({ packagingId: line.packagingId, quantity: line.quantity, note: line.note })) },
       }, include: transferInclude });
-      await tx.audit_logs.create({ data: { action: "Tạo chuyển kho v1", details: row.code, userId, userName: String(userId), createdAt: now } });
+      await recordAudit(tx, {
+        action: "Tạo chuyển kho v1",
+        details: row.code,
+        entityType: "WAREHOUSE_TRANSFER",
+        entityId: row.id,
+        entityCode: row.code,
+        userId,
+        createdAt: now,
+        changes: [
+          ...snapshotFields(row, HEADER_AUDIT_FIELDS),
+          ...diffLines([], row.warehouse_transfer_details, LINE_AUDIT_FIELDS),
+        ],
+      });
       return mapTransfer(row);
     });
   },
@@ -125,13 +151,27 @@ export const transferService = {
     return prisma.$transaction(async tx => {
       const current = await lockTransfer(tx, id); assertVersion(current, input.version);
       if (current.status !== "DRAFT") throw new HttpError(409, "INVALID_STATUS", "Chỉ được sửa phiếu chuyển kho đang nháp");
+      const before = await tx.warehouse_transfers.findUnique({ where: { id }, include: transferInclude });
+      if (!before) throw new HttpError(404, "TRANSFER_NOT_FOUND", "Không tìm thấy phiếu chuyển kho");
       await tx.warehouse_transfer_details.deleteMany({ where: { transferId: id } });
       const row = await tx.warehouse_transfers.update({ where: { id }, data: {
         transferDate: input.transferDate, fromWarehouseId: input.fromWarehouseId, toWarehouseId: input.toWarehouseId,
         note: input.note, version: { increment: 1 },
         warehouse_transfer_details: { create: input.details.map(line => ({ packagingId: line.packagingId, quantity: line.quantity, note: line.note })) },
       }, include: transferInclude });
-      await tx.audit_logs.create({ data: { action: "Cập nhật chuyển kho v1", details: row.code, userId, userName: String(userId), createdAt: nowIso() } });
+      await recordAudit(tx, {
+        action: "Cập nhật chuyển kho v1",
+        details: row.code,
+        entityType: "WAREHOUSE_TRANSFER",
+        entityId: id,
+        entityCode: row.code,
+        userId,
+        createdAt: nowIso(),
+        changes: [
+          ...diffFields(before, row, HEADER_AUDIT_FIELDS),
+          ...diffLines(before.warehouse_transfer_details, row.warehouse_transfer_details, LINE_AUDIT_FIELDS),
+        ],
+      });
       return mapTransfer(row);
     });
   },
@@ -170,7 +210,20 @@ export const transferService = {
       await tx.warehouse_transfer_document_links_v1.create({ data: { transferId: id, linkType: "SHIPMENT_EXPORT", linkedId: BigInt(header.id), linkedCode: exportCode } });
       const row = await tx.warehouse_transfers.update({ where: { id }, data: {
         status: "IN_TRANSIT", exportTransactionId: header.id, shippedAt: occurredAt, shippedBy: userId, version: { increment: 1 },
-      }, include: transferInclude });      await tx.audit_logs.create({ data: { action: "Xuất hàng chuyển kho v1", details: row.code, userId, userName: String(userId), createdAt: now } });
+      }, include: transferInclude });
+      await recordAudit(tx, {
+        action: "Xuất hàng chuyển kho v1",
+        details: row.code,
+        entityType: "WAREHOUSE_TRANSFER",
+        entityId: id,
+        entityCode: row.code,
+        userId,
+        createdAt: now,
+        changes: [
+          ...diffFields(document, row, HEADER_AUDIT_FIELDS),
+          ...diffLines(document.warehouse_transfer_details, row.warehouse_transfer_details, LINE_AUDIT_FIELDS),
+        ],
+      });
       return mapTransfer(row);
     }, { timeout: 30_000 });
   },
@@ -207,7 +260,16 @@ export const transferService = {
       const row = await tx.warehouse_transfers.update({ where: { id }, data: {
         status: "RECEIVED", importTransactionId: header.id, receivedAt: occurredAt, receivedBy: userId, version: { increment: 1 },
       }, include: transferInclude });
-      await tx.audit_logs.create({ data: { action: "Nhận hàng chuyển kho v1", details: row.code, userId, userName: String(userId), createdAt: now } });
+      await recordAudit(tx, {
+        action: "Nhận hàng chuyển kho v1",
+        details: row.code,
+        entityType: "WAREHOUSE_TRANSFER",
+        entityId: id,
+        entityCode: row.code,
+        userId,
+        createdAt: now,
+        changes: diffFields(document, row, HEADER_AUDIT_FIELDS),
+      });
       return mapTransfer(row);
     }, { timeout: 30_000 });
   },
@@ -239,7 +301,19 @@ export const transferService = {
         status: "CANCELLED", cancelledAt: occurredAt, cancelledBy: userId, cancelReason: input.reason,
         version: { increment: 1 },
       }, include: transferInclude });
-      await tx.audit_logs.create({ data: { action: "Hủy chuyển kho v1", details: `${row.code}: ${input.reason}`, userId, userName: String(userId), createdAt: now } });
+      await recordAudit(tx, {
+        action: "Hủy chuyển kho v1",
+        details: `${row.code}: ${input.reason}`,
+        entityType: "WAREHOUSE_TRANSFER",
+        entityId: id,
+        entityCode: row.code,
+        userId,
+        createdAt: now,
+        changes: [
+          ...diffFields(document, row, HEADER_AUDIT_FIELDS),
+          { field: "cancelReason", label: FIELD_LABELS.reason, oldValue: null, newValue: input.reason },
+        ],
+      });
       return mapTransfer(row);
     }, { timeout: 30_000 });
   },
@@ -294,7 +368,16 @@ export const transferService = {
         cancelledAt: null, cancelledBy: null, cancelReason: null,
         version: { increment: 1 },
       }, include: transferInclude });
-      await tx.audit_logs.create({ data: { action: "Hủy lưu chuyển kho v1", details: row.code, userId, userName: String(userId), createdAt: now } });
+      await recordAudit(tx, {
+        action: "Hủy lưu chuyển kho v1",
+        details: row.code,
+        entityType: "WAREHOUSE_TRANSFER",
+        entityId: id,
+        entityCode: row.code,
+        userId,
+        createdAt: now,
+        changes: diffFields(document, row, HEADER_AUDIT_FIELDS),
+      });
       return mapTransfer(row);
     }, { timeout: 30_000 });
   },
@@ -305,7 +388,16 @@ export const transferService = {
       // Nháp chưa phát sinh postings; phiếu hủy đã đảo cân bằng (xuất/hoàn kho) nên tồn kho không đổi.
       // Chi tiết và links cascade theo header; các phiếu kho/ledger đảo giữ lại để đối soát.
       await tx.warehouse_transfers.delete({ where: { id } });
-      await tx.audit_logs.create({ data: { action: "Xóa chuyển kho v1", details: current.code || String(id), userId, userName: String(userId), createdAt: nowIso() } });
+      await recordAudit(tx, {
+        action: "Xóa chuyển kho v1",
+        details: current.code || String(id),
+        entityType: "WAREHOUSE_TRANSFER",
+        entityId: id,
+        entityCode: current.code,
+        userId,
+        createdAt: nowIso(),
+        changes: [{ field: "status", label: FIELD_LABELS.status, oldValue: current.status, newValue: "DELETED" }],
+      });
       return { id };
     });
   },

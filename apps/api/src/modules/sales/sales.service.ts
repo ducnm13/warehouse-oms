@@ -1,34 +1,74 @@
-import { Prisma } from "@challenge/database";
+import { decimal, money, toDecimal, Prisma } from "@challenge/database";
 import type { SalesCancelInput, SalesDraftInput, SalesPaymentInput, SalesUpdateInput } from "@challenge/contracts";
 import { HttpError } from "../../common/http-error";
 import { mapSalesDocument } from "./sales.mapper";
 import { prisma, salesInclude, salesRepository } from "./sales.repository";
 import { normalizeCodeInput, resolveDocumentCode } from "../../common/document-code";
+import { FIELD_LABELS, diffFields, diffLines, recordAudit, snapshotFields, type AuditField } from "../../common/audit";
 
-const decimal = (value: number) => new Prisma.Decimal(value.toFixed(4));
-const money = (value: number) => new Prisma.Decimal(value.toFixed(2));
 const dateAtNoon = (date: string) => new Date(`${date}T12:00:00.000Z`);
 const nowIso = () => new Date().toISOString();
+const HUNDRED = toDecimal(100);
+
+const HEADER_AUDIT_FIELDS: AuditField[] = [
+  { key: "code", label: FIELD_LABELS.code },
+  { key: "orderDate", label: FIELD_LABELS.orderDate },
+  { key: "deliveryDate", label: FIELD_LABELS.deliveryDate },
+  { key: "dueDate", label: FIELD_LABELS.dueDate },
+  { key: "customerId", label: FIELD_LABELS.customerId },
+  { key: "warehouseId", label: FIELD_LABELS.warehouseId },
+  { key: "note", label: FIELD_LABELS.note },
+  { key: "paymentIntent", label: FIELD_LABELS.paymentIntent },
+  { key: "paymentMethod", label: FIELD_LABELS.paymentMethod },
+  { key: "subtotal", label: FIELD_LABELS.subtotal },
+  { key: "discountAmount", label: FIELD_LABELS.discountAmount },
+  { key: "taxAmount", label: FIELD_LABELS.taxAmount },
+  { key: "totalAmount", label: FIELD_LABELS.totalAmount },
+  { key: "status", label: FIELD_LABELS.status },
+  { key: "paidAmount", label: FIELD_LABELS.paidAmount },
+  { key: "paymentStatus", label: FIELD_LABELS.paymentStatus },
+];
+const LINE_AUDIT_FIELDS: AuditField[] = [
+  { key: "packagingId", label: FIELD_LABELS.packagingId },
+  { key: "quantity", label: FIELD_LABELS.quantity },
+  { key: "unitPrice", label: FIELD_LABELS.unitPrice },
+  { key: "discountRate", label: FIELD_LABELS.discountRate },
+  { key: "lineTotal", label: FIELD_LABELS.lineTotal },
+  { key: "lineType", label: "Loại dòng" },
+  { key: "note", label: FIELD_LABELS.note },
+];
 
 type CalculatedInput = Omit<SalesDraftInput, "details"> & { details: Array<SalesDraftInput["details"][number] & { lineType?: "SALE" | "PROMOTION"; promotionProgramId?: number; promotionCode?: string; promotionName?: string }> };
 const orderDiscountFromNote = (note?: string | null) => {
   const match = String(note || "").match(/(?:^|\n)Chiết khấu đơn\s+([\d.,]+)\s*%\s*(?:\n|$)/i);
-  const rate = Number(match?.[1]?.replace(",", ".") || 0);
-  return Number.isFinite(rate) ? Math.min(Math.max(rate, 0), 100) : 0;
+  const rate = toDecimal(match?.[1]?.replace(",", ".") || 0);
+  return rate.isFinite() ? Prisma.Decimal.min(Prisma.Decimal.max(rate, 0), HUNDRED) : toDecimal(0);
 };
-function calculate(input: CalculatedInput) {
+// Tính tiền phía server hoàn toàn bằng Decimal: không phụ thuộc số client gửi lên.
+export function calculate(input: CalculatedInput) {
+  const taxRate = toDecimal(input.taxRate);
+  const orderDiscountRate = orderDiscountFromNote(input.note);
   const details = input.details.map(line => {
-    const gross = line.quantity * line.unitPrice;
-    const lineTotal = gross * (1 - line.discountRate / 100);
-    return { ...line, gross, lineTotal };
+    const quantity = decimal(line.quantity);
+    const unitPrice = decimal(line.unitPrice);
+    const discountRate = decimal(line.discountRate);
+    const gross = money(quantity.mul(unitPrice));
+    const lineTotal = money(gross.mul(HUNDRED.minus(discountRate)).div(HUNDRED));
+    return { ...line, quantity, unitPrice, discountRate, gross, lineTotal };
   });
-  const gross = details.reduce((sum, line) => sum + line.gross, 0);
-  const subtotal = details.reduce((sum, line) => sum + line.lineTotal, 0);
-  const lineDiscountAmount = gross - subtotal;
-  const orderDiscountAmount = subtotal * orderDiscountFromNote(input.note) / 100;
-  const taxableAmount = subtotal - orderDiscountAmount;
-  const taxAmount = taxableAmount * input.taxRate / 100;
-  return { details, subtotal, discountAmount: lineDiscountAmount + orderDiscountAmount, taxAmount, totalAmount: taxableAmount + taxAmount };
+  const gross = details.reduce((sum, line) => sum.add(line.gross), money(0));
+  const subtotal = details.reduce((sum, line) => sum.add(line.lineTotal), money(0));
+  const lineDiscountAmount = gross.minus(subtotal);
+  const orderDiscountAmount = money(subtotal.mul(orderDiscountRate).div(HUNDRED));
+  const taxableAmount = subtotal.minus(orderDiscountAmount);
+  const taxAmount = money(taxableAmount.mul(taxRate).div(HUNDRED));
+  return {
+    details,
+    subtotal,
+    discountAmount: money(lineDiscountAmount.add(orderDiscountAmount)),
+    taxAmount,
+    totalAmount: money(taxableAmount.add(taxAmount)),
+  };
 }
 
 async function validateMasterData(input: SalesDraftInput) {
@@ -47,10 +87,10 @@ async function validateMasterData(input: SalesDraftInput) {
 
 const lineData = (line: ReturnType<typeof calculate>["details"][number]) => ({
   packagingId: line.packagingId,
-  quantity: line.quantity,
-  unitPrice: line.unitPrice,
-  discountRate: line.discountRate,
-  lineTotal: line.lineTotal,
+  quantity: decimal(line.quantity),
+  unitPrice: decimal(line.unitPrice),
+  discountRate: decimal(line.discountRate),
+  lineTotal: money(line.lineTotal),
   note: line.note || "",
   lineType: line.lineType || "SALE",
   promotionProgramId: line.promotionProgramId || null,
@@ -231,7 +271,16 @@ export const salesService = {
         }
         throw error;
       }
-      await tx.audit_logs.create({ data: { action: "Xóa chứng từ bán hàng v1", details: `Sales order ${id}`, userId, userName: String(userId), createdAt: nowIso() } });
+      await recordAudit(tx, {
+        action: "Xóa chứng từ bán hàng v1",
+        details: current.code || `Sales order ${id}`,
+        entityType: "SALES_ORDER",
+        entityId: id,
+        entityCode: current.code,
+        userId,
+        createdAt: nowIso(),
+        changes: [{ field: "status", label: FIELD_LABELS.status, oldValue: current.status, newValue: "DELETED" }],
+      });
       return { id };
     });
   },
@@ -255,9 +304,18 @@ export const salesService = {
       await tx.sales_order_details.createMany({
         data: totals.details.map(line => ({ ...lineData(line), orderId: created.id })),
       });
-      await tx.audit_logs.create({ data: { action: "Tạo nháp bán hàng v1", details: code, userId, userName: String(userId), createdAt: now } });
       const row = await tx.sales_orders.findUnique({ where: { id: created.id }, include: salesInclude });
       if (!row) throw new HttpError(500, "SALES_CREATE_FAILED", "Không thể tạo chứng từ bán hàng");
+      await recordAudit(tx, {
+        action: "Tạo nháp bán hàng v1",
+        details: code,
+        entityType: "SALES_ORDER",
+        entityId: created.id,
+        entityCode: code,
+        userId,
+        createdAt: now,
+        changes: snapshotFields(row, HEADER_AUDIT_FIELDS),
+      });
       return mapSalesDocument(row);
     }, { timeout: 15_000 });
   },
@@ -269,6 +327,8 @@ export const salesService = {
       const current = await lockOrder(tx, id);
       if (current.status !== "DRAFT") throw new HttpError(409, "SALES_NOT_EDITABLE", "Đơn đã lưu phải hủy lưu trước khi sửa");
       assertVersion(current, input.version);
+      const before = await tx.sales_orders.findUnique({ where: { id }, include: salesInclude });
+      if (!before) throw new HttpError(404, "SALES_NOT_FOUND", "Không tìm thấy chứng từ bán hàng");
       const normalizedCode = normalizeCodeInput(input.code);
       const code = normalizedCode && normalizedCode !== current.code
         ? await resolveDocumentCode("sales", normalizedCode)
@@ -288,9 +348,21 @@ export const salesService = {
       await tx.sales_order_details.createMany({
         data: totals.details.map(line => ({ ...lineData(line), orderId: id })),
       });
-      await tx.audit_logs.create({ data: { action: "Cập nhật nháp bán hàng v1", details: code, userId, userName: String(userId), createdAt: updatedAt } });
       const row = await tx.sales_orders.findUnique({ where: { id }, include: salesInclude });
       if (!row) throw new HttpError(404, "SALES_NOT_FOUND", "Không tìm thấy chứng từ bán hàng");
+      await recordAudit(tx, {
+        action: "Cập nhật nháp bán hàng v1",
+        details: code,
+        entityType: "SALES_ORDER",
+        entityId: id,
+        entityCode: code,
+        userId,
+        createdAt: updatedAt,
+        changes: [
+          ...diffFields(before, row, HEADER_AUDIT_FIELDS),
+          ...diffLines(before.sales_order_details, row.sales_order_details, LINE_AUDIT_FIELDS),
+        ],
+      });
       return mapSalesDocument(row);
     }, { timeout: 15_000 });
   },
@@ -401,7 +473,16 @@ export const salesService = {
         status: "FULFILLED", fulfilledAt: now, postedAt, postedBy: userId, inventoryTransactionId: inventoryTransaction.id,
         dueDate: document.dueDate || document.orderDate, paidAmount, paymentStatus, version: { increment: 1 }, updatedAt: now,
       }, include: salesInclude });
-      await tx.audit_logs.create({ data: { action: "Lưu bán hàng v1", details: document.code, userId, userName: String(userId), createdAt: now } });
+      await recordAudit(tx, {
+        action: "Lưu bán hàng v1",
+        details: document.code,
+        entityType: "SALES_ORDER",
+        entityId: id,
+        entityCode: document.code,
+        userId,
+        createdAt: now,
+        changes: diffFields(document, updated, HEADER_AUDIT_FIELDS),
+      });
       return mapSalesDocument(updated);
     }, { timeout: 30_000 });
   },
@@ -418,7 +499,7 @@ export const salesService = {
       entryType: "PAYMENT", amount: money(-amount), occurredAt: new Date(), createdBy: userId,
     } });
     await tx.customer_payments.create({ data: {
-      customerId: document.customerId, salesOrderId: document.id, paymentDate, amount, method, note,
+      customerId: document.customerId, salesOrderId: document.id, paymentDate, amount: money(amount), method, note,
       createdBy: userId, createdAt: nowIso(),
     } });
     await tx.sales_document_links_v1.create({ data: { salesOrderId: document.id, linkType: "PAYMENT_RECEIPT", linkedId: receipt.id, linkedCode: code } });
@@ -440,7 +521,22 @@ export const salesService = {
       const paidAmount = Number(document.paidAmount || 0) + input.amount;
       const paymentStatus = paidAmount >= Number(document.totalAmount || 0) - 0.001 ? "PAID" : "PARTIAL";
       const updated = await tx.sales_orders.update({ where: { id }, data: { paidAmount, paymentStatus, version: { increment: 1 }, updatedAt: nowIso() }, include: salesInclude });
-      await tx.audit_logs.create({ data: { action: "Thu tiền bán hàng v1", details: `${document.code}: ${input.amount}`, userId, userName: String(userId), createdAt: nowIso() } });
+      await recordAudit(tx, {
+        action: "Thu tiền bán hàng v1",
+        details: `${document.code}: ${input.amount}`,
+        entityType: "SALES_ORDER",
+        entityId: id,
+        entityCode: document.code,
+        userId,
+        changes: [
+          ...diffFields(document, updated, [
+            { key: "paidAmount", label: FIELD_LABELS.paidAmount },
+            { key: "paymentStatus", label: FIELD_LABELS.paymentStatus },
+          ]),
+          { field: "payment.amount", label: "Số tiền thu", oldValue: null, newValue: money(input.amount).toString() },
+          { field: "payment.date", label: "Ngày thu", oldValue: null, newValue: input.paymentDate },
+        ],
+      });
       return mapSalesDocument(updated);
     });
   },
@@ -514,7 +610,7 @@ export const salesService = {
           reversalOfId: entry.id, createdBy: userId,
         } });
         await tx.customer_payments.create({ data: {
-          customerId: document.customerId, salesOrderId: id, paymentDate: now.slice(0, 10), amount: -cashPaid,
+          customerId: document.customerId, salesOrderId: id, paymentDate: now.slice(0, 10), amount: money(-cashPaid),
           method: document.paymentMethod || "BANK", note: `Hoàn nguyên thanh toán ${document.code}`, createdBy: userId, createdAt: now,
         } });
       }
@@ -523,7 +619,19 @@ export const salesService = {
         status: "CANCELLED", cancelledAt, cancelledBy: userId, cancelReason: input.reason,
         paidAmount: 0, paymentStatus: "UNPAID", version: { increment: 1 }, updatedAt: now,
       }, include: salesInclude });
-      await tx.audit_logs.create({ data: { action: "Hủy bán hàng v1", details: `${document.code}: ${input.reason}`, userId, userName: String(userId), createdAt: now } });
+      await recordAudit(tx, {
+        action: "Hủy bán hàng v1",
+        details: `${document.code}: ${input.reason}`,
+        entityType: "SALES_ORDER",
+        entityId: id,
+        entityCode: document.code,
+        userId,
+        createdAt: now,
+        changes: [
+          ...diffFields(document, updated, HEADER_AUDIT_FIELDS),
+          { field: "cancelReason", label: FIELD_LABELS.reason, oldValue: null, newValue: input.reason },
+        ],
+      });
       return mapSalesDocument(updated);
     }, { timeout: 30_000 });
   },
@@ -576,7 +684,16 @@ export const salesService = {
         inventoryTransactionId: null, paidAmount: 0, paymentStatus: "UNPAID",
         version: { increment: 1 }, updatedAt: now,
       }, include: salesInclude });
-      await tx.audit_logs.create({ data: { action: "Hủy lưu bán hàng v1", details: `${document.code}: khôi phục tồn kho`, userId, userName: String(userId), createdAt: now } });
+      await recordAudit(tx, {
+        action: "Hủy lưu bán hàng v1",
+        details: `${document.code}: khôi phục tồn kho`,
+        entityType: "SALES_ORDER",
+        entityId: id,
+        entityCode: document.code,
+        userId,
+        createdAt: now,
+        changes: diffFields(document, updated, HEADER_AUDIT_FIELDS),
+      });
       return mapSalesDocument(updated);
     }, { timeout: 30_000 });
   },

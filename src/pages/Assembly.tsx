@@ -1657,17 +1657,13 @@ export default function Assembly({ user }: { user: User }) {
 				}
 				onClose={() => setPrintTarget(null)}
 			>
-				{ref => {
-					if (!printTarget) return null;
-					return (
-						<AssemblyDocument
-							ref={ref}
-							order={printTarget}
-							isDisassembly={printIsDisassembly}
-							company={companyQuery.data}
-						/>
-					);
-				}}
+				{printTarget && (
+					<AssemblyDocument
+						order={printTarget}
+						isDisassembly={printIsDisassembly}
+						company={companyQuery.data}
+					/>
+				)}
 			</PrintDocumentPreview>
 		</div>
 	);

@@ -29,6 +29,7 @@ import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
 import TableActions from "../components/TableActions";
 import DetailOptionsMenu from "../components/DetailOptionsMenu";
+import { EntityHistoryButton } from "../components/EntityHistoryButton";
 import ListToolbar from "../components/ListToolbar";
 import type { FilterField, FilterValues } from "../components/FilterDrawer";
 import { exportExcelFile } from "../lib/excelExport";
@@ -850,9 +851,16 @@ export default function SalesReturns() {
 							</button>
 						</div>
 						<div className="erp-modal-body space-y-4">
-							<span className={`erp-badge ${badge[selected.status]}`}>
-								{statusLabel[selected.status] || selected.status}
-							</span>
+							<div className="flex flex-wrap items-center gap-2">
+								<span className={`erp-badge ${badge[selected.status]}`}>
+									{statusLabel[selected.status] || selected.status}
+								</span>
+								<EntityHistoryButton
+									entityType="SALES_RETURN"
+									entityId={selected.id}
+									entityCode={selected.code}
+								/>
+							</div>
 							<table className="erp-table">
 								<thead>
 									<tr>

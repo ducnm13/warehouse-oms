@@ -24,6 +24,7 @@ import { hasPermission } from "../lib/permissions";
 import PrintPreview from "../components/PrintPreview";
 import TableActions from "../components/TableActions";
 import DetailOptionsMenu from "../components/DetailOptionsMenu";
+import { EntityHistoryButton } from "../components/EntityHistoryButton";
 import {
 	fillGenericDocument,
 	GENERIC_LAYOUTS,
@@ -929,9 +930,16 @@ export default function Debt() {
 							</button>
 						</div>
 						<div className="erp-modal-body space-y-4">
-							<span className={`erp-badge ${statusMeta[selected.status].css}`}>
-								{statusMeta[selected.status].label}
-							</span>
+							<div className="flex flex-wrap items-center gap-2">
+								<span className={`erp-badge ${statusMeta[selected.status].css}`}>
+									{statusMeta[selected.status].label}
+								</span>
+								<EntityHistoryButton
+									entityType={selected.kind === "RECEIPT" ? "DEBT_RECEIPT" : "DEBT_VOUCHER"}
+									entityId={selected.id}
+									entityCode={selected.code}
+								/>
+							</div>
 							<table className="erp-table">
 								<thead>
 									<tr>

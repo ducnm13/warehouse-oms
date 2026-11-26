@@ -27,6 +27,19 @@ export const canViewMoney = (
 	roles?: string[],
 ) => canViewCatalogPrices(role, permissions, roles);
 
+/**
+ * Các vai trò cấp quản trị: quản trị viên, toàn quyền nghiệp vụ và ban giám đốc.
+ * Dùng cho những module chỉ dành cho cấp quản trị trở lên.
+ */
+const ADMIN_LEVEL_ROLES = new Set(["ADMIN", "FULL_ACCESS", "QD"]);
+
+export const isAdminLevelRole = (
+	role: string | undefined,
+	permissions: string[] | undefined,
+) =>
+	Boolean(permissions?.includes("system.admin")) ||
+	Boolean(role && ADMIN_LEVEL_ROLES.has(role));
+
 export const getModuleAccess = (
 	role: string | undefined,
 	permissions: string[] | undefined,
@@ -34,6 +47,7 @@ export const getModuleAccess = (
 	const has = (permission?: string | string[]) =>
 		hasPermission(role, permissions, permission);
 	const isWarehouseRole = role === "W_MANAGER";
+	const adminLevel = isAdminLevelRole(role, permissions);
 
 	return {
 		dashboard: has("dashboard.view"),
@@ -55,7 +69,9 @@ export const getModuleAccess = (
 		opening: has("inventory.opening") && !isWarehouseRole,
 		production: has("production.view"),
 		productionMgmt: has("production.manage") && !isWarehouseRole,
+		costing: adminLevel && has("costing.view"),
 		assembly: has("assembly.view"),
+		technical: adminLevel && has("technical.view"),
 		reports: has("report.view"),
 		users: has("iam.manage"),
 		roles: has("iam.manage"),

@@ -1,14 +1,44 @@
 import type { InventoryCancelInput, InventoryDeleteInput, InventoryDraftInput, InventoryUpdateInput, StocktakeDraftInput, StocktakeUpdateInput } from "@challenge/contracts";
-import { Prisma } from "@challenge/database";
+import { decimal, money, Prisma } from "@challenge/database";
 import { HttpError } from "../../common/http-error";
 import { mapInventoryDocument, mapStocktake } from "./inventory.mapper";
 import { inventoryInclude, inventoryRepository, prisma, stocktakeInclude } from "./inventory.repository";
 import { nextDocumentCode, documentCodePrefixes } from "../../common/document-code";
 import { syncOrderMaterialsFromIssue } from "../production/production.service";
+import { FIELD_LABELS, diffFields, diffLines, recordAudit, snapshotFields, type AuditField } from "../../common/audit";
 
-const decimal = (value: number) => new Prisma.Decimal(value.toFixed(4));
-const money = (value: number) => new Prisma.Decimal(value.toFixed(2));
 const nowIso = () => new Date().toISOString();
+
+const HEADER_AUDIT_FIELDS: AuditField[] = [
+  { key: "code", label: FIELD_LABELS.code },
+  { key: "type", label: FIELD_LABELS.type },
+  { key: "transaction_date", label: "Ngày chứng từ" },
+  { key: "warehouseId", label: FIELD_LABELS.warehouseId },
+  { key: "note", label: FIELD_LABELS.note },
+  { key: "reason", label: FIELD_LABELS.reason },
+  { key: "recipient", label: "Người nhận/giao" },
+  { key: "documentStatus", label: FIELD_LABELS.documentStatus },
+];
+const LINE_AUDIT_FIELDS: AuditField[] = [
+  { key: "packagingId", label: FIELD_LABELS.packagingId },
+  { key: "quantity", label: FIELD_LABELS.quantity },
+  { key: "unitCost", label: FIELD_LABELS.unitCost },
+  { key: "totalValue", label: "Thành tiền" },
+  { key: "note", label: FIELD_LABELS.note },
+];
+const STOCKTAKE_HEADER_FIELDS: AuditField[] = [
+  { key: "code", label: FIELD_LABELS.code },
+  { key: "date", label: "Ngày kiểm kê" },
+  { key: "warehouseId", label: FIELD_LABELS.warehouseId },
+  { key: "note", label: FIELD_LABELS.note },
+  { key: "status", label: FIELD_LABELS.status },
+];
+const STOCKTAKE_LINE_FIELDS: AuditField[] = [
+  { key: "packagingId", label: FIELD_LABELS.packagingId },
+  { key: "expected_qty", label: "Tồn sổ sách" },
+  { key: "actual_qty", label: "Tồn thực tế" },
+  { key: "difference", label: "Chênh lệch" },
+];
 
 async function validateMaster(warehouseId: number, packagingIds: number[]) {
   const [warehouse, ids] = await Promise.all([inventoryRepository.warehouse(warehouseId), inventoryRepository.packagingIds(packagingIds)]);
@@ -148,10 +178,14 @@ async function fillMissingSaleCosts(rows: any[]) {
   return rows;
 }
 
-const detailData = (line: InventoryDraftInput["details"][number], now: string) => ({
-  packagingId: line.packagingId, quantity: line.quantity, unitCost: money(line.unitCost),
-  totalValue: money(line.quantity * line.unitCost), note: line.note || "", createdAt: now, updatedAt: now,
-});
+const detailData = (line: InventoryDraftInput["details"][number], now: string) => {
+  const quantity = decimal(line.quantity);
+  const unitCost = money(line.unitCost);
+  return {
+    packagingId: line.packagingId, quantity, unitCost,
+    totalValue: money(quantity.mul(unitCost)), note: line.note || "", createdAt: now, updatedAt: now,
+  };
+};
 
 export const inventoryService = {
   async list(query: any) {
@@ -191,7 +225,19 @@ export const inventoryService = {
       createdAt: now, updatedAt: now, documentStatus: "DRAFT", sourceModule: "MANUAL_V1",
       inventorytransactiondetails: { create: input.details.map(line => detailData(line, now)) },
     }, include: inventoryInclude });
-    await prisma.audit_logs.create({ data: { action: "Tạo phiếu kho v1", details: row.code || String(row.id), userId, userName: String(userId), createdAt: now } });
+    await recordAudit(prisma, {
+      action: "Tạo phiếu kho v1",
+      details: row.code || String(row.id),
+      entityType: "INVENTORY_DOCUMENT",
+      entityId: row.id,
+      entityCode: row.code,
+      userId,
+      createdAt: now,
+      changes: [
+        ...snapshotFields(row, HEADER_AUDIT_FIELDS),
+        ...diffLines([], row.inventorytransactiondetails, LINE_AUDIT_FIELDS),
+      ],
+    });
     return mapInventoryDocument(row);
   },
   async update(id: number, input: InventoryUpdateInput, userId: number) {
@@ -199,6 +245,8 @@ export const inventoryService = {
     return prisma.$transaction(async tx => {
       const current = await lockDocument(tx, id); assertVersion(current, input.version);
       if (!["DRAFT", "CANCELLED"].includes(current.documentStatus) || current.sourceModule !== "MANUAL_V1") throw new HttpError(409, "INVALID_STATUS", "Chỉ được sửa chứng từ kho V1 đang nháp hoặc đã hủy lưu");
+      const before = await tx.inventorytransactions.findUnique({ where: { id }, include: inventoryInclude });
+      if (!before) throw new HttpError(404, "INVENTORY_NOT_FOUND", "Không tìm thấy chứng từ kho");
       const now = nowIso();
       await tx.inventorytransactiondetails.deleteMany({ where: { transactionId: id } });
       const row = await tx.inventorytransactions.update({ where: { id }, data: {
@@ -208,7 +256,19 @@ export const inventoryService = {
         inventorytransactiondetails: { create: input.details.map(line => detailData(line, now)) },
       }, include: inventoryInclude });
       await syncOrderMaterialsFromIssue(tx, id, userId, now);
-      await tx.audit_logs.create({ data: { action: "Cập nhật phiếu kho v1", details: row.code || String(id), userId, userName: String(userId), createdAt: now } });
+      await recordAudit(tx, {
+        action: "Cập nhật phiếu kho v1",
+        details: row.code || String(id),
+        entityType: "INVENTORY_DOCUMENT",
+        entityId: id,
+        entityCode: row.code,
+        userId,
+        createdAt: now,
+        changes: [
+          ...diffFields(before, row, HEADER_AUDIT_FIELDS),
+          ...diffLines(before.inventorytransactiondetails, row.inventorytransactiondetails, LINE_AUDIT_FIELDS),
+        ],
+      });
       return mapInventoryDocument(row);
     });
   },
@@ -245,7 +305,19 @@ export const inventoryService = {
       const row = await tx.inventorytransactions.update({ where: { id }, data: { documentStatus: "POSTED", postedAt: occurredAt, postedBy: userId, cancelledAt: null, cancelledBy: null, cancelReason: null, reversalTransactionId: null, version: { increment: 1 }, updatedAt: now }, include: inventoryInclude });
 
       await syncOrderMaterialsFromIssue(tx, id, userId, now, { markActual: true });
-      await tx.audit_logs.create({ data: { action: "Lưu phiếu kho v1", details: row.code || String(id), userId, userName: String(userId), createdAt: now } });
+      await recordAudit(tx, {
+        action: "Lưu phiếu kho v1",
+        details: row.code || String(id),
+        entityType: "INVENTORY_DOCUMENT",
+        entityId: id,
+        entityCode: row.code,
+        userId,
+        createdAt: now,
+        changes: [
+          ...diffFields(document, row, HEADER_AUDIT_FIELDS),
+          ...diffLines(document.inventorytransactiondetails, row.inventorytransactiondetails, LINE_AUDIT_FIELDS),
+        ],
+      });
       return mapInventoryDocument(row);
     }, { timeout: 30_000 });
   },
@@ -261,7 +333,19 @@ export const inventoryService = {
       // Không sinh bút toán/chứng từ "Hủy phiếu kho" để không làm tăng số liệu nhập kho.
       await releasePostedLedger(tx, id);
       const row = await tx.inventorytransactions.update({ where: { id }, data: { documentStatus: "CANCELLED", cancelledAt: occurredAt.toISOString(), cancelledBy: userId, cancelReason: input.reason, version: { increment: 1 }, updatedAt: now }, include: inventoryInclude });
-      await tx.audit_logs.create({ data: { action: "Hủy phiếu kho v1", details: `${row.code}: ${input.reason}`, userId, userName: String(userId), createdAt: now } });
+      await recordAudit(tx, {
+        action: "Hủy phiếu kho v1",
+        details: `${row.code}: ${input.reason}`,
+        entityType: "INVENTORY_DOCUMENT",
+        entityId: id,
+        entityCode: row.code,
+        userId,
+        createdAt: now,
+        changes: [
+          ...diffFields(document, row, HEADER_AUDIT_FIELDS),
+          { field: "cancelReason", label: FIELD_LABELS.reason, oldValue: null, newValue: input.reason },
+        ],
+      });
       return mapInventoryDocument(row);
     }, { timeout: 30_000 });
   },
@@ -279,7 +363,16 @@ export const inventoryService = {
         documentStatus: "DRAFT", postedAt: null, postedBy: null, cancelledAt: null, cancelledBy: null, cancelReason: null,
         version: { increment: 1 }, updatedAt: now,
       }, include: inventoryInclude });
-      await tx.audit_logs.create({ data: { action: "Hủy lưu phiếu kho v1", details: row.code || String(id), userId, userName: String(userId), createdAt: now } });
+      await recordAudit(tx, {
+        action: "Hủy lưu phiếu kho v1",
+        details: row.code || String(id),
+        entityType: "INVENTORY_DOCUMENT",
+        entityId: id,
+        entityCode: row.code,
+        userId,
+        createdAt: now,
+        changes: diffFields(document, row, HEADER_AUDIT_FIELDS),
+      });
       return mapInventoryDocument(row);
     }, { timeout: 30_000 });
   },
@@ -292,7 +385,16 @@ export const inventoryService = {
         await tx.disassembly_order_document_links.deleteMany({ where: { linkedId: BigInt(id) } });
         await tx.inventorytransactiondetails.deleteMany({ where: { transactionId: id } });
         const row = await tx.inventorytransactions.delete({ where: { id } });
-        await tx.audit_logs.create({ data: { action: "Xóa phiếu kho v1", details: `${row.code}`, userId, userName: String(userId), createdAt: nowIso() } });
+        await recordAudit(tx, {
+          action: "Xóa phiếu kho v1",
+          details: `${row.code}`,
+          entityType: "INVENTORY_DOCUMENT",
+          entityId: id,
+          entityCode: row.code,
+          userId,
+          createdAt: nowIso(),
+          changes: [{ field: "documentStatus", label: FIELD_LABELS.documentStatus, oldValue: current.documentStatus, newValue: "DELETED" }],
+        });
         return { success: true, message: "Đã xóa phiếu kho" };
       }
       if (current.documentStatus !== "CANCELLED") throw new HttpError(409, "INVALID_STATUS", "Chỉ xóa được phiếu nháp hoặc phiếu đã hủy");
@@ -312,7 +414,16 @@ export const inventoryService = {
       await tx.disassembly_order_document_links.deleteMany({ where: { linkedId: BigInt(id) } });
       await tx.inventorytransactiondetails.deleteMany({ where: { transactionId: id } });
       const row = await tx.inventorytransactions.delete({ where: { id } });
-      await tx.audit_logs.create({ data: { action: "Xóa phiếu kho đã hủy v1", details: `${row.code}`, userId, userName: String(userId), createdAt: now } });
+      await recordAudit(tx, {
+        action: "Xóa phiếu kho đã hủy v1",
+        details: `${row.code}`,
+        entityType: "INVENTORY_DOCUMENT",
+        entityId: id,
+        entityCode: row.code,
+        userId,
+        createdAt: now,
+        changes: [{ field: "documentStatus", label: FIELD_LABELS.documentStatus, oldValue: current.documentStatus, newValue: "DELETED" }],
+      });
       return { success: true, message: "Đã xóa phiếu kho" };
     });
   },
@@ -367,7 +478,19 @@ export const stocktakeService = {
         details.push({ packagingId: line.packagingId, expected_qty: expected, actual_qty: line.actualQuantity, difference: line.actualQuantity - expected });
       }
       const created = await tx.stocktakes.create({ data: { code: generatedCode, date: input.date, status: "DRAFT", note: input.note, warehouseId: input.warehouseId, createdBy: userId, createdAt: now, stocktake_details: { create: details } }, include: stocktakeInclude });
-      await tx.audit_logs.create({ data: { action: "Tạo kiểm kê v1", details: created.code || String(created.id), userId, userName: String(userId), createdAt: now } });
+      await recordAudit(tx, {
+        action: "Tạo kiểm kê v1",
+        details: created.code || String(created.id),
+        entityType: "STOCKTAKE",
+        entityId: created.id,
+        entityCode: created.code,
+        userId,
+        createdAt: now,
+        changes: [
+          ...snapshotFields(created, STOCKTAKE_HEADER_FIELDS),
+          ...diffLines([], created.stocktake_details, STOCKTAKE_LINE_FIELDS),
+        ],
+      });
       return created;
     });
     return mapStocktake(row);
@@ -390,7 +513,19 @@ export const stocktakeService = {
       }
       await tx.stocktake_details.deleteMany({ where: { stocktakeId: id } });
       const row = await tx.stocktakes.update({ where: { id }, data: { date: input.date, note: input.note, warehouseId: input.warehouseId, version: { increment: 1 }, stocktake_details: { create: details } }, include: stocktakeInclude });
-      await tx.audit_logs.create({ data: { action: "Cập nhật kiểm kê v1", details: row.code || String(id), userId, userName: String(userId), createdAt: nowIso() } });
+      await recordAudit(tx, {
+        action: "Cập nhật kiểm kê v1",
+        details: row.code || String(id),
+        entityType: "STOCKTAKE",
+        entityId: id,
+        entityCode: row.code,
+        userId,
+        createdAt: nowIso(),
+        changes: [
+          ...diffFields(existing, row, STOCKTAKE_HEADER_FIELDS),
+          ...diffLines(existing.stocktake_details, row.stocktake_details, STOCKTAKE_LINE_FIELDS),
+        ],
+      });
       return mapStocktake(row);
     });
   },
@@ -431,7 +566,16 @@ export const stocktakeService = {
       };
       await postGroup("IMPORT", positive); await postGroup("EXPORT", negative);
       const row = await tx.stocktakes.update({ where: { id }, data: { status: "COMPLETED", completedAt: occurredAt, completedBy: userId, version: { increment: 1 } }, include: stocktakeInclude });
-      await tx.audit_logs.create({ data: { action: "Chốt kiểm kê v1", details: row.code || String(id), userId, userName: String(userId), createdAt: now } });
+      await recordAudit(tx, {
+        action: "Chốt kiểm kê v1",
+        details: row.code || String(id),
+        entityType: "STOCKTAKE",
+        entityId: id,
+        entityCode: row.code,
+        userId,
+        createdAt: now,
+        changes: diffFields(document, row, STOCKTAKE_HEADER_FIELDS),
+      });
       return mapStocktake(row);
     }, { timeout: 30_000 });
   },
@@ -454,7 +598,19 @@ export const stocktakeService = {
         }
       }
       const row = await tx.stocktakes.update({ where: { id }, data: { status: "CANCELLED", cancelledAt: occurredAt, cancelledBy: userId, cancelReason: input.reason, version: { increment: 1 } }, include: stocktakeInclude });
-      await tx.audit_logs.create({ data: { action: "Hủy kiểm kê v1", details: `${row.code}: ${input.reason}`, userId, userName: String(userId), createdAt: now } });
+      await recordAudit(tx, {
+        action: "Hủy kiểm kê v1",
+        details: `${row.code}: ${input.reason}`,
+        entityType: "STOCKTAKE",
+        entityId: id,
+        entityCode: row.code,
+        userId,
+        createdAt: now,
+        changes: [
+          ...diffFields(document, row, STOCKTAKE_HEADER_FIELDS),
+          { field: "cancelReason", label: FIELD_LABELS.reason, oldValue: null, newValue: input.reason },
+        ],
+      });
       return mapStocktake(row);
     }, { timeout: 30_000 });
   },
@@ -481,7 +637,16 @@ export const stocktakeService = {
         status: "DRAFT", completedAt: null, completedBy: null, cancelledAt: null, cancelledBy: null, cancelReason: null,
         version: { increment: 1 },
       }, include: stocktakeInclude });
-      await tx.audit_logs.create({ data: { action: "Hủy lưu kiểm kê v1", details: row.code || String(id), userId, userName: String(userId), createdAt: now } });
+      await recordAudit(tx, {
+        action: "Hủy lưu kiểm kê v1",
+        details: row.code || String(id),
+        entityType: "STOCKTAKE",
+        entityId: id,
+        entityCode: row.code,
+        userId,
+        createdAt: now,
+        changes: diffFields(document, row, STOCKTAKE_HEADER_FIELDS),
+      });
       return mapStocktake(row);
     }, { timeout: 30_000 });
   },
@@ -491,7 +656,16 @@ export const stocktakeService = {
       if (current.status !== "DRAFT") throw new HttpError(409, "INVALID_STATUS", "Chỉ được xóa phiếu kiểm kê nháp");
       await tx.stocktake_details.deleteMany({ where: { stocktakeId: id } });
       const row = await tx.stocktakes.delete({ where: { id } });
-      await tx.audit_logs.create({ data: { action: "Xóa phiếu kiểm kê v1", details: `${row.code}`, userId, userName: String(userId), createdAt: nowIso() } });
+      await recordAudit(tx, {
+        action: "Xóa phiếu kiểm kê v1",
+        details: `${row.code}`,
+        entityType: "STOCKTAKE",
+        entityId: id,
+        entityCode: row.code,
+        userId,
+        createdAt: nowIso(),
+        changes: [{ field: "status", label: FIELD_LABELS.status, oldValue: current.status, newValue: "DELETED" }],
+      });
       return { success: true, message: "Đã xóa phiếu kiểm kê" };
     });
   },

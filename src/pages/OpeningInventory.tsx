@@ -22,6 +22,7 @@ import { useDocumentShortcuts } from "../hooks/useDocumentShortcuts";
 import { useLineTableTab } from "../hooks/useLineTableTab";
 import TableActions from "../components/TableActions";
 import DetailOptionsMenu from "../components/DetailOptionsMenu";
+import { EntityHistoryButton } from "../components/EntityHistoryButton";
 import { formatDate, formatNumber, formatProductName } from "../lib/utils";
 import { useMonthFilter } from "../hooks/useMonthFilter";
 import PrintDocumentPreview from "../components/PrintDocumentPreview";
@@ -869,6 +870,13 @@ export default function OpeningInventory() {
 							</button>
 						</div>
 						<div className="erp-modal-body">
+							<div className="mb-3 flex flex-wrap items-center gap-2">
+								<EntityHistoryButton
+									entityType="OPENING_INVENTORY"
+									entityId={viewDoc.id}
+									entityCode={viewDoc.code}
+								/>
+							</div>
 							{getDoc.isLoading ? (
 								<div className="p-8 text-center text-slate-400">Đang tải chi tiết...</div>
 							) : getDocError ? (
@@ -1315,15 +1323,12 @@ export default function OpeningInventory() {
 				}
 				onClose={() => setPrintTarget(null)}
 			>
-				{ref =>
-					printTarget && (
-						<OpeningInventoryDocument
-							ref={ref}
-							document={printTarget}
-							company={companyQuery.data}
-						/>
-					)
-				}
+				{printTarget && (
+					<OpeningInventoryDocument
+						document={printTarget}
+						company={companyQuery.data}
+					/>
+				)}
 			</PrintDocumentPreview>
 		</div>
 	);

@@ -1,8 +1,16 @@
 import { prisma } from "@challenge/database";
 import type { RoleCreateInput, RoleUpdateInput } from "@challenge/contracts";
 import { HttpError } from "../../common/http-error";
+import { FIELD_LABELS, diffFields, recordAudit, snapshotFields, type AuditField } from "../../common/audit";
 
 const ADMIN_ROLE_CODE = "ADMIN";
+const ROLE_AUDIT_FIELDS: AuditField[] = [
+  { key: "code", label: "Mã vai trò" },
+  { key: "name", label: "Tên vai trò" },
+  { key: "description", label: "Mô tả" },
+  { key: "permissionCodes", label: "Danh sách quyền" },
+];
+const nowIso = () => new Date().toISOString();
 
 async function roleWithLinks(id: number) {
   const role = await prisma.roles.findUnique({
@@ -63,7 +71,7 @@ export const iamService = {
     return roleWithLinks(id);
   },
 
-  async createRole(input: RoleCreateInput) {
+  async createRole(input: RoleCreateInput, actorId?: number) {
     const exists = await prisma.roles.findUnique({ where: { code: input.code } });
     if (exists) throw new HttpError(400, "ROLE_CODE_EXISTS", `Mã vai trò '${input.code}' đã tồn tại`);
     const permissionIds = await resolvePermissionIds(input.permissionCodes);
@@ -76,11 +84,22 @@ export const iamService = {
         role_permissions: { create: permissionIds.map(permissionId => ({ permissionId })) },
       },
     });
-    return roleWithLinks(role.id);
+    const after = await roleWithLinks(role.id);
+    await recordAudit(prisma, {
+      action: "Tạo vai trò",
+      details: after.code,
+      entityType: "ROLE",
+      entityId: after.id,
+      entityCode: after.code,
+      userId: actorId,
+      createdAt: nowIso(),
+      changes: snapshotFields(after, ROLE_AUDIT_FIELDS),
+    });
+    return after;
   },
 
-  async updateRole(id: number, input: RoleUpdateInput) {
-    await roleWithLinks(id);
+  async updateRole(id: number, input: RoleUpdateInput, actorId?: number) {
+    const before = await roleWithLinks(id);
     const permissionIds = await resolvePermissionIds(input.permissionCodes);
     await prisma.$transaction([
       prisma.roles.update({ where: { id }, data: { name: input.name, description: input.description || null } }),
@@ -89,18 +108,41 @@ export const iamService = {
         ? [prisma.role_permissions.createMany({ data: permissionIds.map(permissionId => ({ roleId: id, permissionId })) })]
         : []),
     ]);
-    return roleWithLinks(id);
+    const after = await roleWithLinks(id);
+    await recordAudit(prisma, {
+      action: "Cập nhật vai trò",
+      details: after.code,
+      entityType: "ROLE",
+      entityId: id,
+      entityCode: after.code,
+      userId: actorId,
+      createdAt: nowIso(),
+      changes: diffFields(before, after, ROLE_AUDIT_FIELDS),
+    });
+    return after;
   },
 
-  async deleteRole(id: number) {
+  async deleteRole(id: number, actorId?: number) {
     const role = await roleWithLinks(id);
     if (role.isSystem) throw new HttpError(400, "SYSTEM_ROLE_PROTECTED", "Không thể xóa vai trò hệ thống");
     if (role.userCount > 0) throw new HttpError(400, "ROLE_IN_USE", `Vai trò đang gán cho ${role.userCount} tài khoản, gỡ gán trước khi xóa`);
     await prisma.roles.delete({ where: { id } });
+    await recordAudit(prisma, {
+      action: "Xóa vai trò",
+      details: role.code,
+      entityType: "ROLE",
+      entityId: id,
+      entityCode: role.code,
+      userId: actorId,
+      createdAt: nowIso(),
+      changes: [{ field: "deleted", label: "Đã xóa", oldValue: false, newValue: true }],
+    });
     return { success: true };
   },
 
-  async assignUserRoles(userId: number, roleIds: number[]) {
+  async assignUserRoles(userId: number, roleIds: number[], actorId?: number) {
+    const beforeLinks = await prisma.user_roles.findMany({ where: { userId }, include: { roles: true } });
+    const beforeCodes = beforeLinks.map(link => link.roles.code).sort();
     const user = await prisma.users.findUnique({ where: { id: userId } });
     if (!user) throw new HttpError(404, "USER_NOT_FOUND", "Không tìm thấy tài khoản");
     const uniq = [...new Set(roleIds)];
@@ -128,6 +170,22 @@ export const iamService = {
     const links = await prisma.role_permissions.findMany({
       where: { roleId: { in: uniq } },
       include: { permissions: true },
+    });
+    const afterCodes = roles.map(role => role.code).sort();
+    await recordAudit(prisma, {
+      action: "Gán vai trò cho tài khoản",
+      details: user.username || user.fullName || String(userId),
+      entityType: "USER",
+      entityId: userId,
+      entityCode: user.username || user.fullName || String(userId),
+      userId: actorId,
+      createdAt: nowIso(),
+      changes: [{
+        field: "roleCodes",
+        label: "Danh sách vai trò",
+        oldValue: beforeCodes.join(", "),
+        newValue: afterCodes.join(", "),
+      }],
     });
     return {
       userId,

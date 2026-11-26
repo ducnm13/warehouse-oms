@@ -1,0 +1,41 @@
+const iso = (value: unknown) =>
+  value instanceof Date ? value.toISOString() : value ?? null;
+
+export const mapTechnicalIncident = (
+  row: any,
+  options: { detail?: boolean } = {},
+) => ({
+  id: row.id,
+  code: row.code,
+  title: row.title,
+  equipmentName: row.equipmentName || null,
+  location: row.location || null,
+  category: row.category,
+  severity: row.severity,
+  status: row.status,
+  occurredAt: iso(row.occurredAt),
+  assigneeId: row.assigneeId ?? null,
+  assigneeName: row.assigneeName || row.assignee?.fullName || null,
+  assigneeCode: row.assignee?.code || null,
+  assigneeJobTitle: row.assignee?.jobTitle || null,
+  assigneeWorkUnit: row.assignee?.workUnit || null,
+  cause: row.cause || null,
+  solution: row.solution || null,
+  cost: Number(row.cost || 0),
+  note: row.note || null,
+  resolvedAt: iso(row.resolvedAt),
+  createdBy: row.createdBy,
+  creatorName: row.creator?.fullName || row.creator?.username || null,
+  createdAt: iso(row.createdAt),
+  updatedAt: iso(row.updatedAt),
+  version: Number(row.version || 1),
+  imageCount: (row.images || []).length,
+  images: (row.images || []).map((image: any) => ({
+    id: image.id,
+    fileName: image.fileName,
+    mimeType: image.mimeType,
+    size: image.size,
+    createdAt: iso(image.createdAt),
+    ...(options.detail ? { dataUrl: image.dataUrl } : {}),
+  })),
+});

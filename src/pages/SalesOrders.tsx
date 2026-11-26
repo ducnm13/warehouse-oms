@@ -10,6 +10,7 @@ import {
 	Copy,
 	Edit,
 	Eye,
+	EyeOff,
 	FileSpreadsheet,
 	PackageCheck,
 	PackagePlus,
@@ -38,6 +39,7 @@ import SearchableSelect from "../components/SearchableSelect";
 import { useDocumentShortcuts } from "../hooks/useDocumentShortcuts";
 import { useLineTableTab } from "../hooks/useLineTableTab";
 import TableActions from "../components/TableActions";
+import { EntityHistoryButton } from "../components/EntityHistoryButton";
 import DetailOptionsMenu from "../components/DetailOptionsMenu";
 import ListToolbar from "../components/ListToolbar";
 import ProductSuggestions, {
@@ -47,6 +49,7 @@ import type { FilterField, FilterValues } from "../components/FilterDrawer";
 import { exportExcelFile } from "../lib/excelExport";
 import { comboBoms, comboOptionLabel, isComboPackaging } from "../lib/combo";
 import { useCanViewMoney } from "../hooks/useCanViewMoney";
+import { useIsAdminLevel } from "../hooks/useIsAdminLevel";
 import { SalesOrderDocument } from "../components/SalesOrderDocument";
 import Button from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -246,6 +249,13 @@ export default function SalesOrders() {
 	>([]);
 	// In đơn bán hàng (xem trước + in HTML)
 	const [reportOrder, setReportOrder] = useState<SalesOrder | null>(null);
+	const [printHidePrices, setPrintHidePrices] = useState(false);
+	const isAdminLevel = useIsAdminLevel();
+	const canTogglePrintPrices = isAdminLevel && showMoney;
+	const openPrint = (order: SalesOrder) => {
+		setPrintHidePrices(false);
+		setReportOrder(order);
+	};
 	const reportRef = useRef<HTMLDivElement>(null);
 	const handlePrintReport = useReactToPrint({
 		contentRef: reportRef,
@@ -1282,7 +1292,7 @@ export default function SalesOrders() {
 				return;
 			}
 			const target = editing || selected;
-			if (target) setReportOrder(target);
+			if (target) openPrint(target);
 		},
 		onEdit: () => {
 			if (!open && selected) {
@@ -1343,10 +1353,10 @@ export default function SalesOrders() {
 					"H39:J39",
 					"K39:N39",
 				].forEach(range => worksheet.unMergeCells(range));
-				worksheet.insertRows(
+				worksheet.spliceRows(
 					28,
-					Array.from({ length: extraRows }, () => []),
-					"i",
+					0,
+					...Array.from({ length: extraRows }, () => []),
 				);
 				for (let index = 0; index < extraRows; index++)
 					cloneRowStyle(styleSource, worksheet.getRow(28 + index));
@@ -1721,7 +1731,7 @@ export default function SalesOrders() {
 														key: "print",
 														label: "In đơn",
 														icon: <Printer size={15} />,
-														onClick: () => setReportOrder(order),
+														onClick: () => openPrint(order),
 													},
 													{
 														key: "excel",
@@ -2410,11 +2420,18 @@ export default function SalesOrders() {
 						</div>
 						<div className="erp-modal-body space-y-4">
 							<div className="flex flex-wrap items-center justify-between gap-2">
-								<span
-									className={`erp-badge ${statusMeta[selected.status as V1Status].css}`}
-								>
-									{statusMeta[selected.status as V1Status].label}
-								</span>
+								<div className="flex flex-wrap items-center gap-2">
+									<span
+										className={`erp-badge ${statusMeta[selected.status as V1Status].css}`}
+									>
+										{statusMeta[selected.status as V1Status].label}
+									</span>
+									<EntityHistoryButton
+										entityType="SALES_ORDER"
+										entityId={selected.id}
+										entityCode={selected.code}
+									/>
+								</div>
 								{showMoney && (
 									<b className="text-xl text-emerald-700">
 										{formatNumber(selected.totalAmount)} ₫
@@ -2709,7 +2726,7 @@ export default function SalesOrders() {
 										key: "print",
 										label: "In đơn hàng",
 										icon: <Printer size={15} />,
-										onClick: () => setReportOrder(selected),
+										onClick: () => openPrint(selected),
 									},
 									{
 										key: "duplicate",
@@ -3269,6 +3286,21 @@ export default function SalesOrders() {
 							</span>
 						</div>
 						<div className="flex items-center gap-3">
+							{canTogglePrintPrices && (
+								<button
+									type="button"
+									onClick={() => setPrintHidePrices(current => !current)}
+									title="Ẩn/hiện giá trên bản in"
+									className={`flex items-center gap-2 rounded-lg border px-5 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${
+										printHidePrices
+											? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+											: "border-gray-200 text-gray-600 hover:bg-gray-50"
+									}`}
+								>
+									{printHidePrices ? <Eye size={16} /> : <EyeOff size={16} />}
+									{printHidePrices ? "Hiện giá" : "Ẩn giá"}
+								</button>
+							)}
 							<button
 								onClick={() => setReportOrder(null)}
 								className="px-6 py-2 border rounded-lg font-black text-gray-500 hover:bg-gray-50 transition-all uppercase text-[10px] tracking-widest"
@@ -3291,6 +3323,7 @@ export default function SalesOrders() {
 							<SalesOrderDocument
 								order={reportOrder}
 								company={companyQuery.data}
+								hidePrices={printHidePrices}
 							/>
 						</div>
 					</div>

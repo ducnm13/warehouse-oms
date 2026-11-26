@@ -20,11 +20,12 @@
 		"prisma:generate": "prisma generate --schema packages/database/prisma/schema.prisma",
 		"prisma:push": "prisma db push --schema packages/database/prisma/schema.prisma",
 		"prisma:studio": "prisma studio --schema packages/database/prisma/schema.prisma",
-    "db:reset-operational": "tsx scripts/reset-operational-data.ts",
-    "db:reset-month": "tsx scripts/reset-month-documents.ts",
-    "db:restore": "tsx scripts/restore-database.ts",
-    "db:dump": "tsx scripts/dump-database.ts",
-    "db:recalculate": "tsx scripts/recalculate-app-data.ts"
+		"db:reset-operational": "tsx scripts/reset-operational-data.ts",
+		"db:reset-month": "tsx scripts/reset-month-documents.ts",
+		"db:restore": "tsx scripts/restore-database.ts",
+		"db:dump": "tsx scripts/dump-database.ts",
+		"db:recalculate": "tsx scripts/recalculate-app-data.ts",
+		"db:reconcile": "tsx scripts/reconcile-ledgers.ts"
 	},
 	"dependencies": {
 		"@google/genai": "^1.29.0",
@@ -37,7 +38,7 @@
 		"clsx": "^2.1.1",
 		"date-fns": "^4.1.0",
 		"dotenv": "^17.4.2",
-		"exceljs": "^4.4.0",
+		"exceljs": "^3.4.0",
 		"express": "^4.21.2",
 		"file-saver": "^2.0.5",
 		"jsonwebtoken": "^9.0.3",
@@ -81,6 +82,13 @@
 	"allowScripts": {
 		"prisma@6.19.2": true,
 		"@prisma/client@6.19.2": true,
-		"@prisma/engines@6.19.2": true
+		"@prisma/engines@6.19.2": true,
+		"@scarf/scarf@1.4.0": true,
+		"core-js@3.49.0": true,
+		"esbuild@0.27.7": true,
+		"esbuild@0.25.12": true,
+		"protobufjs@7.6.6": true,
+		"sqlite@5.1.1": true,
+		"sqlite3@6.0.1": true
 	}
 }

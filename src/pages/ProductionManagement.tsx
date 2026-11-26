@@ -32,6 +32,7 @@ import { DateInput } from "../components/DateRangeCalendar";
 import SearchableSelect from "../components/SearchableSelect";
 import TableActions from "../components/TableActions";
 import DetailOptionsMenu from "../components/DetailOptionsMenu";
+import { EntityHistoryButton } from "../components/EntityHistoryButton";
 import ListToolbar from "../components/ListToolbar";
 import type { FilterField, FilterValues } from "../components/FilterDrawer";
 import { exportExcelFile } from "../lib/excelExport";
@@ -1572,6 +1573,13 @@ export default function ProductionManagement({
 							</button>
 						</div>
 						<div className="erp-modal-body space-y-4">
+							<div className="flex flex-wrap items-center gap-2">
+								<EntityHistoryButton
+									entityType="PRODUCTION_ORDER"
+									entityId={selected.id}
+									entityCode={selected.code}
+								/>
+							</div>
 							<div className="grid gap-3 md:grid-cols-4">
 								<div>
 									<small>Số lô</small>

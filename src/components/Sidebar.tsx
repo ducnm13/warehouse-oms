@@ -30,6 +30,8 @@ import {
 	ShieldCheck,
 	MessageCircle,
 	Terminal,
+	Wrench,
+	Calculator,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -45,16 +47,20 @@ const NavItem = ({
 	label,
 	path,
 	indent = false,
+	exact = false,
 }: {
 	icon: React.FC<any>;
 	label: string;
 	path: string;
 	indent?: boolean;
+	/** Chỉ active khi đúng đường dẫn, không tính các route con. */
+	exact?: boolean;
 }) => {
 	const location = useLocation();
 	const navigate = useNavigate();
-	const active =
-		location.pathname === path || location.pathname.startsWith(path + "/");
+	const active = exact
+		? location.pathname === path
+		: location.pathname === path || location.pathname.startsWith(path + "/");
 	const handleClick = () => {
 		navigate(path);
 	};
@@ -160,8 +166,12 @@ export default function Sidebar({
 	const showProduction = access.production;
 	const showProductionMgmt = access.productionMgmt;
 	const showAssembly = access.assembly;
+	const showCosting = access.costing;
 	const showProductionSection =
-		showProduction || showProductionMgmt || showAssembly;
+		showProduction || showProductionMgmt || showAssembly || showCosting;
+
+	// Kỹ thuật & bảo trì
+	const showTechnical = access.technical;
 
 	// Báo cáo
 	const showReports = access.reports;
@@ -198,7 +208,7 @@ export default function Sidebar({
 				ref={sidebarRef}
 				data-tour="sidebar"
 				className={`
-          fixed md:relative inset-y-0 left-0 z-50
+          erp-sidebar fixed md:relative inset-y-0 left-0 z-50
           w-[270px] h-full flex flex-col flex-shrink-0 bg-white
           transform transition-transform duration-300 ease-in-out
           ${sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
@@ -370,6 +380,7 @@ export default function Sidebar({
 									icon={Factory}
 									label="Lệnh sản xuất"
 									path="/production"
+									exact
 								/>
 							)}
 							{showProductionMgmt && (
@@ -386,17 +397,35 @@ export default function Sidebar({
 									path="/assembly"
 								/>
 							)}
+							{showCosting && (
+								<NavItem
+									icon={Calculator}
+									label="Chi phí & giá thành"
+									path="/production/costing"
+								/>
+							)}
+							{/* Báo cáo */}
+							{showReports && (
+								<NavItem icon={BarChart3} label="Báo cáo" path="/reports" />
+							)}
+
+							{/* Tin nhắn nội bộ */}
+							{access.chat && (
+								<NavItem icon={MessageCircle} label="Tin nhắn" path="/chat" />
+							)}
 						</>
 					)}
 
-					{/* Báo cáo */}
-					{showReports && (
-						<NavItem icon={BarChart3} label="Báo cáo" path="/reports" />
-					)}
-
-					{/* Tin nhắn nội bộ */}
-					{access.chat && (
-						<NavItem icon={MessageCircle} label="Tin nhắn" path="/chat" />
+					{/* Kỹ thuật & bảo trì */}
+					{showTechnical && (
+						<>
+							<SectionLabel>Kỹ thuật &amp; bảo trì</SectionLabel>
+							<NavItem
+								icon={Wrench}
+								label="Sự cố kỹ thuật"
+								path="/technical-incidents"
+							/>
+						</>
 					)}
 
 					{/* Quản lý */}

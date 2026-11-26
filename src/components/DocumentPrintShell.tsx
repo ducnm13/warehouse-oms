@@ -29,7 +29,7 @@ export const DocumentSignatures = ({ signers }: DocumentSignaturesProps) => {
 					<p className="font-bold uppercase not-italic">{signer.title}</p>
 					<p className="text-xs">{signer.note}</p>
 					{signer.name && (
-						<p className="mt-10 text-[12px] font-bold uppercase not-italic">
+						<p className="mt-5 text-[12px] font-bold uppercase not-italic">
 							{signer.name}
 						</p>
 					)}

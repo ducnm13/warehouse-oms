@@ -38,6 +38,7 @@ import type {
 } from "../types";
 import ListToolbar from "../components/ListToolbar";
 import DetailOptionsMenu from "../components/DetailOptionsMenu";
+import { EntityHistoryButton } from "../components/EntityHistoryButton";
 import type { FilterField, FilterValues } from "../components/FilterDrawer";
 import { exportExcelFile } from "../lib/excelExport";
 import { useMultiEscapeKey } from "../hooks/useEscapeKey";
@@ -979,9 +980,16 @@ export default function WarehouseTransfers() {
 							</button>
 						</div>
 						<div className="erp-modal-body space-y-4">
-							<span className={`erp-badge ${statusMeta[selected.status].css}`}>
-								{statusMeta[selected.status].label}
-							</span>
+							<div className="flex flex-wrap items-center gap-2">
+								<span className={`erp-badge ${statusMeta[selected.status].css}`}>
+									{statusMeta[selected.status].label}
+								</span>
+								<EntityHistoryButton
+									entityType="WAREHOUSE_TRANSFER"
+									entityId={selected.id}
+									entityCode={selected.code}
+								/>
+							</div>
 							<table className="erp-table">
 								<thead>
 									<tr>
@@ -1150,15 +1158,12 @@ export default function WarehouseTransfers() {
 				}
 				onClose={() => setPrintTarget(null)}
 			>
-				{ref =>
-					printTarget && (
-						<WarehouseTransferDocument
-							ref={ref}
-							transfer={printTarget}
-							company={companyQuery.data}
-						/>
-					)
-				}
+				{printTarget && (
+					<WarehouseTransferDocument
+						transfer={printTarget}
+						company={companyQuery.data}
+					/>
+				)}
 			</PrintDocumentPreview>
 		</div>
 	);

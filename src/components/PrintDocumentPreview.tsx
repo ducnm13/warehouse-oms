@@ -1,4 +1,4 @@
-import React, { useRef, type ReactNode, type Ref } from "react";
+import React, { useRef, type ReactNode } from "react";
 import { Printer } from "lucide-react";
 import { useReactToPrint } from "react-to-print";
 
@@ -8,7 +8,7 @@ interface PrintDocumentPreviewProps {
 	code?: string;
 	documentTitle: string;
 	onClose: () => void;
-	children: (ref: Ref<HTMLDivElement>) => ReactNode;
+	children: ReactNode;
 }
 
 export default function PrintDocumentPreview({
@@ -58,8 +58,11 @@ export default function PrintDocumentPreview({
 				</div>
 			</div>
 			<div className="flex-1 overflow-auto bg-gray-200/50 p-8">
-				<div className="sales-print-view mx-auto mb-8 w-[210mm] max-w-full bg-white shadow-2xl">
-					{children(printRef)}
+				<div
+					ref={printRef}
+					className="sales-print-view mx-auto mb-8 w-[210mm] max-w-full bg-white shadow-2xl"
+				>
+					{children}
 				</div>
 			</div>
 		</div>

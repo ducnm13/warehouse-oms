@@ -50,6 +50,8 @@ import Promotions from './pages/Promotions';
 import SalesReturns from './pages/SalesReturns';
 import CompanySettings from './pages/CompanySettings';
 import OpeningInventory from './pages/OpeningInventory';
+import TechnicalIncidents from './pages/TechnicalIncidents';
+import ProductionCosting from './pages/ProductionCosting';
 import CatalogProducts from './pages/CatalogProducts';
 import CatalogImport from './pages/CatalogImport';
 import WarehousesManager from './pages/WarehousesManager';
@@ -226,6 +228,7 @@ const AppRoutes = () => {
           <Route path="/reports/promotions" element={<WarehouseBlockedGuard><PromotionUsageReport /></WarehouseBlockedGuard>} />
           <Route path="/reports/online" element={<MoneyReportGuard><OnlineReport /></MoneyReportGuard>} />
           <Route path="/production" element={<Production user={user!} onNavigate={(tab) => navigate(`/${tab}`)} />} />
+          <Route path="/production/costing" element={<ProductionCosting />} />
           <Route path="/production-mgmt" element={user?.role === 'W_MANAGER' ? <Navigate to="/production" replace /> : <ProductionManagement user={user!} onNavigate={(tab) => navigate(`/${tab}`)} />} />
           <Route path="/assembly" element={<Assembly user={user!} />} />
           <Route path="/stock-take" element={<Stocktake />} />
@@ -240,6 +243,7 @@ const AppRoutes = () => {
           <Route path="/user-guide" element={<UserGuide user={user} />} />
           <Route path="/company-settings" element={<CompanySettings />} />
           <Route path="/audit-logs" element={<AuditLogs />} />
+          <Route path="/technical-incidents" element={<TechnicalIncidents />} />
           <Route path="/dev-tools" element={<DevTools />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/error-404" element={<NotFoundPage onHome={() => navigate('/dashboard')} onBack={() => navigate('/dashboard')} />} />

@@ -1,15 +1,64 @@
 import type { DebtCancelInput, DebtPaymentDraftInput, DebtPaymentUpdateInput } from "@challenge/contracts";
-import { Prisma } from "@challenge/database";
+import { money, toDecimal } from "@challenge/database";
+import type { DecimalInput } from "@challenge/database";
 import { HttpError } from "../../common/http-error";
 import { mapPayment } from "./debt.mapper";
 import { debtRepository, prisma } from "./debt.repository";
+import { FIELD_LABELS, diffFields, recordAudit, snapshotFields, type AuditField, type AuditChange } from "../../common/audit";
 
 type Kind = "RECEIPT" | "VOUCHER";
-const money = (value: number) => new Prisma.Decimal(value.toFixed(2));
+const AUDIT_FIELDS: AuditField[] = [
+  { key: "code", label: FIELD_LABELS.code },
+  { key: "receiptDate", label: "Ngày phiếu thu" },
+  { key: "voucherDate", label: "Ngày phiếu chi" },
+  { key: "method", label: "Phương thức" },
+  { key: "amount", label: "Số tiền" },
+  { key: "note", label: FIELD_LABELS.note },
+  { key: "status", label: FIELD_LABELS.status },
+];
+const entityType = (kind: Kind) => kind === "RECEIPT" ? "DEBT_RECEIPT" : "DEBT_VOUCHER";
+const entityLabel = (kind: Kind) => kind === "RECEIPT" ? "phiếu thu" : "phiếu chi";
+
+async function loadPayment(tx: any, kind: Kind, id: bigint) {
+  return kind === "RECEIPT"
+    ? tx.payment_receipts.findUnique({ where: { id }, include: { payment_receipt_allocations: true } })
+    : tx.payment_vouchers.findUnique({ where: { id }, include: { payment_voucher_allocations: true } });
+}
+
+function allocationChanges(kind: Kind, before: any, after: any): AuditChange[] {
+  if (!before || !after) return [];
+  const beforeRows = kind === "RECEIPT" ? before.payment_receipt_allocations : before.payment_voucher_allocations;
+  const afterRows = kind === "RECEIPT" ? after.payment_receipt_allocations : after.payment_voucher_allocations;
+  const changes: AuditChange[] = [];
+  const length = Math.max(beforeRows?.length || 0, afterRows?.length || 0);
+  for (let index = 0; index < length; index++) {
+    const oldRow = beforeRows?.[index];
+    const newRow = afterRows?.[index];
+    const documentKey = kind === "RECEIPT" ? "salesOrderId" : "purchaseDocumentId";
+    if (!oldRow || !newRow || oldRow[documentKey] !== newRow[documentKey]) {
+      changes.push({
+        field: `allocations[${index}].documentId`,
+        label: `Phân bổ ${index + 1} - Chứng từ`,
+        oldValue: oldRow?.[documentKey] ?? null,
+        newValue: newRow?.[documentKey] ?? null,
+      });
+    }
+    if (oldRow && newRow && String(oldRow.amount) !== String(newRow.amount)) {
+      changes.push({
+        field: `allocations[${index}].amount`,
+        label: `Phân bổ ${index + 1} - Số tiền`,
+        oldValue: oldRow.amount,
+        newValue: newRow.amount,
+      });
+    }
+  }
+  return changes;
+}
 const nowIso = () => new Date().toISOString();
 const dateAtNoon = (value: string) => new Date(`${value}T12:00:00.000Z`);
 const code = (kind: Kind, date: string) => `${kind === "RECEIPT" ? "PTV1" : "PCV1"}-${date.replaceAll("-", "")}-${Date.now().toString().slice(-6)}`;
 const table = (kind: Kind) => kind === "RECEIPT" ? "payment_receipts" : "payment_vouchers";
+const EPSILON = toDecimal("0.005");
 
 async function lockPayment(tx: any, kind: Kind, id: bigint) {
   const rows = await tx.$queryRawUnsafe(`SELECT id,status,version,sourceModule FROM ${table(kind)} WHERE id=? FOR UPDATE`, id) as any[];
@@ -17,7 +66,14 @@ async function lockPayment(tx: any, kind: Kind, id: bigint) {
   return rows[0];
 }
 const assertVersion = (row: any, version: number) => { if (Number(row.version) !== version) throw new HttpError(409, "VERSION_CONFLICT", "Dữ liệu đã được người khác cập nhật"); };
-const paymentStatus = (paid: number, total: number) => paid <= 0.005 ? "UNPAID" : paid >= total - 0.005 ? "PAID" : "PARTIAL";
+const paymentStatus = (paid: DecimalInput, total: DecimalInput) => {
+  const paidValue = toDecimal(paid);
+  return paidValue.lte(EPSILON) ? "UNPAID" : paidValue.gte(toDecimal(total).minus(EPSILON)) ? "PAID" : "PARTIAL";
+};
+const maxZero = (value: DecimalInput) => {
+  const decimal = toDecimal(value);
+  return decimal.lt(0) ? money(0) : money(decimal);
+};
 
 async function validatePartner(kind: Kind, partnerId: number) {
   const partner = kind === "RECEIPT" ? await debtRepository.customer(partnerId) : await debtRepository.supplier(partnerId);
@@ -25,8 +81,8 @@ async function validatePartner(kind: Kind, partnerId: number) {
 }
 
 function assertAllocationTotal(input: DebtPaymentDraftInput) {
-  const allocated = input.allocations.reduce((sum, row) => sum + row.amount, 0);
-  if (Math.abs(allocated - input.amount) > 0.005) throw new HttpError(422, "ALLOCATION_TOTAL_MISMATCH", "Tổng phân bổ phải bằng số tiền phiếu");
+  const allocated = input.allocations.reduce((sum, row) => sum.add(money(row.amount)), money(0));
+  if (allocated.minus(money(input.amount)).abs().gt(EPSILON)) throw new HttpError(422, "ALLOCATION_TOTAL_MISMATCH", "Tổng phân bổ phải bằng số tiền phiếu");
 }
 
 async function hydrate(kind: Kind, row: any) {
@@ -156,7 +212,24 @@ export const debtService = {
       await tx.payment_voucher_allocations.createMany({ data: input.allocations.map(row => ({ paymentVoucherId: header.id, purchaseDocumentId: row.documentId, amount: money(row.amount) })) });
       return header;
     });
-    await prisma.audit_logs.create({ data: { action: kind === "RECEIPT" ? "Tạo phiếu thu v1" : "Tạo phiếu chi v1", details: created.code, userId, userName: String(userId), createdAt: nowIso() } });
+    await recordAudit(prisma, {
+      action: kind === "RECEIPT" ? "Tạo phiếu thu v1" : "Tạo phiếu chi v1",
+      details: created.code,
+      entityType: entityType(kind),
+      entityId: created.id,
+      entityCode: created.code,
+      userId,
+      createdAt: nowIso(),
+      changes: [
+        ...snapshotFields(created, AUDIT_FIELDS),
+        ...input.allocations.map((row, index) => ({
+          field: `allocations[${index}].amount`,
+          label: `Phân bổ ${index + 1} - Số tiền`,
+          oldValue: null,
+          newValue: money(row.amount).toString(),
+        })),
+      ],
+    });
     return this.get(kind, created.id);
   },
 
@@ -165,6 +238,7 @@ export const debtService = {
     await prisma.$transaction(async tx => {
       const current = await lockPayment(tx, kind, id); assertVersion(current, input.version);
       if (current.status !== "DRAFT") throw new HttpError(409, "INVALID_STATUS", "Chỉ được sửa phiếu thu/chi đang nháp");
+      const before = await loadPayment(tx, kind, id);
       if (kind === "RECEIPT") {
         await tx.payment_receipt_allocations.deleteMany({ where: { paymentReceiptId: id } });
         await tx.payment_receipts.update({ where: { id }, data: { customerId: input.partnerId, receiptDate: dateAtNoon(input.paymentDate), method: input.method, amount: money(input.amount), note: input.note, version: { increment: 1 } } });
@@ -174,7 +248,20 @@ export const debtService = {
         await tx.payment_vouchers.update({ where: { id }, data: { supplierId: input.partnerId, voucherDate: dateAtNoon(input.paymentDate), method: input.method, amount: money(input.amount), note: input.note, version: { increment: 1 } } });
         await tx.payment_voucher_allocations.createMany({ data: input.allocations.map(row => ({ paymentVoucherId: id, purchaseDocumentId: row.documentId, amount: money(row.amount) })) });
       }
-      await tx.audit_logs.create({ data: { action: kind === "RECEIPT" ? "Cập nhật phiếu thu v1" : "Cập nhật phiếu chi v1", details: String(id), userId, userName: String(userId), createdAt: nowIso() } });
+      const after = await loadPayment(tx, kind, id);
+      await recordAudit(tx, {
+        action: kind === "RECEIPT" ? "Cập nhật phiếu thu v1" : "Cập nhật phiếu chi v1",
+        details: after?.code || String(id),
+        entityType: entityType(kind),
+        entityId: id,
+        entityCode: after?.code,
+        userId,
+        createdAt: nowIso(),
+        changes: [
+          ...diffFields(before, after, AUDIT_FIELDS),
+          ...allocationChanges(kind, before, after),
+        ],
+      });
     });
     return this.get(kind, id);
   },
@@ -189,6 +276,7 @@ export const debtService = {
         : await tx.payment_voucher_allocations.findMany({ where: { paymentVoucherId: id } });
       if (!allocations.length) throw new HttpError(409, "ALLOCATIONS_REQUIRED", "Phiếu chưa có phân bổ");
       const occurredAt = new Date(), now = nowIso();
+      const allocationAudit: AuditChange[] = [];
       for (const allocation of allocations) {
         if (kind === "RECEIPT") {
           const rows = await tx.$queryRawUnsafe<any[]>("SELECT id,code,customerId,status,totalAmount,paidAmount FROM sales_orders WHERE id=? FOR UPDATE", allocation.salesOrderId);
@@ -196,30 +284,54 @@ export const debtService = {
           if (!document || !["POSTED", "FULFILLED"].includes(document.status)) throw new HttpError(409, "DOCUMENT_NOT_POSTED", "Đơn bán chưa lưu");
           if (Number(document.customerId) !== payment.customerId) throw new HttpError(409, "PARTNER_MISMATCH", "Đơn bán không thuộc khách hàng của phiếu thu");
           const outstandingRows = await tx.$queryRawUnsafe<any[]>("SELECT COALESCE(SUM(amount),0) outstanding FROM receivable_transactions WHERE sourceId=? AND customerId=?", document.id, document.customerId);
-          const amount = Number(allocation.amount), remaining = Number(outstandingRows[0]?.outstanding || 0);
-          if (amount > remaining + 0.005) throw new HttpError(409, "ALLOCATION_EXCEEDS_DEBT", `Phân bổ vượt dư nợ ${document.code}`);
-          await tx.receivable_transactions.create({ data: { customerId: payment.customerId, sourceType: "DEBT_RECEIPT", sourceId: document.id, sourceCode: document.code, entryType: "PAYMENT", amount: money(-amount), paymentDocumentId: payment.id, occurredAt, createdBy: userId } });
-          const paid = Number(document.paidAmount || 0) + amount;
+          const amount = money(allocation.amount), remaining = toDecimal(outstandingRows[0]?.outstanding || 0);
+          if (amount.gt(remaining.add(EPSILON))) throw new HttpError(409, "ALLOCATION_EXCEEDS_DEBT", `Phân bổ vượt dư nợ ${document.code}`);
+          await tx.receivable_transactions.create({ data: { customerId: payment.customerId, sourceType: "DEBT_RECEIPT", sourceId: document.id, sourceCode: document.code, entryType: "PAYMENT", amount: amount.neg(), paymentDocumentId: payment.id, occurredAt, createdBy: userId } });
+          const paid = money(toDecimal(document.paidAmount || 0).add(amount));
+          allocationAudit.push({
+            field: `allocations.${document.code}.paidAmount`,
+            label: `${document.code} - Đã thanh toán`,
+            oldValue: document.paidAmount,
+            newValue: paid.toString(),
+          });
           const remainingAfterRows = await tx.$queryRawUnsafe<any[]>("SELECT COALESCE(SUM(amount),0) outstanding FROM receivable_transactions WHERE sourceId=? AND customerId=?", document.id, document.customerId);
-          const remainingAfter = Number(remainingAfterRows[0]?.outstanding || 0);
-          await tx.sales_orders.update({ where: { id: document.id }, data: { paidAmount: paid, paymentStatus: remainingAfter <= 0.005 ? "PAID" : paid > 0.005 ? "PARTIAL" : "UNPAID", version: { increment: 1 }, updatedAt: now } });
+          const remainingAfter = toDecimal(remainingAfterRows[0]?.outstanding || 0);
+          await tx.sales_orders.update({ where: { id: document.id }, data: { paidAmount: paid, paymentStatus: remainingAfter.lte(EPSILON) ? "PAID" : paid.gt(EPSILON) ? "PARTIAL" : "UNPAID", version: { increment: 1 }, updatedAt: now } });
           await tx.customer_payments.create({ data: { customerId: payment.customerId, salesOrderId: document.id, paymentDate: payment.receiptDate.toISOString().slice(0, 10), amount, method: payment.method, note: payment.note, createdBy: userId, createdAt: now } });
         } else {
           const rows = await tx.$queryRawUnsafe<any[]>("SELECT id,code,supplierId,documentStatus,totalAmount,paidAmount FROM purchase_documents WHERE id=? FOR UPDATE", allocation.purchaseDocumentId);
           const document = rows[0];
           if (!document || document.documentStatus !== "POSTED") throw new HttpError(409, "DOCUMENT_NOT_POSTED", "Chứng từ mua chưa lưu");
           if (Number(document.supplierId) !== payment.supplierId) throw new HttpError(409, "PARTNER_MISMATCH", "Chứng từ mua không thuộc nhà cung cấp của phiếu chi");
-          const amount = Number(allocation.amount), remaining = Number(document.totalAmount) - Number(document.paidAmount || 0);
-          if (amount > remaining + 0.005) throw new HttpError(409, "ALLOCATION_EXCEEDS_DEBT", `Phân bổ vượt dư nợ ${document.code}`);
-          const paid = Number(document.paidAmount || 0) + amount;
-          await tx.purchase_documents.update({ where: { id: document.id }, data: { paidAmount: paid, paymentStatus: paymentStatus(paid, Number(document.totalAmount)), version: { increment: 1 }, updatedAt: now } });
-          await tx.payable_transactions.create({ data: { supplierId: payment.supplierId, sourceType: "DEBT_VOUCHER", sourceId: document.id, sourceCode: document.code, entryType: "PAYMENT", amount: money(-amount), paymentDocumentId: payment.id, occurredAt, createdBy: userId } });
+          const amount = money(allocation.amount), remaining = money(toDecimal(document.totalAmount).minus(toDecimal(document.paidAmount || 0)));
+          if (amount.gt(remaining.add(EPSILON))) throw new HttpError(409, "ALLOCATION_EXCEEDS_DEBT", `Phân bổ vượt dư nợ ${document.code}`);
+          const paid = money(toDecimal(document.paidAmount || 0).add(amount));
+          allocationAudit.push({
+            field: `allocations.${document.code}.paidAmount`,
+            label: `${document.code} - Đã thanh toán`,
+            oldValue: document.paidAmount,
+            newValue: paid.toString(),
+          });
+          await tx.purchase_documents.update({ where: { id: document.id }, data: { paidAmount: paid, paymentStatus: paymentStatus(paid, document.totalAmount), version: { increment: 1 }, updatedAt: now } });
+          await tx.payable_transactions.create({ data: { supplierId: payment.supplierId, sourceType: "DEBT_VOUCHER", sourceId: document.id, sourceCode: document.code, entryType: "PAYMENT", amount: amount.neg(), paymentDocumentId: payment.id, occurredAt, createdBy: userId } });
           await tx.supplier_payments.create({ data: { supplierId: payment.supplierId, purchaseDocumentId: document.id, paymentDate: payment.voucherDate.toISOString().slice(0, 10), amount, method: payment.method, note: payment.note, createdBy: userId, createdAt: now } });
         }
       }
       if (kind === "RECEIPT") await tx.payment_receipts.update({ where: { id }, data: { status: "POSTED", postedAt: occurredAt, postedBy: userId, version: { increment: 1 } } });
       else await tx.payment_vouchers.update({ where: { id }, data: { status: "POSTED", postedAt: occurredAt, postedBy: userId, version: { increment: 1 } } });
-      await tx.audit_logs.create({ data: { action: kind === "RECEIPT" ? "Lưu phiếu thu v1" : "Lưu phiếu chi v1", details: payment.code, userId, userName: String(userId), createdAt: now } });
+      await recordAudit(tx, {
+        action: kind === "RECEIPT" ? "Lưu phiếu thu v1" : "Lưu phiếu chi v1",
+        details: payment.code,
+        entityType: entityType(kind),
+        entityId: id,
+        entityCode: payment.code,
+        userId,
+        createdAt: now,
+        changes: [
+          { field: "status", label: FIELD_LABELS.status, oldValue: payment.status, newValue: "POSTED" },
+          ...allocationAudit,
+        ],
+      });
     }, { timeout: 30_000 });
     return this.get(kind, id);
   },
@@ -234,23 +346,31 @@ export const debtService = {
         : await tx.payment_voucher_allocations.findMany({ where: { paymentVoucherId: id } });
       const now = nowIso(), cancelledAt = new Date(), reversalCode = `H-${payment.code}`;
       let reversalId: bigint;
+      const allocationAudit: AuditChange[] = [];
       if (kind === "RECEIPT") {
         const reversal = await tx.payment_receipts.create({ data: { code: reversalCode, customerId: payment.customerId, receiptDate: cancelledAt, method: payment.method, amount: payment.amount, direction: "REVERSAL", note: `Đảo ${payment.code}: ${input.reason}`, status: "POSTED", sourceModule: "DEBT_REVERSAL_V1", postedAt: cancelledAt, postedBy: userId, createdBy: userId } });
         await tx.payment_receipt_allocations.createMany({ data: allocations.map(row => ({ paymentReceiptId: reversal.id, salesOrderId: row.salesOrderId, amount: money(-Number(row.amount)) })) });
         reversalId = reversal.id;
         for (const allocation of allocations) {
           const rows = await tx.$queryRawUnsafe<any[]>("SELECT id,code,customerId,totalAmount,paidAmount FROM sales_orders WHERE id=? FOR UPDATE", allocation.salesOrderId); const document = rows[0];
-          const amount = Number(allocation.amount), paid = Math.max(0, Number(document.paidAmount || 0) - amount);
+          const amount = money(allocation.amount);
+          const paid = maxZero(toDecimal(document.paidAmount || 0).minus(amount));
+          allocationAudit.push({
+            field: `allocations.${document.code}.paidAmount`,
+            label: `${document.code} - Đã thanh toán`,
+            oldValue: document.paidAmount,
+            newValue: paid.toString(),
+          });
           let original = await tx.receivable_transactions.findFirst({ where: { sourceType: "DEBT_RECEIPT", sourceId: document.id, paymentDocumentId: payment.id, entryType: "PAYMENT" } });
           if (!original) {
             original = await tx.receivable_transactions.findFirst({ where: { sourceType: "SALE_PAYMENT", sourceId: document.id, entryType: "PAYMENT" }, orderBy: { id: "desc" } });
           }
           if (!original) throw new HttpError(409, "PAYMENT_LEDGER_NOT_FOUND", `Không tìm thấy ledger phiếu thu cho ${document.code}`);
-          await tx.receivable_transactions.create({ data: { customerId: payment.customerId, sourceType: "DEBT_RECEIPT_CANCEL", sourceId: document.id, sourceCode: document.code, entryType: "PAYMENT_REVERSAL", amount: money(amount), paymentDocumentId: reversal.id, reversalOfId: original.id, occurredAt: cancelledAt, createdBy: userId } });
+          await tx.receivable_transactions.create({ data: { customerId: payment.customerId, sourceType: "DEBT_RECEIPT_CANCEL", sourceId: document.id, sourceCode: document.code, entryType: "PAYMENT_REVERSAL", amount, paymentDocumentId: reversal.id, reversalOfId: original.id, occurredAt: cancelledAt, createdBy: userId } });
           const remainingAfterRows = await tx.$queryRawUnsafe<any[]>("SELECT COALESCE(SUM(amount),0) outstanding FROM receivable_transactions WHERE sourceId=? AND customerId=?", document.id, document.customerId);
-          const remainingAfter = Number(remainingAfterRows[0]?.outstanding || 0);
-          await tx.sales_orders.update({ where: { id: document.id }, data: { paidAmount: paid, paymentStatus: remainingAfter <= 0.005 ? "PAID" : paid > 0.005 ? "PARTIAL" : "UNPAID", version: { increment: 1 }, updatedAt: now } });
-          await tx.customer_payments.create({ data: { customerId: payment.customerId, salesOrderId: document.id, paymentDate: now.slice(0, 10), amount: -amount, method: payment.method, note: `Đảo ${payment.code}`, createdBy: userId, createdAt: now } });
+          const remainingAfter = toDecimal(remainingAfterRows[0]?.outstanding || 0);
+          await tx.sales_orders.update({ where: { id: document.id }, data: { paidAmount: paid, paymentStatus: remainingAfter.lte(EPSILON) ? "PAID" : paid.gt(EPSILON) ? "PARTIAL" : "UNPAID", version: { increment: 1 }, updatedAt: now } });
+          await tx.customer_payments.create({ data: { customerId: payment.customerId, salesOrderId: document.id, paymentDate: now.slice(0, 10), amount: amount.neg(), method: payment.method, note: `Đảo ${payment.code}`, createdBy: userId, createdAt: now } });
         }
         await tx.payment_receipts.update({ where: { id }, data: { status: "CANCELLED", cancelledAt, cancelledBy: userId, cancelReason: input.reason, reversalReceiptId: reversal.id, version: { increment: 1 } } });
       } else {
@@ -259,17 +379,37 @@ export const debtService = {
         reversalId = reversal.id;
         for (const allocation of allocations) {
           const rows = await tx.$queryRawUnsafe<any[]>("SELECT id,code,supplierId,totalAmount,paidAmount FROM purchase_documents WHERE id=? FOR UPDATE", allocation.purchaseDocumentId); const document = rows[0];
-          const amount = Number(allocation.amount), paid = Math.max(0, Number(document.paidAmount || 0) - amount);
-          await tx.purchase_documents.update({ where: { id: document.id }, data: { paidAmount: paid, paymentStatus: paymentStatus(paid, Number(document.totalAmount)), version: { increment: 1 }, updatedAt: now } });
+          const amount = money(allocation.amount);
+          const paid = maxZero(toDecimal(document.paidAmount || 0).minus(amount));
+          allocationAudit.push({
+            field: `allocations.${document.code}.paidAmount`,
+            label: `${document.code} - Đã thanh toán`,
+            oldValue: document.paidAmount,
+            newValue: paid.toString(),
+          });
+          await tx.purchase_documents.update({ where: { id: document.id }, data: { paidAmount: paid, paymentStatus: paymentStatus(paid, document.totalAmount), version: { increment: 1 }, updatedAt: now } });
           const original = await tx.payable_transactions.findFirst({ where: { sourceType: "DEBT_VOUCHER", sourceId: document.id, paymentDocumentId: payment.id, entryType: "PAYMENT" } });
           if (!original) throw new HttpError(409, "PAYMENT_LEDGER_NOT_FOUND", `Không tìm thấy ledger phiếu chi cho ${document.code}`);
-          await tx.payable_transactions.create({ data: { supplierId: payment.supplierId, sourceType: "DEBT_VOUCHER_CANCEL", sourceId: document.id, sourceCode: document.code, entryType: "PAYMENT_REVERSAL", amount: money(amount), paymentDocumentId: reversal.id, reversalOfId: original.id, occurredAt: cancelledAt, createdBy: userId } });
-          await tx.supplier_payments.create({ data: { supplierId: payment.supplierId, purchaseDocumentId: document.id, paymentDate: now.slice(0, 10), amount: -amount, method: payment.method, note: `Đảo ${payment.code}`, createdBy: userId, createdAt: now } });
+          await tx.payable_transactions.create({ data: { supplierId: payment.supplierId, sourceType: "DEBT_VOUCHER_CANCEL", sourceId: document.id, sourceCode: document.code, entryType: "PAYMENT_REVERSAL", amount, paymentDocumentId: reversal.id, reversalOfId: original.id, occurredAt: cancelledAt, createdBy: userId } });
+          await tx.supplier_payments.create({ data: { supplierId: payment.supplierId, purchaseDocumentId: document.id, paymentDate: now.slice(0, 10), amount: amount.neg(), method: payment.method, note: `Đảo ${payment.code}`, createdBy: userId, createdAt: now } });
         }
         await tx.payment_vouchers.update({ where: { id }, data: { status: "CANCELLED", cancelledAt, cancelledBy: userId, cancelReason: input.reason, reversalVoucherId: reversal.id, version: { increment: 1 } } });
       }
       void reversalId;
-      await tx.audit_logs.create({ data: { action: kind === "RECEIPT" ? "Hủy phiếu thu v1" : "Hủy phiếu chi v1", details: `${payment.code}: ${input.reason}`, userId, userName: String(userId), createdAt: now } });
+      await recordAudit(tx, {
+        action: kind === "RECEIPT" ? "Hủy phiếu thu v1" : "Hủy phiếu chi v1",
+        details: `${payment.code}: ${input.reason}`,
+        entityType: entityType(kind),
+        entityId: id,
+        entityCode: payment.code,
+        userId,
+        createdAt: now,
+        changes: [
+          { field: "status", label: FIELD_LABELS.status, oldValue: payment.status, newValue: "CANCELLED" },
+          { field: "cancelReason", label: FIELD_LABELS.reason, oldValue: null, newValue: input.reason },
+          ...allocationAudit,
+        ],
+      });
     }, { timeout: 30_000 });
     return this.get(kind, id);
   },

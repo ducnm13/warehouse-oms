@@ -7,7 +7,8 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@prisma/client": "6.19.2"
+    "@prisma/client": "6.19.2",
+    "exceljs": "^3.4.0"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -16,6 +17,6 @@
     "prisma:studio": "prisma studio --schema prisma/schema.prisma"
   },
   "devDependencies": {
-    "prisma": "6.19.2"
+    "prisma": "^6.12.0"
   }
 }

@@ -1,13 +1,33 @@
 import type { SalesReturnCancelInput, SalesReturnDraftInput, SalesReturnUpdateInput } from "@challenge/contracts";
 import { HttpError } from "../../common/http-error";
 import { mapSalesReturn } from "./sales-return.mapper";
-import { Prisma, prisma, salesReturnInclude, salesReturnRepository } from "./sales-return.repository";
+import { decimal, money, toDecimal } from "@challenge/database";
+import { prisma, salesReturnInclude, salesReturnRepository } from "./sales-return.repository";
 import { nextDocumentCode } from "../../common/document-code";
-
-const decimal = (value: number) => new Prisma.Decimal(value.toFixed(4));
-const money = (value: number) => new Prisma.Decimal(value.toFixed(2));
+import { FIELD_LABELS, diffFields, diffLines, recordAudit, snapshotFields, type AuditField } from "../../common/audit";
 const day = (value: string) => new Date(`${value}T12:00:00.000Z`);
 const nowIso = () => new Date().toISOString();
+const HEADER_AUDIT_FIELDS: AuditField[] = [
+  { key: "code", label: FIELD_LABELS.code },
+  { key: "returnDate", label: "Ngày trả hàng" },
+  { key: "reason", label: FIELD_LABELS.reason },
+  { key: "settlementType", label: "Hình thức quyết toán" },
+  { key: "subtotal", label: FIELD_LABELS.subtotal },
+  { key: "taxAmount", label: FIELD_LABELS.taxAmount },
+  { key: "totalAmount", label: FIELD_LABELS.totalAmount },
+  { key: "costAmount", label: "Giá vốn" },
+  { key: "status", label: FIELD_LABELS.status },
+];
+const LINE_AUDIT_FIELDS: AuditField[] = [
+  { key: "packagingId", label: FIELD_LABELS.packagingId },
+  { key: "quantity", label: FIELD_LABELS.quantity },
+  { key: "unitPrice", label: FIELD_LABELS.unitPrice },
+  { key: "lineTotal", label: FIELD_LABELS.lineTotal },
+  { key: "taxAmount", label: FIELD_LABELS.taxAmount },
+  { key: "unitCost", label: FIELD_LABELS.unitCost },
+  { key: "costAmount", label: "Giá vốn dòng" },
+  { key: "note", label: FIELD_LABELS.note },
+];
 
 async function build(input: SalesReturnDraftInput) {
   const [sale, warehouse] = await Promise.all([
@@ -24,34 +44,36 @@ async function build(input: SalesReturnDraftInput) {
     where: { originalSalesOrderLineId: { in: [...ids] }, salesReturn: { status: "POSTED" } },
     _sum: { quantity: true },
   });
-  const taxRate = Number(sale.subtotal || 0) > 0 ? Number(sale.taxAmount || 0) / Number(sale.subtotal) : 0;
+  const taxRate = toDecimal(sale.subtotal).gt(0) ? toDecimal(sale.taxAmount).div(toDecimal(sale.subtotal)) : toDecimal(0);
   const lines = input.lines.map(payload => {
     const original = originals.find(line => line.id === payload.originalSalesOrderLineId)!;
-    const returned = Number(posted.find(line => line.originalSalesOrderLineId === original.id)?._sum.quantity || 0);
-    const available = Number(original.quantity) - returned;
-    if (payload.quantity > available + 0.00005) throw new HttpError(409, "RETURN_QUANTITY_EXCEEDED", `Số lượng trả vượt còn lại của ${original.productpackagings.name}`);
-    const unitRevenue = Number(original.quantity) ? Number(original.lineTotal || 0) / Number(original.quantity) : 0;
-    const unitCost = Number(original.unitCost || 0);
-    const lineTotal = payload.quantity * unitRevenue;
+    const returned = toDecimal(posted.find(line => line.originalSalesOrderLineId === original.id)?._sum.quantity || 0);
+    const sold = toDecimal(original.quantity);
+    const available = sold.minus(returned);
+    const requested = decimal(payload.quantity);
+    if (requested.gt(available.add(toDecimal("0.00005")))) throw new HttpError(409, "RETURN_QUANTITY_EXCEEDED", `Số lượng trả vượt còn lại của ${original.productpackagings.name}`);
+    const unitRevenue = sold.gt(0) ? toDecimal(original.lineTotal).div(sold) : toDecimal(0);
+    const unitCost = toDecimal(original.unitCost);
+    const lineTotal = money(requested.mul(unitRevenue));
     return {
       originalSalesOrderLineId: original.id,
       packagingId: original.packagingId,
       lineType: original.lineType,
-      quantity: payload.quantity,
-      unitPrice: Number(original.unitPrice || 0),
+      quantity: requested,
+      unitPrice: decimal(original.unitPrice),
       lineTotal,
-      taxAmount: lineTotal * taxRate,
+      taxAmount: money(lineTotal.mul(taxRate)),
       unitCost,
-      costAmount: payload.quantity * unitCost,
+      costAmount: money(requested.mul(unitCost)),
       note: payload.note || "",
     };
   });
   return {
     sale,
     lines,
-    subtotal: lines.reduce((sum, line) => sum + line.lineTotal, 0),
-    taxAmount: lines.reduce((sum, line) => sum + line.taxAmount, 0),
-    costAmount: lines.reduce((sum, line) => sum + line.costAmount, 0),
+    subtotal: lines.reduce((sum, line) => sum.add(line.lineTotal), money(0)),
+    taxAmount: lines.reduce((sum, line) => sum.add(line.taxAmount), money(0)),
+    costAmount: lines.reduce((sum, line) => sum.add(line.costAmount), money(0)),
   };
 }
 
@@ -127,12 +149,24 @@ export const salesReturnService = {
         code, originalSalesOrderId: calculation.sale.id, customerId: calculation.sale.customerId,
         warehouseId: input.warehouseId, returnDate: day(input.returnDate), reason: input.reason,
         settlementType: input.settlementType, subtotal: money(calculation.subtotal), taxAmount: money(calculation.taxAmount),
-        totalAmount: money(calculation.subtotal + calculation.taxAmount), costAmount: money(calculation.costAmount),
+        totalAmount: money(calculation.subtotal.add(calculation.taxAmount)), costAmount: money(calculation.costAmount),
         createdBy: userId, updatedAt: now, lines: { create: calculation.lines.map(lineData) },
       },
       include: salesReturnInclude,
     });
-    await prisma.audit_logs.create({ data: { action: "Tạo trả hàng bán v1", details: code, userId, userName: String(userId), createdAt: nowIso() } });
+    await recordAudit(prisma, {
+      action: "Tạo trả hàng bán v1",
+      details: code,
+      entityType: "SALES_RETURN",
+      entityId: row.id,
+      entityCode: code,
+      userId,
+      createdAt: nowIso(),
+      changes: [
+        ...snapshotFields(row, HEADER_AUDIT_FIELDS),
+        ...diffLines([], row.lines, LINE_AUDIT_FIELDS),
+      ],
+    });
     return mapSalesReturn(row);
   },
 
@@ -142,6 +176,8 @@ export const salesReturnService = {
       const current = await lock(tx, id);
       if (current.status !== "DRAFT") throw new HttpError(409, "RETURN_NOT_EDITABLE", "Chỉ phiếu nháp được sửa");
       if (Number(current.version) !== input.version) throw new HttpError(409, "VERSION_CONFLICT", "Phiếu đã được cập nhật");
+      const before = await tx.sales_returns.findUnique({ where: { id }, include: salesReturnInclude });
+      if (!before) throw new HttpError(404, "SALES_RETURN_NOT_FOUND", "Không tìm thấy phiếu trả hàng");
       await tx.sales_return_lines.deleteMany({ where: { salesReturnId: id } });
       const row = await tx.sales_returns.update({
         where: { id },
@@ -149,12 +185,24 @@ export const salesReturnService = {
           originalSalesOrderId: calculation.sale.id, customerId: calculation.sale.customerId, warehouseId: input.warehouseId,
           returnDate: day(input.returnDate), reason: input.reason, settlementType: input.settlementType,
           subtotal: money(calculation.subtotal), taxAmount: money(calculation.taxAmount),
-          totalAmount: money(calculation.subtotal + calculation.taxAmount), costAmount: money(calculation.costAmount),
+          totalAmount: money(calculation.subtotal.add(calculation.taxAmount)), costAmount: money(calculation.costAmount),
           version: { increment: 1 }, updatedAt: new Date(), lines: { create: calculation.lines.map(lineData) },
         },
         include: salesReturnInclude,
       });
-      await tx.audit_logs.create({ data: { action: "Cập nhật trả hàng bán v1", details: row.code, userId, userName: String(userId), createdAt: nowIso() } });
+      await recordAudit(tx, {
+        action: "Cập nhật trả hàng bán v1",
+        details: row.code,
+        entityType: "SALES_RETURN",
+        entityId: id,
+        entityCode: row.code,
+        userId,
+        createdAt: nowIso(),
+        changes: [
+          ...diffFields(before, row, HEADER_AUDIT_FIELDS),
+          ...diffLines(before.lines, row.lines, LINE_AUDIT_FIELDS),
+        ],
+      });
       return mapSalesReturn(row);
     });
   },
@@ -213,7 +261,19 @@ export const salesReturnService = {
         { salesReturnId: id, linkType: "RECEIVABLE_CREDIT", linkedId: credit.id, linkedCode: document.code },
       ] });
       const row = await tx.sales_returns.update({ where: { id }, data: { status: "POSTED", postedAt: occurredAt, postedBy: userId, version: { increment: 1 }, updatedAt: occurredAt }, include: salesReturnInclude });
-      await tx.audit_logs.create({ data: { action: "Lưu trả hàng bán v1", details: document.code, userId, userName: String(userId), createdAt: now } });
+      await recordAudit(tx, {
+        action: "Lưu trả hàng bán v1",
+        details: document.code,
+        entityType: "SALES_RETURN",
+        entityId: id,
+        entityCode: document.code,
+        userId,
+        createdAt: now,
+        changes: [
+          ...diffFields(document, row, HEADER_AUDIT_FIELDS),
+          ...diffLines(document.lines, row.lines, LINE_AUDIT_FIELDS),
+        ],
+      });
       return mapSalesReturn(row);
     }, { timeout: 30_000 });
   },
@@ -263,7 +323,19 @@ export const salesReturnService = {
         status: "CANCELLED", cancelledAt: occurredAt, cancelledBy: userId, cancelReason: input.reason,
         version: { increment: 1 }, updatedAt: occurredAt,
       }, include: salesReturnInclude });
-      await tx.audit_logs.create({ data: { action: "Hủy trả hàng bán v1", details: `${document.code}: ${input.reason}`, userId, userName: String(userId), createdAt: now } });
+      await recordAudit(tx, {
+        action: "Hủy trả hàng bán v1",
+        details: `${document.code}: ${input.reason}`,
+        entityType: "SALES_RETURN",
+        entityId: id,
+        entityCode: document.code,
+        userId,
+        createdAt: now,
+        changes: [
+          ...diffFields(document, row, HEADER_AUDIT_FIELDS),
+          { field: "cancelReason", label: FIELD_LABELS.reason, oldValue: null, newValue: input.reason },
+        ],
+      });
       return mapSalesReturn(row);
     }, { timeout: 30_000 });
   },
@@ -316,7 +388,16 @@ export const salesReturnService = {
         status: "DRAFT", postedAt: null, postedBy: null, cancelledAt: null, cancelledBy: null, cancelReason: null,
         version: { increment: 1 }, updatedAt: occurredAt,
       }, include: salesReturnInclude });
-      await tx.audit_logs.create({ data: { action: "Hủy lưu trả hàng bán v1", details: document.code, userId, userName: String(userId), createdAt: now } });
+      await recordAudit(tx, {
+        action: "Hủy lưu trả hàng bán v1",
+        details: document.code,
+        entityType: "SALES_RETURN",
+        entityId: id,
+        entityCode: document.code,
+        userId,
+        createdAt: now,
+        changes: diffFields(document, row, HEADER_AUDIT_FIELDS),
+      });
       return mapSalesReturn(row);
     }, { timeout: 30_000 });
   },
@@ -328,7 +409,16 @@ export const salesReturnService = {
         throw new HttpError(409, "RETURN_NOT_DELETABLE", "Chỉ được xóa phiếu trả hàng ở trạng thái nháp hoặc đã hủy");
       if (Number(current.version) !== version) throw new HttpError(409, "VERSION_CONFLICT", "Phiếu đã được cập nhật");
       await tx.sales_returns.delete({ where: { id } });
-      await tx.audit_logs.create({ data: { action: "Xóa trả hàng bán v1", details: current.code || String(id), userId, userName: String(userId), createdAt: nowIso() } });
+      await recordAudit(tx, {
+        action: "Xóa trả hàng bán v1",
+        details: current.code || String(id),
+        entityType: "SALES_RETURN",
+        entityId: id,
+        entityCode: current.code,
+        userId,
+        createdAt: nowIso(),
+        changes: [{ field: "status", label: FIELD_LABELS.status, oldValue: current.status, newValue: "DELETED" }],
+      });
       return { success: true, message: "Đã xóa phiếu trả hàng" };
     });
   },

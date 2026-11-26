@@ -4,8 +4,29 @@ import { HttpError } from "../../common/http-error";
 import { evaluatePromotions } from "./promotion.engine";
 import { mapPromotion } from "./promotion.mapper";
 import { prisma, promotionInclude, promotionRepository } from "./promotion.repository";
+import { FIELD_LABELS, diffFields, diffLines, recordAudit, snapshotFields, type AuditField } from "../../common/audit";
 
 const day = (value: string) => new Date(`${value}T12:00:00.000Z`);
+const HEADER_AUDIT_FIELDS: AuditField[] = [
+  { key: "code", label: FIELD_LABELS.code },
+  { key: "name", label: "Tên chương trình" },
+  { key: "startDate", label: "Ngày bắt đầu" },
+  { key: "endDate", label: "Ngày kết thúc" },
+  { key: "customerScope", label: "Phạm vi khách hàng" },
+  { key: "customerGroup", label: "Nhóm khách hàng" },
+  { key: "priority", label: "Độ ưu tiên" },
+  { key: "note", label: FIELD_LABELS.note },
+  { key: "status", label: FIELD_LABELS.status },
+];
+const CONDITION_AUDIT_FIELDS: AuditField[] = [
+  { key: "packagingId", label: "Hàng hóa điều kiện" },
+  { key: "minimumQuantity", label: "Số lượng tối thiểu" },
+];
+const REWARD_AUDIT_FIELDS: AuditField[] = [
+  { key: "packagingId", label: "Hàng hóa tặng" },
+  { key: "rewardQuantity", label: "Số lượng tặng" },
+  { key: "warehouseId", label: "Kho xuất quà" },
+];
 async function validateReferences(input: PromotionProgramInput) {
   const [condition, reward, warehouse] = await Promise.all([promotionRepository.packaging(input.condition.packagingId), promotionRepository.packaging(input.reward.packagingId), promotionRepository.warehouse(input.reward.warehouseId)]);
   if (!condition) throw new HttpError(422, "CONDITION_ITEM_NOT_FOUND", "Hàng hóa điều kiện không tồn tại");
@@ -31,7 +52,20 @@ export const promotionService = {
     const code = await resolveDocumentCode("promotion", input.code);
     input = { ...input, code };
     const row = await prisma.promotion_programs.create({ data: { code: input.code, name: input.name, startDate: day(input.startDate), endDate: day(input.endDate), customerScope: input.customerScope, customerGroup: input.customerScope === "GROUP" ? input.customerGroup : null, priority: input.priority, note: input.note || null, createdBy: userId, updatedAt: new Date(), ...nested(input) }, include: promotionInclude });
-    await prisma.audit_logs.create({ data: { action: "Tạo khuyến mãi v1", details: row.code, userId, userName: String(userId), createdAt: new Date().toISOString() } });
+    await recordAudit(prisma, {
+      action: "Tạo khuyến mãi v1",
+      details: row.code,
+      entityType: "PROMOTION",
+      entityId: row.id,
+      entityCode: row.code,
+      userId,
+      createdAt: new Date().toISOString(),
+      changes: [
+        ...snapshotFields(row, HEADER_AUDIT_FIELDS),
+        ...diffLines([], row.conditions, CONDITION_AUDIT_FIELDS, "conditions"),
+        ...diffLines([], row.rewards, REWARD_AUDIT_FIELDS, "rewards"),
+      ],
+    });
     return mapPromotion(row);
   },
   async update(id: number, input: PromotionUpdateInput, userId: number) {
@@ -42,9 +76,24 @@ export const promotionService = {
       if (!current) throw new HttpError(404, "PROMOTION_NOT_FOUND", "Không tìm thấy chương trình");
       if (!["DRAFT", "INACTIVE"].includes(current.status)) throw new HttpError(409, "PROMOTION_NOT_EDITABLE", "Chỉ chương trình nháp hoặc đã ngừng áp dụng được sửa");
       if (Number(current.version) !== input.version) throw new HttpError(409, "VERSION_CONFLICT", "Chương trình đã được cập nhật");
+      const before = await tx.promotion_programs.findUnique({ where: { id }, include: promotionInclude });
       await tx.promotion_conditions.deleteMany({ where: { programId: id } }); await tx.promotion_rewards.deleteMany({ where: { programId: id } });
       const row = await tx.promotion_programs.update({ where: { id }, data: { code: input.code, name: input.name, startDate: day(input.startDate), endDate: day(input.endDate), customerScope: input.customerScope, customerGroup: input.customerScope === "GROUP" ? input.customerGroup : null, priority: input.priority, note: input.note || null, version: { increment: 1 }, updatedAt: new Date(), ...nested(input) }, include: promotionInclude });
-      await tx.audit_logs.create({ data: { action: "Cập nhật khuyến mãi v1", details: row.code, userId, userName: String(userId), createdAt: new Date().toISOString() } }); return mapPromotion(row);
+      await recordAudit(tx, {
+        action: "Cập nhật khuyến mãi v1",
+        details: row.code,
+        entityType: "PROMOTION",
+        entityId: id,
+        entityCode: row.code,
+        userId,
+        createdAt: new Date().toISOString(),
+        changes: [
+          ...diffFields(before, row, HEADER_AUDIT_FIELDS),
+          ...diffLines(before?.conditions, row.conditions, CONDITION_AUDIT_FIELDS, "conditions"),
+          ...diffLines(before?.rewards, row.rewards, REWARD_AUDIT_FIELDS, "rewards"),
+        ],
+      });
+      return mapPromotion(row);
     });
   },
   async action(id: number, version: number, status: "ACTIVE" | "INACTIVE", userId: number) {
@@ -54,7 +103,17 @@ export const promotionService = {
       if (Number(current.version) !== version) throw new HttpError(409, "VERSION_CONFLICT", "Chương trình đã được cập nhật");
       if (current.status === status) throw new HttpError(409, "PROMOTION_STATUS_CONFLICT", "Chương trình đã ở trạng thái yêu cầu");
       const row = await tx.promotion_programs.update({ where: { id }, data: { status, version: { increment: 1 }, updatedAt: new Date() }, include: promotionInclude });
-      await tx.audit_logs.create({ data: { action: status === "ACTIVE" ? "Kích hoạt khuyến mãi v1" : "Ngừng khuyến mãi v1", details: row.code, userId, userName: String(userId), createdAt: new Date().toISOString() } }); return mapPromotion(row);
+      await recordAudit(tx, {
+        action: status === "ACTIVE" ? "Kích hoạt khuyến mãi v1" : "Ngừng khuyến mãi v1",
+        details: row.code,
+        entityType: "PROMOTION",
+        entityId: id,
+        entityCode: row.code,
+        userId,
+        createdAt: new Date().toISOString(),
+        changes: [{ field: "status", label: FIELD_LABELS.status, oldValue: current.status, newValue: status }],
+      });
+      return mapPromotion(row);
     });
   },
   async remove(id: number, userId: number) {
@@ -63,7 +122,16 @@ export const promotionService = {
       if (!current) throw new HttpError(404, "PROMOTION_NOT_FOUND", "Không tìm thấy chương trình");
       if (current.status !== "INACTIVE") throw new HttpError(409, "PROMOTION_NOT_DELETABLE", "Chỉ chương trình ở trạng thái ngừng áp dụng (INACTIVE) mới được xóa");
       await tx.promotion_programs.update({ where: { id }, data: { deletedAt: new Date(), version: { increment: 1 }, updatedAt: new Date() } });
-      await tx.audit_logs.create({ data: { action: "Xóa khuyến mãi v1", details: current.code, userId, userName: String(userId), createdAt: new Date().toISOString() } });
+      await recordAudit(tx, {
+        action: "Xóa khuyến mãi v1",
+        details: current.code,
+        entityType: "PROMOTION",
+        entityId: id,
+        entityCode: current.code,
+        userId,
+        createdAt: new Date().toISOString(),
+        changes: [{ field: "status", label: FIELD_LABELS.status, oldValue: current.status, newValue: "DELETED" }],
+      });
       return { id };
     });
   },

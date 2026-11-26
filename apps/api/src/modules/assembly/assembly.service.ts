@@ -31,6 +31,50 @@ import {
 	disassemblyInclude,
 	prisma,
 } from "./assembly.repository";
+import {
+	FIELD_LABELS,
+	diffFields,
+	diffLines,
+	recordAudit,
+	snapshotFields,
+	type AuditChange,
+	type AuditField,
+} from "../../common/audit";
+
+const ORDER_AUDIT_FIELDS: AuditField[] = [
+	{ key: "code", label: FIELD_LABELS.code },
+	{ key: "orderDate", label: "Ngày lệnh" },
+	{ key: "componentWarehouseId", label: "Kho linh kiện" },
+	{ key: "outputWarehouseId", label: "Kho thành phẩm" },
+	{ key: "sourceWarehouseId", label: "Kho nguồn" },
+	{ key: "recoveryWarehouseId", label: "Kho thu hồi" },
+	{ key: "plannedQuantity", label: "Số lượng kế hoạch" },
+	{ key: "actualQuantity", label: "Số lượng thực tế" },
+	{ key: "assemblyCost", label: "Chi phí lắp ráp" },
+	{ key: "note", label: FIELD_LABELS.note },
+	{ key: "status", label: FIELD_LABELS.status },
+];
+const ORDER_LINE_AUDIT_FIELDS: AuditField[] = [
+	{ key: "componentPackagingId", label: FIELD_LABELS.packagingId },
+	{ key: "plannedQuantity", label: "Số lượng kế hoạch" },
+	{ key: "actualQuantity", label: "Số lượng thực tế" },
+	{ key: "unitCost", label: FIELD_LABELS.unitCost },
+	{ key: "totalValue", label: "Thành tiền" },
+	{ key: "note", label: FIELD_LABELS.note },
+];
+const BOM_AUDIT_FIELDS: AuditField[] = [
+	{ key: "code", label: FIELD_LABELS.code },
+	{ key: "outputPackagingId", label: "Mã thành phẩm" },
+	{ key: "outputQuantity", label: "Số lượng đầu ra" },
+	{ key: "status", label: FIELD_LABELS.status },
+	{ key: "note", label: FIELD_LABELS.note },
+];
+const BOM_LINE_AUDIT_FIELDS: AuditField[] = [
+	{ key: "componentPackagingId", label: FIELD_LABELS.packagingId },
+	{ key: "quantity", label: FIELD_LABELS.quantity },
+	{ key: "allocationWeight", label: "Trọng số phân bổ" },
+	{ key: "note", label: FIELD_LABELS.note },
+];
 
 const dateValue = (value: string) => new Date(`${value}T00:00:00.000Z`);
 async function validateWarehouses(tx: any, ids: number[]) {
@@ -92,15 +136,25 @@ async function lockOrder(
 		throw new HttpError(404, "ORDER_NOT_FOUND", "Không tìm thấy lệnh V1");
 	return rows[0];
 }
-async function audit(tx: any, action: string, details: string, userId: number) {
-	await tx.audit_logs.create({
-		data: {
-			action,
-			details,
-			userId,
-			userName: String(userId),
-			createdAt: nowIso(),
-		},
+async function audit(
+	tx: any,
+	action: string,
+	details: string,
+	userId: number,
+	extra: {
+		entityType?: string;
+		entityId?: number | bigint | string;
+		entityCode?: string | null;
+		changes?: AuditChange[];
+		createdAt?: string;
+	} = {},
+) {
+	await recordAudit(tx, {
+		action,
+		details,
+		userId,
+		createdAt: extra.createdAt ?? nowIso(),
+		...extra,
 	});
 }
 
@@ -198,7 +252,15 @@ export const assemblyService = {
 				},
 				include: bomInclude,
 			});
-			await audit(tx, "Tạo BOM lắp ráp v1", created.code, userId);
+			await audit(tx, "Tạo BOM lắp ráp v1", created.code, userId, {
+				entityType: "ASSEMBLY_BOM",
+				entityId: created.id,
+				entityCode: created.code,
+				changes: [
+					...snapshotFields(created, BOM_AUDIT_FIELDS),
+					...diffLines([], created.lines, BOM_LINE_AUDIT_FIELDS, "lines"),
+				],
+			});
 			return created;
 		});
 		return mapAssemblyBom(row);
@@ -232,6 +294,7 @@ export const assemblyService = {
 			});
 			if (duplicate)
 				throw new HttpError(409, "BOM_CODE_EXISTS", "Mã BOM đã tồn tại");
+			const before = await tx.assembly_bom_headers.findUnique({ where: { id }, include: bomInclude });
 			await tx.assembly_bom_lines.deleteMany({ where: { bomId: id } });
 			const updated = await tx.assembly_bom_headers.update({
 				where: { id },
@@ -254,7 +317,15 @@ export const assemblyService = {
 				},
 				include: bomInclude,
 			});
-			await audit(tx, "Cập nhật BOM lắp ráp v1", updated.code, userId);
+			await audit(tx, "Cập nhật BOM lắp ráp v1", updated.code, userId, {
+				entityType: "ASSEMBLY_BOM",
+				entityId: id,
+				entityCode: updated.code,
+				changes: [
+					...diffFields(before, updated, BOM_AUDIT_FIELDS),
+					...diffLines(before?.lines, updated.lines, BOM_LINE_AUDIT_FIELDS, "lines"),
+				],
+			});
 			return updated;
 		});
 		return mapAssemblyBom(row);
@@ -387,7 +458,16 @@ export const assemblyService = {
 					output.note || "",
 				);
 			}
-			await audit(tx, "Tạo lệnh lắp ráp v1", row.code, userId);
+			const after = await tx.assembly_orders.findUnique({ where: { id: row.id }, include: assemblyInclude });
+			await audit(tx, "Tạo lệnh lắp ráp v1", row.code, userId, {
+				entityType: "ASSEMBLY_ORDER",
+				entityId: row.id,
+				entityCode: row.code,
+				changes: [
+					...snapshotFields(after, ORDER_AUDIT_FIELDS),
+					...diffLines([], after?.lines, ORDER_LINE_AUDIT_FIELDS, "lines"),
+				],
+			});
 			return row.id;
 		});
 		return this.getAssembly(id);
@@ -398,6 +478,7 @@ export const assemblyService = {
 			verifyVersion(locked, input.version);
 			if (locked.status !== "DRAFT")
 				throw new HttpError(409, "INVALID_STATUS", "Chỉ sửa lệnh nháp");
+			const before = await tx.assembly_orders.findUnique({ where: { id }, include: assemblyInclude });
 			const linked = (await tx.$queryRawUnsafe(
 				"SELECT COUNT(*) total FROM assembly_order_document_links WHERE orderId=?",
 				id,
@@ -458,7 +539,16 @@ export const assemblyService = {
 					output.note || "",
 				);
 			}
-			await audit(tx, "Cập nhật lệnh lắp ráp v1", String(id), userId);
+			const after = await tx.assembly_orders.findUnique({ where: { id }, include: assemblyInclude });
+			await audit(tx, "Cập nhật lệnh lắp ráp v1", after?.code || String(id), userId, {
+				entityType: "ASSEMBLY_ORDER",
+				entityId: id,
+				entityCode: after?.code,
+				changes: [
+					...diffFields(before, after, ORDER_AUDIT_FIELDS),
+					...diffLines(before?.lines, after?.lines, ORDER_LINE_AUDIT_FIELDS, "lines"),
+				],
+			});
 		});
 		return this.getAssembly(id);
 	},
@@ -667,7 +757,18 @@ export const assemblyService = {
 						updatedAt: occurredAt,
 					},
 				});
-				await audit(tx, "Lưu lệnh lắp ráp v1", order.code, userId);
+				const after = await tx.assembly_orders.findUnique({ where: { id }, include: assemblyInclude });
+				await audit(tx, "Lưu lệnh lắp ráp v1", order.code, userId, {
+					entityType: "ASSEMBLY_ORDER",
+					entityId: id,
+					entityCode: order.code,
+					changes: [
+						...diffFields(order, after, ORDER_AUDIT_FIELDS),
+						...diffLines(order.lines, after?.lines, ORDER_LINE_AUDIT_FIELDS, "lines"),
+						{ field: "linkedIssueCode", label: "Phiếu xuất kho", oldValue: null, newValue: issue.code },
+						{ field: "linkedReceiptCode", label: "Phiếu nhập kho", oldValue: null, newValue: receipt.code },
+					],
+				});
 			},
 			{ timeout: 30_000 },
 		);
@@ -799,7 +900,16 @@ export const assemblyService = {
 					output.note || "",
 				);
 			}
-			await audit(tx, "Tạo lệnh tháo dỡ v1", row.code, userId);
+			const after = await tx.disassembly_orders.findUnique({ where: { id: row.id }, include: disassemblyInclude });
+			await audit(tx, "Tạo lệnh tháo dỡ v1", row.code, userId, {
+				entityType: "DISASSEMBLY_ORDER",
+				entityId: row.id,
+				entityCode: row.code,
+				changes: [
+					...snapshotFields(after, ORDER_AUDIT_FIELDS),
+					...diffLines([], after?.lines, ORDER_LINE_AUDIT_FIELDS, "lines"),
+				],
+			});
 			return row.id;
 		});
 		return this.getDisassembly(id);
@@ -819,6 +929,7 @@ export const assemblyService = {
 			verifyVersion(locked, input.version);
 			if (locked.status !== "DRAFT")
 				throw new HttpError(409, "INVALID_STATUS", "Chỉ sửa lệnh nháp");
+			const before = await tx.disassembly_orders.findUnique({ where: { id }, include: disassemblyInclude });
 			const linked = (await tx.$queryRawUnsafe(
 				"SELECT COUNT(*) total FROM disassembly_order_document_links WHERE orderId=?",
 				id,
@@ -878,7 +989,16 @@ export const assemblyService = {
 					output.note || "",
 				);
 			}
-			await audit(tx, "Cập nhật lệnh tháo dỡ v1", String(id), userId);
+			const after = await tx.disassembly_orders.findUnique({ where: { id }, include: disassemblyInclude });
+			await audit(tx, "Cập nhật lệnh tháo dỡ v1", after?.code || String(id), userId, {
+				entityType: "DISASSEMBLY_ORDER",
+				entityId: id,
+				entityCode: after?.code,
+				changes: [
+					...diffFields(before, after, ORDER_AUDIT_FIELDS),
+					...diffLines(before?.lines, after?.lines, ORDER_LINE_AUDIT_FIELDS, "lines"),
+				],
+			});
 		});
 		return this.getDisassembly(id);
 	},
@@ -1118,7 +1238,18 @@ export const assemblyService = {
 						updatedAt: occurredAt,
 					},
 				});
-				await audit(tx, "Lưu lệnh tháo dỡ v1", order.code, userId);
+				const after = await tx.disassembly_orders.findUnique({ where: { id }, include: disassemblyInclude });
+				await audit(tx, "Lưu lệnh tháo dỡ v1", order.code, userId, {
+					entityType: "DISASSEMBLY_ORDER",
+					entityId: id,
+					entityCode: order.code,
+					changes: [
+						...diffFields(order, after, ORDER_AUDIT_FIELDS),
+						...diffLines(order.lines, after?.lines, ORDER_LINE_AUDIT_FIELDS, "lines"),
+						{ field: "linkedIssueCode", label: "Phiếu xuất kho", oldValue: null, newValue: issue.code },
+						{ field: "linkedReceiptCode", label: "Phiếu nhập kho", oldValue: null, newValue: receipt.code },
+					],
+				});
 			},
 			{ timeout: 30_000 },
 		);
@@ -1181,6 +1312,16 @@ export const assemblyService = {
 					"Hoàn thành lệnh lắp ráp/tháo dỡ",
 					`${id} đã lập đủ phiếu xuất/nhập`,
 					userId,
+					{
+						entityType: kind === "ASSEMBLY" ? "ASSEMBLY_ORDER" : "DISASSEMBLY_ORDER",
+						entityId: id,
+						changes: [{
+							field: "status",
+							label: FIELD_LABELS.status,
+							oldValue: locked.status,
+							newValue: "COMPLETED",
+						}],
+					},
 				);
 			}
 			await audit(
@@ -1188,6 +1329,16 @@ export const assemblyService = {
 				"Liên kết phiếu kho lệnh lắp ráp/tháo dỡ",
 				`${id} -> ${input.linkedCode || input.linkedId}`,
 				userId,
+				{
+					entityType: kind === "ASSEMBLY" ? "ASSEMBLY_ORDER" : "DISASSEMBLY_ORDER",
+					entityId: id,
+					changes: [{
+						field: `link.${type}`,
+						label: type === "INVENTORY_RECEIPT" ? "Phiếu nhập kho liên kết" : "Phiếu xuất kho liên kết",
+						oldValue: null,
+						newValue: input.linkedCode || String(input.linkedId),
+					}],
+				},
 			);
 		});
 		return kind === "ASSEMBLY"
@@ -1340,6 +1491,15 @@ export const assemblyService = {
 						"Hủy lệnh lắp ráp v1",
 						`${order.code}: ${input.reason}`,
 						userId,
+						{
+							entityType: "ASSEMBLY_ORDER",
+							entityId: id,
+							entityCode: order.code,
+							changes: [
+								{ field: "status", label: FIELD_LABELS.status, oldValue: locked.status, newValue: "CANCELLED" },
+								{ field: "cancelReason", label: FIELD_LABELS.reason, oldValue: null, newValue: input.reason },
+							],
+						},
 					);
 				} else {
 					const order = await tx.disassembly_orders.findUnique({
@@ -1470,6 +1630,15 @@ export const assemblyService = {
 						"Hủy lệnh tháo dỡ v1",
 						`${order.code}: ${input.reason}`,
 						userId,
+						{
+							entityType: "DISASSEMBLY_ORDER",
+							entityId: id,
+							entityCode: order.code,
+							changes: [
+								{ field: "status", label: FIELD_LABELS.status, oldValue: locked.status, newValue: "CANCELLED" },
+								{ field: "cancelReason", label: FIELD_LABELS.reason, oldValue: null, newValue: input.reason },
+							],
+						},
 					);
 				}
 			},
@@ -1523,6 +1692,7 @@ export const assemblyService = {
 			const children = isAssembly
 				? ["assembly_order_lines", "assembly_order_outputs"]
 				: ["disassembly_order_lines", "disassembly_order_sources"];
+			const current = await (tx as any)[table].findUnique({ where: { id }, select: { code: true } });
 			for (const child of children)
 				await tx.$executeRawUnsafe(
 					`DELETE FROM ${child} WHERE orderId=?`,
@@ -1532,8 +1702,14 @@ export const assemblyService = {
 			await audit(
 				tx,
 				isAssembly ? "Xóa lệnh lắp ráp v1" : "Xóa lệnh tháo dỡ v1",
-				String(id),
+				current?.code || String(id),
 				userId,
+				{
+					entityType: isAssembly ? "ASSEMBLY_ORDER" : "DISASSEMBLY_ORDER",
+					entityId: id,
+					entityCode: current?.code || null,
+					changes: [{ field: "status", label: FIELD_LABELS.status, oldValue: locked.status, newValue: "DELETED" }],
+				},
 			);
 		});
 		return { id };
@@ -1597,15 +1773,19 @@ export const assemblyService = {
 						updatedAt: timestamp,
 					},
 				});
-				await tx.audit_logs.create({
-					data: {
-						action: `Hủy lưu lệnh ${isAssembly ? "lắp ráp" : "tháo dỡ"} v1`,
-						details: current.code,
-						userId,
-						userName: String(userId),
+				await audit(
+					tx,
+					`Hủy lưu lệnh ${isAssembly ? "lắp ráp" : "tháo dỡ"} v1`,
+					current.code,
+					userId,
+					{
+						entityType: isAssembly ? "ASSEMBLY_ORDER" : "DISASSEMBLY_ORDER",
+						entityId: id,
+						entityCode: current.code,
 						createdAt: timestamp,
+						changes: [{ field: "status", label: FIELD_LABELS.status, oldValue: current.status, newValue: "DRAFT" }],
 					},
-				});
+				);
 			},
 			{ timeout: 30_000 },
 		);

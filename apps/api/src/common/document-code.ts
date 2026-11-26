@@ -33,6 +33,11 @@ const modelForScope: Record<string, { delegate: any; codeColumn: CodeColumn }> =
   warehouse: { delegate: prisma.warehouses, codeColumn: "code" },
   // Customer groups
   customer_group: { delegate: prisma.customer_groups, codeColumn: "code" },
+  // Technical incidents
+  technical_incident: { delegate: prisma.technical_incidents, codeColumn: "code" },
+  // Product costing
+  cost_entry: { delegate: prisma.production_cost_entries, codeColumn: "code" },
+  cost_sheet: { delegate: prisma.product_cost_sheets, codeColumn: "code" },
 };
 
 export const documentCodePrefixes: Record<string, string> = {
@@ -65,6 +70,11 @@ export const documentCodePrefixes: Record<string, string> = {
   warehouse: "KHO",
   // Customer groups
   customer_group: "NKH",
+  // Technical incidents
+  technical_incident: "SC",
+  // Product costing
+  cost_entry: "CP",
+  cost_sheet: "GT",
 };
 
 export function normalizeCodeInput(code: string | undefined | null) {

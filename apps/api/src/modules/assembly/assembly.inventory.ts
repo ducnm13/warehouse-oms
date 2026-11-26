@@ -1,8 +1,7 @@
+import { decimal, money } from "@challenge/database";
 import { HttpError } from "../../common/http-error";
-import { Prisma } from "./assembly.repository";
 
-export const decimal = (value: number) => new Prisma.Decimal(value.toFixed(4));
-export const money = (value: number) => new Prisma.Decimal(value.toFixed(2));
+export { decimal, money };
 export const nowIso = () => new Date().toISOString();
 export async function lockBalance(tx: any, packagingId: number, warehouseId: number) {
   await tx.$executeRawUnsafe("INSERT INTO productwarehouses(packagingId,warehouseId,stock_quantity,updatedAt) VALUES(?,?,0,?) ON DUPLICATE KEY UPDATE updatedAt=updatedAt", packagingId, warehouseId, nowIso());

@@ -191,7 +191,7 @@ body {
 }
 
 /* ─── Sidebar (Horizon UI light) ─────────────────────────────────────────────── */
-.erp-shell aside {
+.erp-shell .erp-sidebar {
 	background: #ffffff !important;
 	border-right: 0 !important;
 	width: 270px !important;
@@ -200,19 +200,19 @@ body {
 }
 
 /* Logo area */
-.erp-shell aside > div:first-of-type {
+.erp-shell .erp-sidebar > div:first-of-type {
 	height: 80px !important;
 	background: transparent !important;
 	border-bottom: 1px solid #e6ecfa !important;
 }
 
 /* Nav padding */
-.erp-shell aside nav {
+.erp-shell .erp-sidebar nav {
 	padding: 16px 14px !important;
 }
 
 /* Section label */
-.erp-shell aside nav > p {
+.erp-shell .erp-sidebar nav > p {
 	color: #a3aed0 !important;
 	font-size: 10px !important;
 	font-weight: 700 !important;
@@ -220,19 +220,19 @@ body {
 }
 
 /* Nav buttons default */
-.erp-shell aside nav button:not(.sidebar-active) {
+.erp-shell .erp-sidebar nav button:not(.sidebar-active) {
 	color: #545454 !important;
 	border-radius: 12px !important;
 	font-size: 13.5px !important;
 	font-weight: 500 !important;
 }
-.erp-shell aside nav button:not(.sidebar-active):hover {
+.erp-shell .erp-sidebar nav button:not(.sidebar-active):hover {
 	background: #f4f7fe !important;
 	color: #2b3674 !important;
 }
 
 /* Sidebar footer */
-.erp-shell aside > div:last-child {
+.erp-shell .erp-sidebar > div:last-child {
 	background: transparent !important;
 	border-top: 1px solid #e6ecfa !important;
 	color: #a3aed0 !important;
@@ -240,7 +240,7 @@ body {
 
 /* ─── Header (Horizon UI floating navbar) ───────────────────────────────────── */
 header.sticky {
-	background: rgba(255, 255, 255, 0.72) !important;
+	background: rgba(255, 255, 255, 0.7) !important;
 	backdrop-filter: blur(20px);
 	border-bottom: 1px solid rgba(230, 236, 250, 0.9) !important;
 	box-shadow: 0 4px 24px rgba(112, 144, 176, 0.08);
@@ -275,13 +275,22 @@ header.sticky {
 }
 
 /* ─── Unified form controls ──────────────────────────────────────────────────── */
-.erp-page input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="month"]),
+.erp-page
+	input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(
+		[type="month"]
+	),
 .erp-page select,
 .erp-page textarea,
-.erp-card input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="month"]),
+.erp-card
+	input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(
+		[type="month"]
+	),
 .erp-card select,
 .erp-card textarea,
-.erp-modal input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="month"]),
+.erp-modal
+	input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(
+		[type="month"]
+	),
 .erp-modal select,
 .erp-modal textarea {
 	width: 100%;
@@ -321,29 +330,41 @@ header.sticky {
 	cursor: pointer;
 }
 .erp-page
-	input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="month"]):hover,
+	input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(
+		[type="month"]
+	):hover,
 .erp-page select:hover,
 .erp-page textarea:hover,
 .erp-card
-	input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="month"]):hover,
+	input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(
+		[type="month"]
+	):hover,
 .erp-card select:hover,
 .erp-card textarea:hover,
 .erp-modal
-	input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="month"]):hover,
+	input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(
+		[type="month"]
+	):hover,
 .erp-modal select:hover,
 .erp-modal textarea:hover {
 	border-color: #a3aed0;
 }
 .erp-page
-	input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="month"]):focus,
+	input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(
+		[type="month"]
+	):focus,
 .erp-page select:focus,
 .erp-page textarea:focus,
 .erp-card
-	input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="month"]):focus,
+	input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(
+		[type="month"]
+	):focus,
 .erp-card select:focus,
 .erp-card textarea:focus,
 .erp-modal
-	input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="month"]):focus,
+	input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(
+		[type="month"]
+	):focus,
 .erp-modal select:focus,
 .erp-modal textarea:focus {
 	border-color: var(--color-primary);
@@ -824,7 +845,7 @@ input.erp-month-input,
 	color: #2b3674;
 	font-family: inherit;
 	font-size: 13.5px;
-	font-weight: 600;             /* u030-trigger: 600 */
+	font-weight: 600; /* u030-trigger: 600 */
 	font-variant-numeric: tabular-nums;
 	outline: none;
 	cursor: pointer;
@@ -840,7 +861,7 @@ input.erp-month-input,
 }
 input.erp-month-input:hover,
 .erp-toolbar input.erp-month-input:hover {
-	border-color: #a3aed0;        /* u030-trigger:hover */
+	border-color: #a3aed0; /* u030-trigger:hover */
 }
 input.erp-month-input:focus,
 .erp-toolbar input.erp-month-input:focus {
@@ -862,7 +883,7 @@ input.erp-month-input::-webkit-calendar-picker-indicator,
 input.erp-month-input::-webkit-datetime-edit,
 .erp-toolbar input.erp-month-input::-webkit-datetime-edit {
 	color: #2b3674;
-	font-weight: 600;             /* đồng bộ với font-weight trên */
+	font-weight: 600; /* đồng bộ với font-weight trên */
 }
 
 /* ─── Table ──────────────────────────────────────────────────────────────────── */
@@ -1237,6 +1258,13 @@ input.erp-month-input::-webkit-datetime-edit,
 	}
 	.sales-print-view,
 	.sales-print-view * {
+		visibility: visible;
+	}
+	/* react-to-print chỉ đưa đúng nội dung cần in vào <body> của iframe in.
+	   Body của iframe chỉ có duy nhất phần tử gốc này (không phải #root của app),
+	   nên luôn giữ hiển thị kể cả khi phần tử gốc không mang lớp .sales-print-view. */
+	body > :not(#root):only-child,
+	body > :not(#root):only-child * {
 		visibility: visible;
 	}
 	.sales-print-view {

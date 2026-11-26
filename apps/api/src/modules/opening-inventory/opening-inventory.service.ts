@@ -1,20 +1,37 @@
-import { Prisma } from "@challenge/database";
-import { prisma } from "@challenge/database";
+import { decimal, money, prisma } from "@challenge/database";
 import type { OpeningInventoryCancelInput, OpeningInventoryDraftInput, OpeningInventoryListQuery, OpeningInventoryUpdateInput } from "@challenge/contracts";
 import { HttpError } from "../../common/http-error";
 import { openingInventoryRepository } from "./opening-inventory.repository";
 import { inventoryRepository } from "../inventory/inventory.repository";
 import { nextDocumentCode } from "../../common/document-code";
+import { FIELD_LABELS, diffFields, diffLines, recordAudit, snapshotFields, type AuditField } from "../../common/audit";
 
-const decimal = (v: number) => new Prisma.Decimal(v.toFixed(4));
-const money = (v: number) => new Prisma.Decimal(v.toFixed(2));
 const nowIso = () => new Date().toISOString();
+const HEADER_AUDIT_FIELDS: AuditField[] = [
+  { key: "code", label: FIELD_LABELS.code },
+  { key: "documentDate", label: FIELD_LABELS.documentDate },
+  { key: "warehouseId", label: FIELD_LABELS.warehouseId },
+  { key: "note", label: FIELD_LABELS.note },
+  { key: "status", label: FIELD_LABELS.status },
+];
+const LINE_AUDIT_FIELDS: AuditField[] = [
+  { key: "packagingId", label: FIELD_LABELS.packagingId },
+  { key: "quantity", label: FIELD_LABELS.quantity },
+  { key: "unitCost", label: FIELD_LABELS.unitCost },
+  { key: "totalValue", label: "Thành tiền" },
+  { key: "batchNumber", label: FIELD_LABELS.batchNumber },
+  { key: "expiryDate", label: FIELD_LABELS.expiryDate },
+  { key: "note", label: FIELD_LABELS.note },
+];
 const dateAtNoon = (value: string) => new Date(`${value.slice(0, 10)}T12:00:00.000Z`);
 
 const docInclude = {
   warehouse: { select: { id: true, name: true } },
   lines: true,
 } as const;
+
+const findByTx = (tx: any, id: number) =>
+  tx.opening_inventory_documents.findUnique({ where: { id }, include: docInclude });
 
 const serializeDocument = (document: any) => JSON.parse(JSON.stringify(document, (_key, value) =>
   typeof value === "bigint" ? Number(value) : value,
@@ -34,15 +51,19 @@ async function lockDocument(tx: any, id: number) {
   return rows[0];
 }
 
-const lineCreateData = (line: OpeningInventoryDraftInput["lines"][number]) => ({
-  packagingId: line.packagingId,
-  quantity: decimal(line.quantity),
-  unitCost: decimal(line.unitCost ?? 0),
-  totalValue: money(line.quantity * (line.unitCost ?? 0)),
-  batchNumber: line.batchNumber || null,
-  expiryDate: line.expiryDate ? new Date(line.expiryDate) : null,
-  note: line.note || null,
-});
+const lineCreateData = (line: OpeningInventoryDraftInput["lines"][number]) => {
+  const quantity = decimal(line.quantity);
+  const unitCost = decimal(line.unitCost ?? 0);
+  return {
+    packagingId: line.packagingId,
+    quantity,
+    unitCost,
+    totalValue: money(quantity.mul(unitCost)),
+    batchNumber: line.batchNumber || null,
+    expiryDate: line.expiryDate ? new Date(line.expiryDate) : null,
+    note: line.note || null,
+  };
+};
 
 export const openingInventoryService = {
   async list(query: OpeningInventoryListQuery) {
@@ -82,7 +103,21 @@ export const openingInventoryService = {
         lines: { create: input.lines.map(lineCreateData) },
       },
     });
-    return serializeDocument(await openingInventoryRepository.findById(Number(created.id)));
+    const row = await openingInventoryRepository.findById(Number(created.id));
+    await recordAudit(prisma, {
+      action: "Tạo phiếu tồn đầu kỳ",
+      details: generatedCode,
+      entityType: "OPENING_INVENTORY",
+      entityId: created.id,
+      entityCode: generatedCode,
+      userId,
+      createdAt: nowIso(),
+      changes: [
+        ...snapshotFields(row, HEADER_AUDIT_FIELDS),
+        ...diffLines([], row?.lines, LINE_AUDIT_FIELDS),
+      ],
+    });
+    return serializeDocument(row);
   },
 
   async update(id: number, input: OpeningInventoryUpdateInput, userId: number) {
@@ -95,6 +130,8 @@ export const openingInventoryService = {
       if (Number(current.version) !== input.version) throw new HttpError(409, "VERSION_CONFLICT", "Phiếu đã được người khác cập nhật");
       const newDate = dateAtNoon(input.documentDate);
       const now = new Date();
+      const before = await findByTx(tx, id);
+      if (!before) throw new HttpError(404, "OPENING_INVENTORY_NOT_FOUND", "Không tìm thấy phiếu tồn đầu kỳ");
 
       if (current.status === "DRAFT") {
         await tx.opening_inventory_lines.deleteMany({ where: { documentId: id } });
@@ -108,6 +145,20 @@ export const openingInventoryService = {
             updatedAt: now,
             lines: { create: input.lines.map(lineCreateData) },
           },
+        });
+        const after = await findByTx(tx, id);
+        await recordAudit(tx, {
+          action: "Cập nhật phiếu tồn đầu kỳ",
+          details: current.code,
+          entityType: "OPENING_INVENTORY",
+          entityId: id,
+          entityCode: current.code,
+          userId,
+          createdAt: now.toISOString(),
+          changes: [
+            ...diffFields(before, after, HEADER_AUDIT_FIELDS),
+            ...diffLines(before.lines, after?.lines, LINE_AUDIT_FIELDS),
+          ],
         });
         return;
       }
@@ -146,8 +197,16 @@ export const openingInventoryService = {
           },
         });
       }
-      await tx.audit_logs.create({
-        data: { action: "Sửa ngày tồn đầu kỳ", details: `${current.code} -> ${dateStr}`, userId, userName: String(userId), createdAt: now.toISOString() },
+      const after = await findByTx(tx, id);
+      await recordAudit(tx, {
+        action: "Sửa ngày tồn đầu kỳ",
+        details: `${current.code} -> ${dateStr}`,
+        entityType: "OPENING_INVENTORY",
+        entityId: id,
+        entityCode: current.code,
+        userId,
+        createdAt: now.toISOString(),
+        changes: diffFields(before, after, HEADER_AUDIT_FIELDS),
       });
     });
     return serializeDocument(await openingInventoryRepository.findById(id));
@@ -165,9 +224,9 @@ export const openingInventoryService = {
       const occurredAt = doc.documentDate instanceof Date ? doc.documentDate : new Date(doc.documentDate);
 
       for (const line of doc.lines) {
-        const qty = Number(line.quantity);
-        const cost = Number(line.unitCost);
-        const value = qty * cost;
+        const qty = decimal(line.quantity);
+        const cost = decimal(line.unitCost);
+        const value = money(qty.mul(cost));
 
         await tx.productwarehouses.upsert({
           where: { packagingId_warehouseId: { packagingId: line.packagingId, warehouseId: doc.warehouseId } },
@@ -184,9 +243,9 @@ export const openingInventoryService = {
             direction: "IN",
             packagingId: line.packagingId,
             warehouseId: doc.warehouseId,
-            quantity: decimal(qty),
-            unitCost: decimal(cost),
-            totalValue: money(value),
+            quantity: qty,
+            unitCost: cost,
+            totalValue: value,
             occurredAt,
             createdBy: userId,
           },
@@ -212,27 +271,41 @@ export const openingInventoryService = {
           documentStatus: "POSTED",
           sourceModule: "OPENING_INVENTORY",
           inventorytransactiondetails: {
-            create: doc.lines.map(line => ({
-              packagingId: line.packagingId,
-              quantity: Number(line.quantity),
-              unitCost: Number(line.unitCost),
-              totalValue: Number(line.quantity) * Number(line.unitCost),
-              note: "",
-              createdAt: nowStr,
-              updatedAt: nowStr,
-            })),
+            create: doc.lines.map(line => {
+              const quantity = decimal(line.quantity);
+              const unitCost = decimal(line.unitCost);
+              return {
+                packagingId: line.packagingId,
+                quantity,
+                unitCost,
+                totalValue: money(quantity.mul(unitCost)),
+                note: "",
+                createdAt: nowStr,
+                updatedAt: nowStr,
+              };
+            }),
           },
         },
         include: { inventorytransactiondetails: true },
       });
 
-      await tx.audit_logs.create({
-        data: { action: "Lưu tồn đầu kỳ", details: `${doc.code} -> ${invCode}`, userId, userName: String(userId), createdAt: nowStr },
-      });
-
       await tx.opening_inventory_documents.update({
         where: { id },
         data: { status: "POSTED", postedAt: now, postedBy: userId, version: { increment: 1 }, updatedAt: nowStr },
+      });
+      const posted = await findByTx(tx, id);
+      await recordAudit(tx, {
+        action: "Lưu tồn đầu kỳ",
+        details: `${doc.code} -> ${invCode}`,
+        entityType: "OPENING_INVENTORY",
+        entityId: id,
+        entityCode: doc.code,
+        userId,
+        createdAt: nowStr,
+        changes: [
+          ...diffFields(doc, posted, HEADER_AUDIT_FIELDS),
+          { field: "inventoryDocumentCode", label: "Phiếu nhập kho tự động", oldValue: null, newValue: invCode },
+        ],
       });
     }, { timeout: 30_000 });
     return serializeDocument(await openingInventoryRepository.findById(id));
@@ -279,10 +352,6 @@ export const openingInventoryService = {
         }
       }
 
-      await tx.audit_logs.create({
-        data: { action: "Hủy phiếu tồn đầu kỳ", details: `${doc.code}: ${input.reason}`, userId, userName: String(userId), createdAt: nowStr },
-      });
-
       await tx.opening_inventory_documents.update({
         where: { id },
         data: {
@@ -293,6 +362,20 @@ export const openingInventoryService = {
           version: { increment: 1 },
           updatedAt: nowStr,
         },
+      });
+      const cancelled = await findByTx(tx, id);
+      await recordAudit(tx, {
+        action: "Hủy phiếu tồn đầu kỳ",
+        details: `${doc.code}: ${input.reason}`,
+        entityType: "OPENING_INVENTORY",
+        entityId: id,
+        entityCode: doc.code,
+        userId,
+        createdAt: nowStr,
+        changes: [
+          ...diffFields(doc, cancelled, HEADER_AUDIT_FIELDS),
+          { field: "cancelReason", label: FIELD_LABELS.reason, oldValue: null, newValue: input.reason },
+        ],
       });
     }, { timeout: 30_000 });
     return serializeDocument(await openingInventoryRepository.findById(id));
@@ -347,10 +430,6 @@ export const openingInventoryService = {
         await tx.inventorytransactions.delete({ where: { id: autoDoc.id } });
       }
 
-      await tx.audit_logs.create({
-        data: { action: "Hủy lưu phiếu tồn đầu kỳ", details: doc.code, userId, userName: String(userId), createdAt: nowStr },
-      });
-
       await tx.opening_inventory_documents.update({
         where: { id },
         data: {
@@ -363,6 +442,17 @@ export const openingInventoryService = {
           version: { increment: 1 },
           updatedAt: nowStr,
         },
+      });
+      const unposted = await findByTx(tx, id);
+      await recordAudit(tx, {
+        action: "Hủy lưu phiếu tồn đầu kỳ",
+        details: doc.code,
+        entityType: "OPENING_INVENTORY",
+        entityId: id,
+        entityCode: doc.code,
+        userId,
+        createdAt: nowStr,
+        changes: diffFields(doc, unposted, HEADER_AUDIT_FIELDS),
       });
     }, { timeout: 30_000 });
     return serializeDocument(await openingInventoryRepository.findById(id));

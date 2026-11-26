@@ -13,6 +13,8 @@ import { useCanViewMoney } from "../hooks/useCanViewMoney";
 interface SalesOrderDocumentProps {
 	order: SalesOrder;
 	company?: CompanyPrintProfile | null;
+	/** Ẩn toàn bộ giá trên bản in (dùng khi gửi bộ phận kho). */
+	hidePrices?: boolean;
 }
 
 const statusLabel: Record<string, string> = {
@@ -33,8 +35,9 @@ const paymentMethodLabel: Record<string, string> = {
 export const SalesOrderDocument = React.forwardRef<
 	HTMLDivElement,
 	SalesOrderDocumentProps
->(({ order, company }, ref) => {
-	const showMoney = useCanViewMoney();
+>(({ order, company, hidePrices = false }, ref) => {
+	const canViewMoney = useCanViewMoney();
+	const showMoney = canViewMoney && !hidePrices;
 	const details = order.details || [];
 	const dateOrDots = (v?: string) =>
 		v ? formatDate(v) : "....................";
@@ -180,7 +183,7 @@ export const SalesOrderDocument = React.forwardRef<
 							<th className="border border-black p-2 font-bold text-center w-20">
 								SL
 							</th>
-							{showMoney && (
+							{showMoney ? (
 								<>
 									<th className="border border-black p-2 font-bold text-center w-24">
 										Đơn giá
@@ -189,6 +192,10 @@ export const SalesOrderDocument = React.forwardRef<
 										Thành tiền
 									</th>
 								</>
+							) : (
+								<th className="border border-black p-2 font-bold text-center w-40">
+									Ghi chú
+								</th>
 							)}
 						</tr>
 					</thead>
@@ -205,7 +212,7 @@ export const SalesOrderDocument = React.forwardRef<
 											Hàng tặng{d.promotionCode ? ` (${d.promotionName})` : ""}
 										</span>
 									)}
-									{d.lineType !== "PROMOTION" && d.note && (
+									{showMoney && d.lineType !== "PROMOTION" && d.note && (
 										<span className="block text-xs font-normal italic text-gray-600">
 											{d.note}
 										</span>
@@ -217,7 +224,7 @@ export const SalesOrderDocument = React.forwardRef<
 								<td className="border border-black py-1 text-center font-medium">
 									{formatNumber(Number(d.quantity || 0))}
 								</td>
-								{showMoney && (
+								{showMoney ? (
 									<>
 								<td className="border border-black py-1 px-2 text-right">
 									{formatNumber(Number(d.unitPrice || 0))}
@@ -227,6 +234,10 @@ export const SalesOrderDocument = React.forwardRef<
 									{formatNumber(lineTotal(d))}
 								</td>
 									</>
+								) : (
+									<td className="border border-black py-1 px-2 text-left">
+										{d.note || ""}
+									</td>
 								)}
 							</tr>
 						))}

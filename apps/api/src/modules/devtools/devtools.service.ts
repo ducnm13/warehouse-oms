@@ -10,828 +10,1045 @@ const execFileAsync = promisify(execFile);
 const MAX_QUERY_ROWS = 1000;
 
 function splitStatements(sql: string): string[] {
-  const statements: string[] = [];
-  let current = "";
-  let quote: string | null = null;
-  let escaped = false;
-  for (const char of sql) {
-    if (escaped) {
-      current += char;
-      escaped = false;
-      continue;
-    }
-    if (char === "\\") {
-      current += char;
-      escaped = true;
-      continue;
-    }
-    if (quote) {
-      current += char;
-      if (char === quote) quote = null;
-      continue;
-    }
-    if (char === "'" || char === '"' || char === "`") {
-      quote = char;
-      current += char;
-      continue;
-    }
-    if (char === ";") {
-      if (current.trim()) statements.push(current.trim());
-      current = "";
-      continue;
-    }
-    current += char;
-  }
-  if (current.trim()) statements.push(current.trim());
-  return statements;
+	const statements: string[] = [];
+	let current = "";
+	let quote: string | null = null;
+	let escaped = false;
+	for (const char of sql) {
+		if (escaped) {
+			current += char;
+			escaped = false;
+			continue;
+		}
+		if (char === "\\") {
+			current += char;
+			escaped = true;
+			continue;
+		}
+		if (quote) {
+			current += char;
+			if (char === quote) quote = null;
+			continue;
+		}
+		if (char === "'" || char === '"' || char === "`") {
+			quote = char;
+			current += char;
+			continue;
+		}
+		if (char === ";") {
+			if (current.trim()) statements.push(current.trim());
+			current = "";
+			continue;
+		}
+		current += char;
+	}
+	if (current.trim()) statements.push(current.trim());
+	return statements;
 }
 
 export type DevScriptParam = {
-  name: string;
-  label: string;
-  placeholder?: string;
-  required?: boolean;
-  pattern?: string;
+	name: string;
+	label: string;
+	placeholder?: string;
+	required?: boolean;
+	pattern?: string;
 };
 
 export type DevScript = {
-  id: string;
-  label: string;
-  description: string;
-  command: string;
-  args: string[];
-  dangerous: boolean;
-  confirmPhrase?: string;
-  timeoutMs: number;
-  params?: DevScriptParam[];
-  backupBeforeRun?: boolean;
+	id: string;
+	label: string;
+	description: string;
+	command: string;
+	args: string[];
+	dangerous: boolean;
+	confirmPhrase?: string;
+	timeoutMs: number;
+	params?: DevScriptParam[];
+	backupBeforeRun?: boolean;
 };
 
 const SCRIPTS: DevScript[] = [
-  {
-    id: "reset-operational-dry-run",
-    label: "Kiểm tra dữ liệu nghiệp vụ",
-    description: "Chạy thử script reset dữ liệu nghiệp vụ (chỉ đếm, không xóa).",
-    command: "npx",
-    args: ["tsx", "scripts/reset-operational-data.ts"],
-    dangerous: false,
-    timeoutMs: 120_000,
-  },
-  {
-    id: "reset-operational",
-    label: "Xóa dữ liệu nghiệp vụ",
-    description: "Xóa đơn bán/mua, phiếu kho, công nợ, sản xuất… Giữ danh mục, khách hàng, nhà cung cấp, tồn đầu kỳ.",
-    command: "npx",
-    args: ["tsx", "scripts/reset-operational-data.ts", "--yes"],
-    dangerous: true,
-    confirmPhrase: "XOA DU LIEU",
-    timeoutMs: 300_000,
-  },
-  {
-    id: "reset-sales",
-    label: "Xóa toàn bộ dữ liệu bán hàng",
-    description: "Chạy script reset-sales-data.ts (xóa cả tồn đầu kỳ và tồn kho hiện tại).",
-    command: "npx",
-    args: ["tsx", "scripts/reset-sales-data.ts"],
-    dangerous: true,
-    confirmPhrase: "XOA DU LIEU BAN HANG",
-    timeoutMs: 300_000,
-  },
-  {
-    id: "reset-month-dry-run",
-    label: "Kiểm tra chứng từ theo tháng",
-    description: "Chạy thử script xóa chứng từ theo tháng (chỉ đếm, không xóa).",
-    command: "npx",
-    args: ["tsx", "scripts/reset-month-documents.ts", "--month={{month}}"],
-    dangerous: false,
-    timeoutMs: 180_000,
-    params: [
-      {
-        name: "month",
-        label: "Tháng",
-        placeholder: "YYYY-MM",
-        required: true,
-        pattern: "^\\d{4}-(0[1-9]|1[0-2])$",
-      },
-    ],
-  },
-  {
-    id: "reset-month",
-    label: "Xóa chứng từ theo tháng",
-    description:
-      "Hoàn tác kho/công nợ và xóa toàn bộ chứng từ phát sinh trong tháng đã chọn, giữ lại lệnh sản xuất, danh mục và tồn đầu kỳ.",
-    command: "npx",
-    args: [
-      "tsx",
-      "scripts/reset-month-documents.ts",
-      "--month={{month}}",
-      "--yes",
-    ],
-    dangerous: true,
-    confirmPhrase: "XOA CHUNG TU THANG",
-    timeoutMs: 600_000,
-    backupBeforeRun: true,
-    params: [
-      {
-        name: "month",
-        label: "Tháng",
-        placeholder: "YYYY-MM",
-        required: true,
-        pattern: "^\\d{4}-(0[1-9]|1[0-2])$",
-      },
-    ],
-  },
-  {
-    id: "recalculate-stock-preview",
-    label: "Tính lại tồn kho & công nợ (xem trước)",
-    description:
-      "Chạy thử tính lại tồn kho từ tồn đầu kỳ + sổ kho và trạng thái thanh toán/công nợ. Chỉ hiển thị chênh lệch, không ghi dữ liệu.",
-    command: "npx",
-    args: ["tsx", "scripts/recalculate-app-data.ts", "--month={{month}}"],
-    dangerous: false,
-    timeoutMs: 300_000,
-    params: [
-      {
-        name: "month",
-        label: "Tháng",
-        placeholder: "YYYY-MM",
-        required: true,
-        pattern: "^\\d{4}-(0[1-9]|1[0-2])$",
-      },
-    ],
-  },
-  {
-    id: "recalculate-stock",
-    label: "Tính lại tồn kho & công nợ",
-    description:
-      "Ghi đè tồn kho hiện tại theo tồn đầu kỳ + sổ kho đến hết tháng đã chọn và tính lại trạng thái thanh toán/công nợ.",
-    command: "npx",
-    args: ["tsx", "scripts/recalculate-app-data.ts", "--month={{month}}", "--yes"],
-    dangerous: true,
-    confirmPhrase: "TINH LAI DU LIEU",
-    timeoutMs: 600_000,
-    backupBeforeRun: true,
-    params: [
-      {
-        name: "month",
-        label: "Tháng",
-        placeholder: "YYYY-MM",
-        required: true,
-        pattern: "^\\d{4}-(0[1-9]|1[0-2])$",
-      },
-    ],
-  },
-  {
-    id: "dump-database",
-    label: "Dump cơ sở dữ liệu",
-    description: "Xuất toàn bộ cấu trúc và dữ liệu ra file .sql trong thư mục backups/.",
-    command: "npx",
-    args: ["tsx", "scripts/dump-database.ts"],
-    dangerous: false,
-    timeoutMs: 600_000,
-  },
-  {
-    id: "typecheck",
-    label: "Kiểm tra kiểu TypeScript",
-    description: "Chạy npm run typecheck trên toàn bộ workspace.",
-    command: "npm",
-    args: ["run", "typecheck"],
-    dangerous: false,
-    timeoutMs: 300_000,
-  },
-  {
-    id: "build",
-    label: "Build production",
-    description: "Chạy npm run build (tsc + vite build).",
-    command: "npm",
-    args: ["run", "build"],
-    dangerous: true,
-    confirmPhrase: "BUILD",
-    timeoutMs: 600_000,
-  },
-  {
-    id: "prisma-push",
-    label: "Đồng bộ schema Prisma",
-    description: "Chạy prisma db push — có thể thay đổi cấu trúc CSDL.",
-    command: "npm",
-    args: ["run", "prisma:push"],
-    dangerous: true,
-    confirmPhrase: "DB PUSH",
-    timeoutMs: 300_000,
-  },
+	{
+		id: "sync-production-materials",
+		label: "Đồng bộ lệnh sản xuất với phiếu xuất nguyên vật liệu",
+		description:
+			"Đồng bộ số lượng, đơn giá vốn và thành tiền từ phiếu xuất kho (EXPORT + POSTED) sang production_order_materials_v1.",
+		command: "npx",
+		args: [
+			"tsx",
+			"scripts/sync-production-materials.ts",
+			"--orderCode={{orderCode}}",
+			"--month={{month}}",
+		],
+		dangerous: false,
+		timeoutMs: 120_000,
+		params: [
+			{
+				name: "orderCode",
+				label: "Mã lệnh SX",
+				placeholder: "VD: LSX00496 (trống = tất cả)",
+				required: false,
+			},
+			{
+				name: "month",
+				label: "Tháng (YYYY-MM)",
+				placeholder: "YYYY-MM (tùy chọn)",
+				required: false,
+				pattern: "^\\d{4}-(0[1-9]|1[0-2])$",
+			},
+		],
+	},
+	{
+		id: "reset-operational-dry-run",
+		label: "Kiểm tra dữ liệu nghiệp vụ",
+		description:
+			"Chạy thử script reset dữ liệu nghiệp vụ (chỉ đếm, không xóa).",
+		command: "npx",
+		args: ["tsx", "scripts/reset-operational-data.ts"],
+		dangerous: false,
+		timeoutMs: 120_000,
+	},
+	{
+		id: "reset-operational",
+		label: "Xóa dữ liệu nghiệp vụ",
+		description:
+			"Xóa đơn bán/mua, phiếu kho, công nợ, sản xuất… Giữ danh mục, khách hàng, nhà cung cấp, tồn đầu kỳ.",
+		command: "npx",
+		args: ["tsx", "scripts/reset-operational-data.ts", "--yes"],
+		dangerous: true,
+		confirmPhrase: "XOA DU LIEU",
+		timeoutMs: 300_000,
+	},
+	{
+		id: "reset-sales",
+		label: "Xóa toàn bộ dữ liệu bán hàng",
+		description:
+			"Chạy script reset-sales-data.ts (xóa cả tồn đầu kỳ và tồn kho hiện tại).",
+		command: "npx",
+		args: ["tsx", "scripts/reset-sales-data.ts"],
+		dangerous: true,
+		confirmPhrase: "XOA DU LIEU BAN HANG",
+		timeoutMs: 300_000,
+	},
+	{
+		id: "reset-month-dry-run",
+		label: "Kiểm tra chứng từ theo tháng",
+		description:
+			"Chạy thử script xóa chứng từ theo tháng (chỉ đếm, không xóa).",
+		command: "npx",
+		args: ["tsx", "scripts/reset-month-documents.ts", "--month={{month}}"],
+		dangerous: false,
+		timeoutMs: 180_000,
+		params: [
+			{
+				name: "month",
+				label: "Tháng",
+				placeholder: "YYYY-MM",
+				required: true,
+				pattern: "^\\d{4}-(0[1-9]|1[0-2])$",
+			},
+		],
+	},
+	{
+		id: "reset-month",
+		label: "Xóa chứng từ theo tháng",
+		description:
+			"Hoàn tác kho/công nợ và xóa toàn bộ chứng từ phát sinh trong tháng đã chọn, giữ lại lệnh sản xuất, danh mục và tồn đầu kỳ.",
+		command: "npx",
+		args: [
+			"tsx",
+			"scripts/reset-month-documents.ts",
+			"--month={{month}}",
+			"--yes",
+		],
+		dangerous: true,
+		confirmPhrase: "XOA CHUNG TU THANG",
+		timeoutMs: 600_000,
+		backupBeforeRun: true,
+		params: [
+			{
+				name: "month",
+				label: "Tháng",
+				placeholder: "YYYY-MM",
+				required: true,
+				pattern: "^\\d{4}-(0[1-9]|1[0-2])$",
+			},
+		],
+	},
+	{
+		id: "recalculate-stock-preview",
+		label: "Tính lại tồn kho & công nợ (xem trước)",
+		description:
+			"Chạy thử tính lại tồn kho từ tồn đầu kỳ + sổ kho và trạng thái thanh toán/công nợ. Chỉ hiển thị chênh lệch, không ghi dữ liệu.",
+		command: "npx",
+		args: ["tsx", "scripts/recalculate-app-data.ts", "--month={{month}}"],
+		dangerous: false,
+		timeoutMs: 300_000,
+		params: [
+			{
+				name: "month",
+				label: "Tháng",
+				placeholder: "YYYY-MM",
+				required: true,
+				pattern: "^\\d{4}-(0[1-9]|1[0-2])$",
+			},
+		],
+	},
+	{
+		id: "recalculate-stock",
+		label: "Tính lại tồn kho & công nợ",
+		description:
+			"Ghi đè tồn kho hiện tại theo tồn đầu kỳ + sổ kho đến hết tháng đã chọn và tính lại trạng thái thanh toán/công nợ.",
+		command: "npx",
+		args: [
+			"tsx",
+			"scripts/recalculate-app-data.ts",
+			"--month={{month}}",
+			"--yes",
+		],
+		dangerous: true,
+		confirmPhrase: "TINH LAI DU LIEU",
+		timeoutMs: 600_000,
+		backupBeforeRun: true,
+		params: [
+			{
+				name: "month",
+				label: "Tháng",
+				placeholder: "YYYY-MM",
+				required: true,
+				pattern: "^\\d{4}-(0[1-9]|1[0-2])$",
+			},
+		],
+	},
+	{
+		id: "dump-database",
+		label: "Dump cơ sở dữ liệu",
+		description:
+			"Xuất toàn bộ cấu trúc và dữ liệu ra file .sql trong thư mục backups/.",
+		command: "npx",
+		args: ["tsx", "scripts/dump-database.ts"],
+		dangerous: false,
+		timeoutMs: 600_000,
+	},
+	{
+		id: "typecheck",
+		label: "Kiểm tra kiểu TypeScript",
+		description: "Chạy npm run typecheck trên toàn bộ workspace.",
+		command: "npm",
+		args: ["run", "typecheck"],
+		dangerous: false,
+		timeoutMs: 300_000,
+	},
+	{
+		id: "build",
+		label: "Build production",
+		description: "Chạy npm run build (tsc + vite build).",
+		command: "npm",
+		args: ["run", "build"],
+		dangerous: true,
+		confirmPhrase: "BUILD",
+		timeoutMs: 600_000,
+	},
+	{
+		id: "prisma-push",
+		label: "Đồng bộ schema Prisma",
+		description: "Chạy prisma db push — có thể thay đổi cấu trúc CSDL.",
+		command: "npm",
+		args: ["run", "prisma:push"],
+		dangerous: true,
+		confirmPhrase: "DB PUSH",
+		timeoutMs: 300_000,
+	},
 ];
 
 let activeRun: { id: string; startedAt: string } | null = null;
 
 const toNumber = (value: unknown) => {
-  const n = Number(value || 0);
-  return Number.isFinite(n) ? n : 0;
+	const n = Number(value || 0);
+	return Number.isFinite(n) ? n : 0;
 };
 
 const sanitize = (value: any): any => {
-  if (value === null || value === undefined) return value;
-  if (typeof value === "bigint") {
-    return value <= BigInt(Number.MAX_SAFE_INTEGER) && value >= BigInt(Number.MIN_SAFE_INTEGER)
-      ? Number(value)
-      : value.toString();
-  }
-  if (value instanceof Date) return value.toISOString();
-  if (Buffer.isBuffer(value)) return value.toString("hex");
-  if (Array.isArray(value)) return value.map(sanitize);
-  if (typeof value === "object") {
-    if (typeof value.toJSON === "function") {
-      try {
-        return sanitize(value.toJSON());
-      } catch {
-        return String(value);
-      }
-    }
-    const result: Record<string, any> = {};
-    for (const [key, item] of Object.entries(value)) result[key] = sanitize(item);
-    return result;
-  }
-  return value;
+	if (value === null || value === undefined) return value;
+	if (typeof value === "bigint") {
+		return value <= BigInt(Number.MAX_SAFE_INTEGER) &&
+			value >= BigInt(Number.MIN_SAFE_INTEGER)
+			? Number(value)
+			: value.toString();
+	}
+	if (value instanceof Date) return value.toISOString();
+	if (Buffer.isBuffer(value)) return value.toString("hex");
+	if (Array.isArray(value)) return value.map(sanitize);
+	if (typeof value === "object") {
+		if (typeof value.toJSON === "function") {
+			try {
+				return sanitize(value.toJSON());
+			} catch {
+				return String(value);
+			}
+		}
+		const result: Record<string, any> = {};
+		for (const [key, item] of Object.entries(value))
+			result[key] = sanitize(item);
+		return result;
+	}
+	return value;
 };
 
 const projectRoot = () => process.cwd();
 
 async function getDiskUsage() {
-  try {
-    if (process.platform === "win32") {
-      const { stdout } = await execFileAsync(
-        "powershell.exe",
-        [
-          "-NoProfile",
-          "-Command",
-          "Get-CimInstance Win32_LogicalDisk -Filter \"DriveType=3\" | Select-Object DeviceID,Size,FreeSpace | ConvertTo-Json -Compress",
-        ],
-        { timeout: 4_000, maxBuffer: 1024 * 1024, windowsHide: true },
-      );
-      const parsed = JSON.parse(stdout.trim());
-      const disks = (Array.isArray(parsed) ? parsed : [parsed]).map((disk: any) => ({
-        path: String(disk.DeviceID || ""),
-        totalBytes: toNumber(disk.Size),
-        freeBytes: toNumber(disk.FreeSpace),
-        usedBytes: Math.max(0, toNumber(disk.Size) - toNumber(disk.FreeSpace)),
-      }));
-      return disks;
-    }
-    const { stdout } = await execFileAsync("df", ["-kP", "/"], { timeout: 4_000 });
-    const line = stdout.trim().split(/\r?\n/).pop() || "";
-    const parts = line.split(/\s+/);
-    const totalBytes = toNumber(parts[1]) * 1024;
-    const usedBytes = toNumber(parts[2]) * 1024;
-    const freeBytes = toNumber(parts[3]) * 1024;
-    return [{ path: "/", totalBytes, usedBytes, freeBytes }];
-  } catch {
-    return null;
-  }
+	try {
+		if (process.platform === "win32") {
+			const { stdout } = await execFileAsync(
+				"powershell.exe",
+				[
+					"-NoProfile",
+					"-Command",
+					'Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" | Select-Object DeviceID,Size,FreeSpace | ConvertTo-Json -Compress',
+				],
+				{ timeout: 4_000, maxBuffer: 1024 * 1024, windowsHide: true },
+			);
+			const parsed = JSON.parse(stdout.trim());
+			const disks = (Array.isArray(parsed) ? parsed : [parsed]).map(
+				(disk: any) => ({
+					path: String(disk.DeviceID || ""),
+					totalBytes: toNumber(disk.Size),
+					freeBytes: toNumber(disk.FreeSpace),
+					usedBytes: Math.max(
+						0,
+						toNumber(disk.Size) - toNumber(disk.FreeSpace),
+					),
+				}),
+			);
+			return disks;
+		}
+		const { stdout } = await execFileAsync("df", ["-kP", "/"], {
+			timeout: 4_000,
+		});
+		const line = stdout.trim().split(/\r?\n/).pop() || "";
+		const parts = line.split(/\s+/);
+		const totalBytes = toNumber(parts[1]) * 1024;
+		const usedBytes = toNumber(parts[2]) * 1024;
+		const freeBytes = toNumber(parts[3]) * 1024;
+		return [{ path: "/", totalBytes, usedBytes, freeBytes }];
+	} catch {
+		return null;
+	}
 }
 
 async function getPm2Processes() {
-  try {
-    const { stdout } = await execFileAsync("pm2", ["jlist"], {
-      timeout: 5_000,
-      maxBuffer: 5 * 1024 * 1024,
-      windowsHide: true,
-      shell: process.platform === "win32",
-    });
-    const parsed = JSON.parse(stdout);
-    if (!Array.isArray(parsed)) return null;
-    return parsed.map((item: any) => ({
-      name: item.name,
-      pid: item.pid || null,
-      status: item.pm2_env?.status || null,
-      cpu: toNumber(item.monit?.cpu),
-      memoryBytes: toNumber(item.monit?.memory),
-      restarts: toNumber(item.pm2_env?.restart_time),
-      uptimeMs: item.pm2_env?.pm_uptime ? Math.max(0, Date.now() - toNumber(item.pm2_env.pm_uptime)) : 0,
-      mode: item.pm2_env?.exec_mode || null,
-      version: item.pm2_env?.version || null,
-    }));
-  } catch {
-    return null;
-  }
+	try {
+		const { stdout } = await execFileAsync("pm2", ["jlist"], {
+			timeout: 5_000,
+			maxBuffer: 5 * 1024 * 1024,
+			windowsHide: true,
+			shell: process.platform === "win32",
+		});
+		const parsed = JSON.parse(stdout);
+		if (!Array.isArray(parsed)) return null;
+		return parsed.map((item: any) => ({
+			name: item.name,
+			pid: item.pid || null,
+			status: item.pm2_env?.status || null,
+			cpu: toNumber(item.monit?.cpu),
+			memoryBytes: toNumber(item.monit?.memory),
+			restarts: toNumber(item.pm2_env?.restart_time),
+			uptimeMs: item.pm2_env?.pm_uptime
+				? Math.max(0, Date.now() - toNumber(item.pm2_env.pm_uptime))
+				: 0,
+			mode: item.pm2_env?.exec_mode || null,
+			version: item.pm2_env?.version || null,
+		}));
+	} catch {
+		return null;
+	}
 }
 
 async function getGitInfo() {
-  try {
-    const [head, branch, subject] = await Promise.all([
-      execFileAsync("git", ["rev-parse", "--short", "HEAD"], { cwd: projectRoot(), timeout: 3_000 }),
-      execFileAsync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: projectRoot(), timeout: 3_000 }),
-      execFileAsync("git", ["log", "-1", "--pretty=%s"], { cwd: projectRoot(), timeout: 3_000 }),
-    ]);
-    return {
-      commit: head.stdout.trim(),
-      branch: branch.stdout.trim(),
-      subject: subject.stdout.trim(),
-    };
-  } catch {
-    return null;
-  }
+	try {
+		const [head, branch, subject] = await Promise.all([
+			execFileAsync("git", ["rev-parse", "--short", "HEAD"], {
+				cwd: projectRoot(),
+				timeout: 3_000,
+			}),
+			execFileAsync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+				cwd: projectRoot(),
+				timeout: 3_000,
+			}),
+			execFileAsync("git", ["log", "-1", "--pretty=%s"], {
+				cwd: projectRoot(),
+				timeout: 3_000,
+			}),
+		]);
+		return {
+			commit: head.stdout.trim(),
+			branch: branch.stdout.trim(),
+			subject: subject.stdout.trim(),
+		};
+	} catch {
+		return null;
+	}
 }
 
 async function getDatabaseOverview() {
-  const rows = await prisma.$queryRawUnsafe<any[]>(
-    `SELECT DATABASE() AS databaseName, VERSION() AS version, NOW() AS serverTime,
+	const rows = await prisma.$queryRawUnsafe<any[]>(
+		`SELECT DATABASE() AS databaseName, VERSION() AS version, NOW() AS serverTime,
       (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()) AS tableCount,
       (SELECT COALESCE(SUM(data_length + index_length), 0) FROM information_schema.tables WHERE table_schema = DATABASE()) AS sizeBytes`,
-  );
-  const row = rows[0] || {};
-  return {
-    databaseName: row.databaseName || null,
-    version: row.version || null,
-    serverTime: row.serverTime instanceof Date ? row.serverTime.toISOString() : row.serverTime || null,
-    tableCount: toNumber(row.tableCount),
-    sizeBytes: toNumber(row.sizeBytes),
-    host: process.env.DB_HOST || process.env.HOST || "localhost",
-    port: toNumber(process.env.DB_PORT || 3306),
-  };
+	);
+	const row = rows[0] || {};
+	return {
+		databaseName: row.databaseName || null,
+		version: row.version || null,
+		serverTime:
+			row.serverTime instanceof Date
+				? row.serverTime.toISOString()
+				: row.serverTime || null,
+		tableCount: toNumber(row.tableCount),
+		sizeBytes: toNumber(row.sizeBytes),
+		host: process.env.DB_HOST || process.env.HOST || "localhost",
+		port: toNumber(process.env.DB_PORT || 3306),
+	};
 }
 
-const backupsDir = () => path.resolve(process.env.DUMP_DIR || path.join(projectRoot(), "backups"));
+const backupsDir = () =>
+	path.resolve(process.env.DUMP_DIR || path.join(projectRoot(), "backups"));
 
 function runProcess(
-  command: string,
-  args: string[],
-  timeoutMs: number,
-  append: (chunk: Buffer | string) => void,
+	command: string,
+	args: string[],
+	timeoutMs: number,
+	append: (chunk: Buffer | string) => void,
 ) {
-  return new Promise<{ exitCode: number | null; timedOut: boolean }>(resolve => {
-    let timedOut = false;
-    const child = spawn(command, args, {
-      cwd: projectRoot(),
-      env: process.env,
-      shell: process.platform === "win32",
-      windowsHide: true,
-    });
-    const timer = setTimeout(() => {
-      timedOut = true;
-      try {
-        if (process.platform === "win32" && child.pid) {
-          execFile("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true }, () => {});
-        } else {
-          child.kill("SIGKILL");
-        }
-      } catch {
-        child.kill();
-      }
-    }, timeoutMs);
+	return new Promise<{ exitCode: number | null; timedOut: boolean }>(
+		resolve => {
+			let timedOut = false;
+			const child = spawn(command, args, {
+				cwd: projectRoot(),
+				env: process.env,
+				shell: process.platform === "win32",
+				windowsHide: true,
+			});
+			const timer = setTimeout(() => {
+				timedOut = true;
+				try {
+					if (process.platform === "win32" && child.pid) {
+						execFile(
+							"taskkill",
+							["/pid", String(child.pid), "/T", "/F"],
+							{ windowsHide: true },
+							() => {},
+						);
+					} else {
+						child.kill("SIGKILL");
+					}
+				} catch {
+					child.kill();
+				}
+			}, timeoutMs);
 
-    child.stdout?.on("data", append);
-    child.stderr?.on("data", append);
-    child.on("error", error => {
-      append(`\n${error.message}\n`);
-    });
-    child.on("close", code => {
-      clearTimeout(timer);
-      resolve({ exitCode: code, timedOut });
-    });
-  });
+			child.stdout?.on("data", append);
+			child.stderr?.on("data", append);
+			child.on("error", error => {
+				append(`\n${error.message}\n`);
+			});
+			child.on("close", code => {
+				clearTimeout(timer);
+				resolve({ exitCode: code, timedOut });
+			});
+		},
+	);
 }
 
 export const devtoolsService = {
-  enabled() {
-    return process.env.DEV_TOOLS_ENABLED !== "false";
-  },
+	enabled() {
+		return process.env.DEV_TOOLS_ENABLED !== "false";
+	},
 
-  async overview() {
-    const cpus = os.cpus();
-    const totalMemory = os.totalmem();
-    const freeMemory = os.freemem();
-    const processMemory = process.memoryUsage();
-    const [database, disks, pm2, git] = await Promise.all([
-      getDatabaseOverview(),
-      getDiskUsage(),
-      getPm2Processes(),
-      getGitInfo(),
-    ]);
+	async overview() {
+		const cpus = os.cpus();
+		const totalMemory = os.totalmem();
+		const freeMemory = os.freemem();
+		const processMemory = process.memoryUsage();
+		const [database, disks, pm2, git] = await Promise.all([
+			getDatabaseOverview(),
+			getDiskUsage(),
+			getPm2Processes(),
+			getGitInfo(),
+		]);
 
-    return {
-      generatedAt: new Date().toISOString(),
-      projectRoot: projectRoot(),
-      process: {
-        pid: process.pid,
-        nodeVersion: process.version,
-        platform: process.platform,
-        arch: process.arch,
-        env: process.env.NODE_ENV || "development",
-        uptimeSeconds: Math.round(process.uptime()),
-        rssBytes: processMemory.rss,
-        heapUsedBytes: processMemory.heapUsed,
-        heapTotalBytes: processMemory.heapTotal,
-      },
-      host: {
-        hostname: os.hostname(),
-        osType: os.type(),
-        osRelease: os.release(),
-        platform: os.platform(),
-        arch: os.arch(),
-        uptimeSeconds: Math.round(os.uptime()),
-        cpuModel: cpus[0]?.model?.trim() || null,
-        cpuCount: cpus.length,
-        loadAverage: os.loadavg(),
-        totalMemoryBytes: totalMemory,
-        freeMemoryBytes: freeMemory,
-        usedMemoryBytes: totalMemory - freeMemory,
-      },
-      database,
-      disks,
-      pm2,
-      git,
-    };
-  },
+		return {
+			generatedAt: new Date().toISOString(),
+			projectRoot: projectRoot(),
+			process: {
+				pid: process.pid,
+				nodeVersion: process.version,
+				platform: process.platform,
+				arch: process.arch,
+				env: process.env.NODE_ENV || "development",
+				uptimeSeconds: Math.round(process.uptime()),
+				rssBytes: processMemory.rss,
+				heapUsedBytes: processMemory.heapUsed,
+				heapTotalBytes: processMemory.heapTotal,
+			},
+			host: {
+				hostname: os.hostname(),
+				osType: os.type(),
+				osRelease: os.release(),
+				platform: os.platform(),
+				arch: os.arch(),
+				uptimeSeconds: Math.round(os.uptime()),
+				cpuModel: cpus[0]?.model?.trim() || null,
+				cpuCount: cpus.length,
+				loadAverage: os.loadavg(),
+				totalMemoryBytes: totalMemory,
+				freeMemoryBytes: freeMemory,
+				usedMemoryBytes: totalMemory - freeMemory,
+			},
+			database,
+			disks,
+			pm2,
+			git,
+		};
+	},
 
-  async tables() {
-    const rows = await prisma.$queryRawUnsafe<any[]>(
-      `SELECT TABLE_NAME AS name, ENGINE AS engine, TABLE_ROWS AS approxRows,
+	async tables() {
+		const rows = await prisma.$queryRawUnsafe<any[]>(
+			`SELECT TABLE_NAME AS name, ENGINE AS engine, TABLE_ROWS AS approxRows,
         DATA_LENGTH AS dataBytes, INDEX_LENGTH AS indexBytes, TABLE_COLLATION AS collation
       FROM information_schema.tables
       WHERE TABLE_SCHEMA = DATABASE()
       ORDER BY TABLE_NAME`,
-    );
-    return rows.map(row => ({
-      name: String(row.name),
-      engine: row.engine || null,
-      approxRows: toNumber(row.approxRows),
-      dataBytes: toNumber(row.dataBytes),
-      indexBytes: toNumber(row.indexBytes),
-      collation: row.collation || null,
-    }));
-  },
+		);
+		return rows.map(row => ({
+			name: String(row.name),
+			engine: row.engine || null,
+			approxRows: toNumber(row.approxRows),
+			dataBytes: toNumber(row.dataBytes),
+			indexBytes: toNumber(row.indexBytes),
+			collation: row.collation || null,
+		}));
+	},
 
-  async tableData(name: string, limit = 100, offset = 0) {
-    const tableName = String(name || "").trim();
-    if (!tableName) throw new HttpError(400, "TABLE_REQUIRED", "Thiếu tên bảng");
-    const tables = await prisma.$queryRawUnsafe<any[]>(
-      `SELECT TABLE_NAME AS name FROM information_schema.tables WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
-      tableName,
-    );
-    if (!tables.length) throw new HttpError(404, "TABLE_NOT_FOUND", "Không tìm thấy bảng");
-    const columns = await prisma.$queryRawUnsafe<any[]>(
-      `SELECT COLUMN_NAME AS name, DATA_TYPE AS dataType, IS_NULLABLE AS nullable,
+	async tableData(name: string, limit = 100, offset = 0) {
+		const tableName = String(name || "").trim();
+		if (!tableName)
+			throw new HttpError(400, "TABLE_REQUIRED", "Thiếu tên bảng");
+		const tables = await prisma.$queryRawUnsafe<any[]>(
+			`SELECT TABLE_NAME AS name FROM information_schema.tables WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+			tableName,
+		);
+		if (!tables.length)
+			throw new HttpError(404, "TABLE_NOT_FOUND", "Không tìm thấy bảng");
+		const columns = await prisma.$queryRawUnsafe<any[]>(
+			`SELECT COLUMN_NAME AS name, DATA_TYPE AS dataType, IS_NULLABLE AS nullable,
         COLUMN_KEY AS columnKey, COLUMN_DEFAULT AS defaultValue, EXTRA AS extra
        FROM information_schema.columns
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
        ORDER BY ORDINAL_POSITION`,
-      tableName,
-    );
-    const safeName = `\`${tableName.replace(/`/g, "``")}\``;
-    const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
-    const safeOffset = Math.max(Number(offset) || 0, 0);
-    const rows = await prisma.$queryRawUnsafe<any[]>(
-      `SELECT * FROM ${safeName} LIMIT ${safeLimit} OFFSET ${safeOffset}`,
-    );
-    return {
-      name: tableName,
-      columns: columns.map(column => ({
-        name: String(column.name),
-        dataType: String(column.dataType || ""),
-        nullable: String(column.nullable || "").toUpperCase() === "YES",
-        primaryKey: String(column.columnKey || "").toUpperCase() === "PRI",
-        defaultValue: column.defaultValue,
-        extra: column.extra || "",
-      })),
-      primaryKey: columns
-        .filter(column => String(column.columnKey || "").toUpperCase() === "PRI")
-        .map(column => String(column.name)),
-      rows: sanitize(rows),
-      limit: safeLimit,
-      offset: safeOffset,
-    };
-  },
+			tableName,
+		);
+		const safeName = `\`${tableName.replace(/`/g, "``")}\``;
+		const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
+		const safeOffset = Math.max(Number(offset) || 0, 0);
+		const rows = await prisma.$queryRawUnsafe<any[]>(
+			`SELECT * FROM ${safeName} LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+		);
+		return {
+			name: tableName,
+			columns: columns.map(column => ({
+				name: String(column.name),
+				dataType: String(column.dataType || ""),
+				nullable: String(column.nullable || "").toUpperCase() === "YES",
+				primaryKey: String(column.columnKey || "").toUpperCase() === "PRI",
+				defaultValue: column.defaultValue,
+				extra: column.extra || "",
+			})),
+			primaryKey: columns
+				.filter(
+					column => String(column.columnKey || "").toUpperCase() === "PRI",
+				)
+				.map(column => String(column.name)),
+			rows: sanitize(rows),
+			limit: safeLimit,
+			offset: safeOffset,
+		};
+	},
 
-  async updateRow(input: { table: string; keys: Record<string, any>; changes: Record<string, any> }, userId: number, username: string) {
-    const tableName = String(input?.table || "").trim();
-    const keys = input?.keys || {};
-    const changes = input?.changes || {};
-    if (!tableName) throw new HttpError(400, "TABLE_REQUIRED", "Thiếu tên bảng");
-    if (!Object.keys(keys).length) throw new HttpError(400, "KEYS_REQUIRED", "Thiếu khóa chính để cập nhật");
-    if (!Object.keys(changes).length) throw new HttpError(400, "CHANGES_REQUIRED", "Không có thay đổi để lưu");
-    const table = await this.tableData(tableName, 1, 0);
-    const columnMap: Map<string, { dataType: string }> = new Map(
-      table.columns.map(column => [String(column.name), { dataType: String(column.dataType || "") }]),
-    );
-    for (const key of Object.keys(keys)) {
-      if (!columnMap.has(key)) throw new HttpError(400, "COLUMN_NOT_FOUND", `Không có cột ${key}`);
-    }
-    for (const column of Object.keys(changes)) {
-      if (!columnMap.has(column)) throw new HttpError(400, "COLUMN_NOT_FOUND", `Không có cột ${column}`);
-    }
-    const quote = (value: string) => `\`${value.replace(/`/g, "``")}\``;
-    const normalize = (value: any, dataType: string) => {
-      if (value === null || value === undefined) return null;
-      if (typeof value === "string" && value.trim().toUpperCase() === "NULL") return null;
-      if (/^(tinyint|smallint|mediumint|int|bigint|decimal|numeric|float|double|bit|year)/i.test(dataType)) {
-        if (typeof value === "string" && value.trim() === "") return null;
-        const number = Number(value);
-        return Number.isFinite(number) ? number : value;
-      }
-      return value;
-    };
-    const setSql = Object.keys(changes)
-      .map(column => `${quote(column)} = ?`)
-      .join(", ");
-    const whereSql = Object.keys(keys)
-      .map(column => `${quote(column)} = ?`)
-      .join(" AND ");
-    const values = [
-      ...Object.entries(changes).map(([column, value]) => normalize(value, columnMap.get(column)?.dataType || "")),
-      ...Object.entries(keys).map(([column, value]) => normalize(value, columnMap.get(column)?.dataType || "")),
-    ];
-    const tableSql = quote(tableName);
-    const affected = await prisma.$executeRawUnsafe(
-      `UPDATE ${tableSql} SET ${setSql} WHERE ${whereSql} LIMIT 1`,
-      ...values,
-    );
-    void prisma.audit_logs.create({
-      data: {
-        action: "Sửa dữ liệu bảng dev",
-        details: `${tableName} · ${Object.keys(changes).join(", ")} · ${affected} dòng`,
-        userId,
-        userName: username,
-        createdAt: new Date().toISOString(),
-      },
-    }).catch(() => {});
-    return { affectedRows: Number(affected) };
-  },
+	async updateRow(
+		input: {
+			table: string;
+			keys: Record<string, any>;
+			changes: Record<string, any>;
+		},
+		userId: number,
+		username: string,
+	) {
+		const tableName = String(input?.table || "").trim();
+		const keys = input?.keys || {};
+		const changes = input?.changes || {};
+		if (!tableName)
+			throw new HttpError(400, "TABLE_REQUIRED", "Thiếu tên bảng");
+		if (!Object.keys(keys).length)
+			throw new HttpError(400, "KEYS_REQUIRED", "Thiếu khóa chính để cập nhật");
+		if (!Object.keys(changes).length)
+			throw new HttpError(400, "CHANGES_REQUIRED", "Không có thay đổi để lưu");
+		const table = await this.tableData(tableName, 1, 0);
+		const columnMap: Map<string, { dataType: string }> = new Map(
+			table.columns.map(column => [
+				String(column.name),
+				{ dataType: String(column.dataType || "") },
+			]),
+		);
+		for (const key of Object.keys(keys)) {
+			if (!columnMap.has(key))
+				throw new HttpError(400, "COLUMN_NOT_FOUND", `Không có cột ${key}`);
+		}
+		for (const column of Object.keys(changes)) {
+			if (!columnMap.has(column))
+				throw new HttpError(400, "COLUMN_NOT_FOUND", `Không có cột ${column}`);
+		}
+		const quote = (value: string) => `\`${value.replace(/`/g, "``")}\``;
+		const normalize = (value: any, dataType: string) => {
+			if (value === null || value === undefined) return null;
+			if (typeof value === "string" && value.trim().toUpperCase() === "NULL")
+				return null;
+			if (
+				/^(tinyint|smallint|mediumint|int|bigint|decimal|numeric|float|double|bit|year)/i.test(
+					dataType,
+				)
+			) {
+				if (typeof value === "string" && value.trim() === "") return null;
+				const number = Number(value);
+				return Number.isFinite(number) ? number : value;
+			}
+			return value;
+		};
+		const setSql = Object.keys(changes)
+			.map(column => `${quote(column)} = ?`)
+			.join(", ");
+		const whereSql = Object.keys(keys)
+			.map(column => `${quote(column)} = ?`)
+			.join(" AND ");
+		const values = [
+			...Object.entries(changes).map(([column, value]) =>
+				normalize(value, columnMap.get(column)?.dataType || ""),
+			),
+			...Object.entries(keys).map(([column, value]) =>
+				normalize(value, columnMap.get(column)?.dataType || ""),
+			),
+		];
+		const tableSql = quote(tableName);
+		const affected = await prisma.$executeRawUnsafe(
+			`UPDATE ${tableSql} SET ${setSql} WHERE ${whereSql} LIMIT 1`,
+			...values,
+		);
+		void prisma.audit_logs
+			.create({
+				data: {
+					action: "Sửa dữ liệu bảng dev",
+					details: `${tableName} · ${Object.keys(changes).join(", ")} · ${affected} dòng`,
+					userId,
+					userName: username,
+					createdAt: new Date().toISOString(),
+				},
+			})
+			.catch(() => {});
+		return { affectedRows: Number(affected) };
+	},
 
-  async deleteRow(input: { table: string; keys: Record<string, any> }, userId: number, username: string) {
-    const tableName = String(input?.table || "").trim();
-    const keys = input?.keys || {};
-    if (!tableName) throw new HttpError(400, "TABLE_REQUIRED", "Thiếu tên bảng");
-    if (!Object.keys(keys).length) throw new HttpError(400, "KEYS_REQUIRED", "Thiếu khóa chính để xóa dòng");
-    const table = await this.tableData(tableName, 1, 0);
-    const columnMap: Map<string, { dataType: string }> = new Map(
-      table.columns.map(column => [String(column.name), { dataType: String(column.dataType || "") }]),
-    );
-    for (const key of Object.keys(keys)) {
-      if (!columnMap.has(key)) throw new HttpError(400, "COLUMN_NOT_FOUND", `Không có cột ${key}`);
-    }
-    const quote = (value: string) => `\`${value.replace(/`/g, "``")}\``;
-    const normalize = (value: any, dataType: string) => {
-      if (value === null || value === undefined) return null;
-      if (typeof value === "string" && value.trim().toUpperCase() === "NULL") return null;
-      if (/^(tinyint|smallint|mediumint|int|bigint|decimal|numeric|float|double|bit|year)/i.test(dataType)) {
-        if (typeof value === "string" && value.trim() === "") return null;
-        const number = Number(value);
-        return Number.isFinite(number) ? number : value;
-      }
-      return value;
-    };
-    const whereSql = Object.keys(keys)
-      .map(column => `${quote(column)} = ?`)
-      .join(" AND ");
-    const values = Object.entries(keys).map(([column, value]) => normalize(value, columnMap.get(column)?.dataType || ""));
-    const affected = await prisma.$executeRawUnsafe(
-      `DELETE FROM ${quote(tableName)} WHERE ${whereSql} LIMIT 1`,
-      ...values,
-    );
-    void prisma.audit_logs.create({
-      data: {
-        action: "Xóa dữ liệu bảng dev",
-        details: `${tableName} · ${Object.keys(keys).join(", ")} · ${affected} dòng`,
-        userId,
-        userName: username,
-        createdAt: new Date().toISOString(),
-      },
-    }).catch(() => {});
-    return { affectedRows: Number(affected) };
-  },
+	async deleteRow(
+		input: { table: string; keys: Record<string, any> },
+		userId: number,
+		username: string,
+	) {
+		const tableName = String(input?.table || "").trim();
+		const keys = input?.keys || {};
+		if (!tableName)
+			throw new HttpError(400, "TABLE_REQUIRED", "Thiếu tên bảng");
+		if (!Object.keys(keys).length)
+			throw new HttpError(400, "KEYS_REQUIRED", "Thiếu khóa chính để xóa dòng");
+		const table = await this.tableData(tableName, 1, 0);
+		const columnMap: Map<string, { dataType: string }> = new Map(
+			table.columns.map(column => [
+				String(column.name),
+				{ dataType: String(column.dataType || "") },
+			]),
+		);
+		for (const key of Object.keys(keys)) {
+			if (!columnMap.has(key))
+				throw new HttpError(400, "COLUMN_NOT_FOUND", `Không có cột ${key}`);
+		}
+		const quote = (value: string) => `\`${value.replace(/`/g, "``")}\``;
+		const normalize = (value: any, dataType: string) => {
+			if (value === null || value === undefined) return null;
+			if (typeof value === "string" && value.trim().toUpperCase() === "NULL")
+				return null;
+			if (
+				/^(tinyint|smallint|mediumint|int|bigint|decimal|numeric|float|double|bit|year)/i.test(
+					dataType,
+				)
+			) {
+				if (typeof value === "string" && value.trim() === "") return null;
+				const number = Number(value);
+				return Number.isFinite(number) ? number : value;
+			}
+			return value;
+		};
+		const whereSql = Object.keys(keys)
+			.map(column => `${quote(column)} = ?`)
+			.join(" AND ");
+		const values = Object.entries(keys).map(([column, value]) =>
+			normalize(value, columnMap.get(column)?.dataType || ""),
+		);
+		const affected = await prisma.$executeRawUnsafe(
+			`DELETE FROM ${quote(tableName)} WHERE ${whereSql} LIMIT 1`,
+			...values,
+		);
+		void prisma.audit_logs
+			.create({
+				data: {
+					action: "Xóa dữ liệu bảng dev",
+					details: `${tableName} · ${Object.keys(keys).join(", ")} · ${affected} dòng`,
+					userId,
+					userName: username,
+					createdAt: new Date().toISOString(),
+				},
+			})
+			.catch(() => {});
+		return { affectedRows: Number(affected) };
+	},
 
-  async query(sql: string) {
-    const trimmed = String(sql || "").trim();
-    if (!trimmed) throw new HttpError(400, "SQL_REQUIRED", "Vui lòng nhập câu lệnh SQL");
-    const statements = splitStatements(trimmed);
-    if (!statements.length) throw new HttpError(400, "SQL_REQUIRED", "Vui lòng nhập câu lệnh SQL");
-    for (const statement of statements) {
-      if (!/^(select|show|describe|desc|explain|insert|update|delete|replace)\b/i.test(statement)) {
-        throw new HttpError(400, "STATEMENT_NOT_ALLOWED", "Chỉ hỗ trợ SELECT/SHOW/DESCRIBE/EXPLAIN và INSERT/UPDATE/DELETE/REPLACE");
-      }
-      if (/^explain\s+analyze\b/i.test(statement)) {
-        throw new HttpError(400, "READ_ONLY_ONLY", "Không hỗ trợ EXPLAIN ANALYZE");
-      }
-      if (/\binto\s+(out|dump)file\b/i.test(statement) || /\bfor\s+update\b/i.test(statement) ||
-          /\block\s+in\s+share\s+mode\b/i.test(statement) || /\bload_file\s*\(/i.test(statement) ||
-          /\bsleep\s*\(/i.test(statement) || /\bbenchmark\s*\(/i.test(statement)) {
-        throw new HttpError(400, "UNSAFE_QUERY", "Câu lệnh chứa thao tác không được phép");
-      }
-    }
+	async query(sql: string) {
+		const trimmed = String(sql || "").trim();
+		if (!trimmed)
+			throw new HttpError(400, "SQL_REQUIRED", "Vui lòng nhập câu lệnh SQL");
+		const statements = splitStatements(trimmed);
+		if (!statements.length)
+			throw new HttpError(400, "SQL_REQUIRED", "Vui lòng nhập câu lệnh SQL");
+		for (const statement of statements) {
+			if (
+				!/^(select|show|describe|desc|explain|insert|update|delete|replace)\b/i.test(
+					statement,
+				)
+			) {
+				throw new HttpError(
+					400,
+					"STATEMENT_NOT_ALLOWED",
+					"Chỉ hỗ trợ SELECT/SHOW/DESCRIBE/EXPLAIN và INSERT/UPDATE/DELETE/REPLACE",
+				);
+			}
+			if (/^explain\s+analyze\b/i.test(statement)) {
+				throw new HttpError(
+					400,
+					"READ_ONLY_ONLY",
+					"Không hỗ trợ EXPLAIN ANALYZE",
+				);
+			}
+			if (
+				/\binto\s+(out|dump)file\b/i.test(statement) ||
+				/\bfor\s+update\b/i.test(statement) ||
+				/\block\s+in\s+share\s+mode\b/i.test(statement) ||
+				/\bload_file\s*\(/i.test(statement) ||
+				/\bsleep\s*\(/i.test(statement) ||
+				/\bbenchmark\s*\(/i.test(statement)
+			) {
+				throw new HttpError(
+					400,
+					"UNSAFE_QUERY",
+					"Câu lệnh chứa thao tác không được phép",
+				);
+			}
+		}
 
-    const startedAt = Date.now();
-    const result = await prisma.$transaction(async tx => {
-      try {
-        await tx.$executeRawUnsafe("SET SESSION MAX_EXECUTION_TIME=15000");
-      } catch {
-        // MySQL cũ có thể không hỗ trợ; vẫn tiếp tục chạy truy vấn.
-      }
-      let last: any = null;
-      const summaries: Array<{ statement: string; rowCount: number; affectedRows: number }> = [];
-      for (const statement of statements) {
-        if (/^(select|show|describe|desc|explain)\b/i.test(statement)) {
-          const rows = await tx.$queryRawUnsafe<any[]>(statement) as any[];
-          const list = Array.isArray(rows) ? rows : [rows];
-          last = {
-            columns: list.length ? Object.keys(list[0]) : [],
-            rows: sanitize(list.slice(0, MAX_QUERY_ROWS)),
-            rowCount: list.length,
-            truncated: list.length > MAX_QUERY_ROWS,
-            affectedRows: 0,
-          };
-          summaries.push({ statement: statement.slice(0, 200), rowCount: list.length, affectedRows: 0 });
-        } else {
-          const affected = Number(await tx.$executeRawUnsafe(statement));
-          last = {
-            columns: [],
-            rows: [],
-            rowCount: affected,
-            truncated: false,
-            affectedRows: affected,
-          };
-          summaries.push({ statement: statement.slice(0, 200), rowCount: affected, affectedRows: affected });
-        }
-      }
-      return { ...last, statements: summaries };
-    }, { timeout: 30_000, maxWait: 5_000 });
+		const startedAt = Date.now();
+		const result = await prisma.$transaction(
+			async tx => {
+				try {
+					await tx.$executeRawUnsafe("SET SESSION MAX_EXECUTION_TIME=15000");
+				} catch {
+					// MySQL cũ có thể không hỗ trợ; vẫn tiếp tục chạy truy vấn.
+				}
+				let last: any = null;
+				const summaries: Array<{
+					statement: string;
+					rowCount: number;
+					affectedRows: number;
+				}> = [];
+				for (const statement of statements) {
+					if (/^(select|show|describe|desc|explain)\b/i.test(statement)) {
+						const rows = (await tx.$queryRawUnsafe<any[]>(statement)) as any[];
+						const list = Array.isArray(rows) ? rows : [rows];
+						last = {
+							columns: list.length ? Object.keys(list[0]) : [],
+							rows: sanitize(list.slice(0, MAX_QUERY_ROWS)),
+							rowCount: list.length,
+							truncated: list.length > MAX_QUERY_ROWS,
+							affectedRows: 0,
+						};
+						summaries.push({
+							statement: statement.slice(0, 200),
+							rowCount: list.length,
+							affectedRows: 0,
+						});
+					} else {
+						const affected = Number(await tx.$executeRawUnsafe(statement));
+						last = {
+							columns: [],
+							rows: [],
+							rowCount: affected,
+							truncated: false,
+							affectedRows: affected,
+						};
+						summaries.push({
+							statement: statement.slice(0, 200),
+							rowCount: affected,
+							affectedRows: affected,
+						});
+					}
+				}
+				return { ...last, statements: summaries };
+			},
+			{ timeout: 30_000, maxWait: 5_000 },
+		);
 
-    return { ...result, durationMs: Date.now() - startedAt };
-  },
+		return { ...result, durationMs: Date.now() - startedAt };
+	},
 
+	scripts() {
+		return SCRIPTS.map(script => ({
+			id: script.id,
+			label: script.label,
+			description: script.description,
+			dangerous: script.dangerous,
+			confirmPhrase: script.confirmPhrase || null,
+			timeoutMs: script.timeoutMs,
+			params: script.params || [],
+			backupBeforeRun: script.backupBeforeRun === true,
+			command: [script.command, ...script.args].join(" "),
+		}));
+	},
 
-  scripts() {
-    return SCRIPTS.map(script => ({
-      id: script.id,
-      label: script.label,
-      description: script.description,
-      dangerous: script.dangerous,
-      confirmPhrase: script.confirmPhrase || null,
-      timeoutMs: script.timeoutMs,
-      params: script.params || [],
-      backupBeforeRun: script.backupBeforeRun === true,
-      command: [script.command, ...script.args].join(" "),
-    }));
-  },
+	activeRun() {
+		return activeRun;
+	},
 
-  activeRun() {
-    return activeRun;
-  },
+	async runScript(
+		id: string,
+		userId: number,
+		username: string,
+		confirm?: string,
+		params?: Record<string, unknown>,
+	) {
+		const script = SCRIPTS.find(item => item.id === id);
+		if (!script)
+			throw new HttpError(404, "SCRIPT_NOT_FOUND", "Không tìm thấy script");
+		if (activeRun) {
+			throw new HttpError(
+				409,
+				"SCRIPT_RUNNING",
+				`Script "${activeRun.id}" đang chạy, vui lòng đợi`,
+			);
+		}
+		if (
+			script.dangerous &&
+			String(confirm || "").trim() !== script.confirmPhrase
+		) {
+			throw new HttpError(
+				400,
+				"CONFIRM_REQUIRED",
+				`Nhập chính xác "${script.confirmPhrase}" để xác nhận`,
+			);
+		}
 
-  async runScript(
-    id: string,
-    userId: number,
-    username: string,
-    confirm?: string,
-    params?: Record<string, unknown>,
-  ) {
-    const script = SCRIPTS.find(item => item.id === id);
-    if (!script) throw new HttpError(404, "SCRIPT_NOT_FOUND", "Không tìm thấy script");
-    if (activeRun) {
-      throw new HttpError(409, "SCRIPT_RUNNING", `Script "${activeRun.id}" đang chạy, vui lòng đợi`);
-    }
-    if (script.dangerous && String(confirm || "").trim() !== script.confirmPhrase) {
-      throw new HttpError(400, "CONFIRM_REQUIRED", `Nhập chính xác "${script.confirmPhrase}" để xác nhận`);
-    }
+		const resolvedArgs = script.args.map(arg =>
+			arg.replace(/\{\{(\w+)\}\}/g, (_match, name: string) => {
+				const definition = script.params?.find(item => item.name === name);
+				const value = String(params?.[name] ?? "").trim();
+				if (definition?.required && !value) {
+					throw new HttpError(
+						400,
+						"PARAM_REQUIRED",
+						`Thiếu tham số "${definition.label}"`,
+					);
+				}
+				if (
+					definition?.pattern &&
+					!new RegExp(definition.pattern).test(value)
+				) {
+					throw new HttpError(
+						400,
+						"PARAM_INVALID",
+						`Tham số "${definition.label}" không hợp lệ`,
+					);
+				}
+				return value;
+			}),
+		);
 
-    const resolvedArgs = script.args.map(arg =>
-      arg.replace(/\{\{(\w+)\}\}/g, (_match, name: string) => {
-        const definition = script.params?.find(item => item.name === name);
-        const value = String(params?.[name] ?? "").trim();
-        if (definition?.required && !value) {
-          throw new HttpError(400, "PARAM_REQUIRED", `Thiếu tham số "${definition.label}"`);
-        }
-        if (definition?.pattern && !new RegExp(definition.pattern).test(value)) {
-          throw new HttpError(400, "PARAM_INVALID", `Tham số "${definition.label}" không hợp lệ`);
-        }
-        return value;
-      }),
-    );
+		activeRun = { id, startedAt: new Date().toISOString() };
+		const startedAt = Date.now();
+		let output = "";
 
-    activeRun = { id, startedAt: new Date().toISOString() };
-    const startedAt = Date.now();
-    let output = "";
+		const append = (chunk: Buffer | string) => {
+			output += chunk.toString();
+			if (output.length > 200_000) output = output.slice(-200_000);
+		};
 
-    const append = (chunk: Buffer | string) => {
-      output += chunk.toString();
-      if (output.length > 200_000) output = output.slice(-200_000);
-    };
+		let result = { exitCode: 0 as number | null, timedOut: false };
+		if (script.backupBeforeRun) {
+			append("\n=== Sao lưu CSDL trước khi xóa ===\n");
+			result = await runProcess(
+				"npx",
+				["tsx", "scripts/dump-database.ts"],
+				300_000,
+				append,
+			);
+			if (result.exitCode !== 0 || result.timedOut) {
+				append("\nSao lưu thất bại, đã dừng thao tác xóa.\n");
+				const durationMs = Date.now() - startedAt;
+				activeRun = null;
+				return {
+					scriptId: script.id,
+					exitCode: result.exitCode,
+					timedOut: result.timedOut,
+					durationMs,
+					output: output.trim() || "(không có output)",
+				};
+			}
+			append("\n=== Sao lưu xong, bắt đầu xóa ===\n");
+		}
 
-    let result = { exitCode: 0 as number | null, timedOut: false };
-    if (script.backupBeforeRun) {
-      append("\n=== Sao lưu CSDL trước khi xóa ===\n");
-      result = await runProcess("npx", ["tsx", "scripts/dump-database.ts"], 300_000, append);
-      if (result.exitCode !== 0 || result.timedOut) {
-        append("\nSao lưu thất bại, đã dừng thao tác xóa.\n");
-        const durationMs = Date.now() - startedAt;
-        activeRun = null;
-        return {
-          scriptId: script.id,
-          exitCode: result.exitCode,
-          timedOut: result.timedOut,
-          durationMs,
-          output: output.trim() || "(không có output)",
-        };
-      }
-      append("\n=== Sao lưu xong, bắt đầu xóa ===\n");
-    }
+		result = await runProcess(
+			script.command,
+			resolvedArgs,
+			script.timeoutMs,
+			append,
+		);
 
-    result = await runProcess(script.command, resolvedArgs, script.timeoutMs, append);
+		const durationMs = Date.now() - startedAt;
+		activeRun = null;
+		void prisma.audit_logs
+			.create({
+				data: {
+					action: "Chạy script dev",
+					details: `${script.id} · exit ${result.exitCode ?? "-"} · ${Math.round(durationMs / 1000)}s`,
+					userId,
+					userName: username,
+					createdAt: new Date().toISOString(),
+				},
+			})
+			.catch(() => {});
 
-    const durationMs = Date.now() - startedAt;
-    activeRun = null;
-    void prisma.audit_logs.create({
-      data: {
-        action: "Chạy script dev",
-        details: `${script.id} · exit ${result.exitCode ?? "-"} · ${Math.round(durationMs / 1000)}s`,
-        userId,
-        userName: username,
-        createdAt: new Date().toISOString(),
-      },
-    }).catch(() => {});
+		return {
+			scriptId: script.id,
+			exitCode: result.exitCode,
+			timedOut: result.timedOut,
+			durationMs,
+			output: output.trim() || "(không có output)",
+		};
+	},
 
-    return {
-      scriptId: script.id,
-      exitCode: result.exitCode,
-      timedOut: result.timedOut,
-      durationMs,
-      output: output.trim() || "(không có output)",
-    };
-  },
+	async listBackups() {
+		const dir = backupsDir();
+		await fs.mkdir(dir, { recursive: true });
+		const entries = await fs.readdir(dir, { withFileTypes: true });
+		const files = await Promise.all(
+			entries
+				.filter(
+					entry => entry.isFile() && entry.name.toLowerCase().endsWith(".sql"),
+				)
+				.map(async entry => {
+					const stat = await fs.stat(path.join(dir, entry.name));
+					return {
+						name: entry.name,
+						sizeBytes: stat.size,
+						modifiedAt: stat.mtime.toISOString(),
+					};
+				}),
+		);
+		return files.sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
+	},
 
-  async listBackups() {
-    const dir = backupsDir();
-    await fs.mkdir(dir, { recursive: true });
-    const entries = await fs.readdir(dir, { withFileTypes: true });
-    const files = await Promise.all(
-      entries
-        .filter(entry => entry.isFile() && entry.name.toLowerCase().endsWith(".sql"))
-        .map(async entry => {
-          const stat = await fs.stat(path.join(dir, entry.name));
-          return {
-            name: entry.name,
-            sizeBytes: stat.size,
-            modifiedAt: stat.mtime.toISOString(),
-          };
-        }),
-    );
-    return files.sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
-  },
+	async restoreBackup(
+		file: string,
+		userId: number,
+		username: string,
+		confirm?: string,
+	) {
+		if (activeRun) {
+			throw new HttpError(
+				409,
+				"SCRIPT_RUNNING",
+				`Script "${activeRun.id}" đang chạy, vui lòng đợi`,
+			);
+		}
+		if (String(confirm || "").trim() !== "KHOI PHUC CSDL") {
+			throw new HttpError(
+				400,
+				"CONFIRM_REQUIRED",
+				'Nhập chính xác "KHOI PHUC CSDL" để xác nhận',
+			);
+		}
 
-  async restoreBackup(file: string, userId: number, username: string, confirm?: string) {
-    if (activeRun) {
-      throw new HttpError(409, "SCRIPT_RUNNING", `Script "${activeRun.id}" đang chạy, vui lòng đợi`);
-    }
-    if (String(confirm || "").trim() !== "KHOI PHUC CSDL") {
-      throw new HttpError(400, "CONFIRM_REQUIRED", 'Nhập chính xác "KHOI PHUC CSDL" để xác nhận');
-    }
+		const requested = String(file || "").trim();
+		const name = path.basename(requested);
+		if (!requested || name !== requested || !/\.sql$/i.test(name)) {
+			throw new HttpError(
+				400,
+				"INVALID_BACKUP",
+				"Tên file backup không hợp lệ",
+			);
+		}
+		const fullPath = path.join(backupsDir(), name);
+		try {
+			const stat = await fs.stat(fullPath);
+			if (!stat.isFile()) throw new Error("not a file");
+		} catch {
+			throw new HttpError(
+				404,
+				"BACKUP_NOT_FOUND",
+				"Không tìm thấy file backup",
+			);
+		}
 
-    const requested = String(file || "").trim();
-    const name = path.basename(requested);
-    if (!requested || name !== requested || !/\.sql$/i.test(name)) {
-      throw new HttpError(400, "INVALID_BACKUP", "Tên file backup không hợp lệ");
-    }
-    const fullPath = path.join(backupsDir(), name);
-    try {
-      const stat = await fs.stat(fullPath);
-      if (!stat.isFile()) throw new Error("not a file");
-    } catch {
-      throw new HttpError(404, "BACKUP_NOT_FOUND", "Không tìm thấy file backup");
-    }
+		const id = `restore:${name}`;
+		activeRun = { id, startedAt: new Date().toISOString() };
+		const startedAt = Date.now();
+		let output = "";
+		const append = (chunk: Buffer | string) => {
+			output += chunk.toString();
+			if (output.length > 200_000) output = output.slice(-200_000);
+		};
 
-    const id = `restore:${name}`;
-    activeRun = { id, startedAt: new Date().toISOString() };
-    const startedAt = Date.now();
-    let output = "";
-    const append = (chunk: Buffer | string) => {
-      output += chunk.toString();
-      if (output.length > 200_000) output = output.slice(-200_000);
-    };
+		const result = await runProcess(
+			"npx",
+			["tsx", "scripts/restore-database.ts", `--file=${fullPath}`, "--yes"],
+			600_000,
+			append,
+		);
 
-    const result = await runProcess(
-      "npx",
-      ["tsx", "scripts/restore-database.ts", `--file=${fullPath}`, "--yes"],
-      600_000,
-      append,
-    );
+		const durationMs = Date.now() - startedAt;
+		activeRun = null;
+		void prisma.audit_logs
+			.create({
+				data: {
+					action: "Khôi phục CSDL dev",
+					details: `${name} · exit ${result.exitCode ?? "-"} · ${Math.round(durationMs / 1000)}s`,
+					userId,
+					userName: username,
+					createdAt: new Date().toISOString(),
+				},
+			})
+			.catch(() => {});
 
-    const durationMs = Date.now() - startedAt;
-    activeRun = null;
-    void prisma.audit_logs.create({
-      data: {
-        action: "Khôi phục CSDL dev",
-        details: `${name} · exit ${result.exitCode ?? "-"} · ${Math.round(durationMs / 1000)}s`,
-        userId,
-        userName: username,
-        createdAt: new Date().toISOString(),
-      },
-    }).catch(() => {});
-
-    return {
-      scriptId: id,
-      exitCode: result.exitCode,
-      timedOut: result.timedOut,
-      durationMs,
-      output: output.trim() || "(không có output)",
-    };
-  },
-
+		return {
+			scriptId: id,
+			exitCode: result.exitCode,
+			timedOut: result.timedOut,
+			durationMs,
+			output: output.trim() || "(không có output)",
+		};
+	},
 };

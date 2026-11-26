@@ -18,3 +18,5 @@ export * from "./customer-group";
 export * from "./online";
 export * from "./iam";
 export * from "./chat";
+export * from "./technical-incident";
+export * from "./costing";

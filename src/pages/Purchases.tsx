@@ -41,6 +41,7 @@ import { useMultiEscapeKey } from "../hooks/useEscapeKey";
 import { DateInput } from "../components/DateRangeCalendar";
 import TableActions from "../components/TableActions";
 import DetailOptionsMenu from "../components/DetailOptionsMenu";
+import { EntityHistoryButton } from "../components/EntityHistoryButton";
 import ListToolbar from "../components/ListToolbar";
 import ProductSuggestions, {
 	type SuggestedProduct,
@@ -1343,6 +1344,16 @@ export default function Purchases() {
 							</button>
 						</div>
 						<div className="erp-modal-body space-y-4">
+							<div className="flex flex-wrap items-center gap-2">
+								<span className={`erp-badge ${statusMeta[selected.documentStatus || "POSTED"].css}`}>
+									{statusMeta[selected.documentStatus || "POSTED"].label}
+								</span>
+								<EntityHistoryButton
+									entityType="PURCHASE_DOCUMENT"
+									entityId={selected.id}
+									entityCode={selected.code}
+								/>
+							</div>
 							<div className="rounded bg-slate-50 p-3">
 								<b>Thông tin nhà cung cấp</b>
 								<div className="mt-2 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">

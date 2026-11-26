@@ -3,12 +3,42 @@ import { z } from "zod";
 import { resolveDocumentCode } from "../../common/document-code";
 import { HttpError } from "../../common/http-error";
 import { mapProduction } from "./production.mapper";
-import { Prisma, prisma, productionInclude, productionRepository } from "./production.repository";
+import { decimal as dec, money as cash } from "@challenge/database";
+import { prisma, productionInclude, productionRepository } from "./production.repository";
 import { resolveProductionDocumentStatuses } from "./production-status";
-
-const dec = (n: number) => new Prisma.Decimal(n.toFixed(4));
-const cash = (n: number) => new Prisma.Decimal(n.toFixed(2));
+import { FIELD_LABELS, diffFields, diffLines, recordAudit, snapshotFields, type AuditField } from "../../common/audit";
 const now = () => new Date().toISOString();
+
+const HEADER_AUDIT_FIELDS: AuditField[] = [
+  { key: "code", label: FIELD_LABELS.code },
+  { key: "warehouseId", label: FIELD_LABELS.warehouseId },
+  { key: "order_date", label: "Ngày lệnh" },
+  { key: "mfg_date", label: "Ngày sản xuất" },
+  { key: "exp_date", label: "Hạn sử dụng" },
+  { key: "batch_number", label: FIELD_LABELS.batchNumber },
+  { key: "note", label: FIELD_LABELS.note },
+  { key: "total_powder_kg", label: "Tổng bột (kg)" },
+  { key: "target_sachets", label: "Mục tiêu gói" },
+  { key: "total_sachets", label: "Tổng gói" },
+  { key: "loss_percent", label: "Tỷ lệ hao hụt" },
+  { key: "status", label: FIELD_LABELS.status },
+];
+const OUTPUT_AUDIT_FIELDS: AuditField[] = [
+  { key: "packagingId", label: FIELD_LABELS.packagingId },
+  { key: "quantity", label: "Số lượng kế hoạch" },
+  { key: "actual_quantity", label: "Số lượng thực tế" },
+  { key: "allocation_percent", label: "Tỷ lệ phân bổ" },
+  { key: "unitCost", label: FIELD_LABELS.unitCost },
+  { key: "totalValue", label: "Thành tiền" },
+  { key: "note", label: FIELD_LABELS.note },
+];
+const MATERIAL_AUDIT_FIELDS: AuditField[] = [
+  { key: "packagingId", label: FIELD_LABELS.packagingId },
+  { key: "plannedQuantity", label: "Số lượng kế hoạch" },
+  { key: "actualQuantity", label: "Số lượng thực tế" },
+  { key: "unitCost", label: FIELD_LABELS.unitCost },
+  { key: "totalValue", label: "Thành tiền" },
+];
 
 const addMonths = (dateStr: string, months: number) => {
   const d = new Date(dateStr);
@@ -193,8 +223,20 @@ async function syncLinkedIssueMaterials(tx: any, orderId: number, userId: number
     where: { id: document.id },
     data: { version: { increment: 1 }, updatedAt: at },
   });
-  await tx.audit_logs.create({
-    data: { action: "Đồng bộ NVL sang phiếu xuất kho", details: `${order.code} → ${document.code || document.id}`, userId, userName: String(userId), createdAt: at },
+  await recordAudit(tx, {
+    action: "Đồng bộ NVL sang phiếu xuất kho",
+    details: `${order.code} → ${document.code || document.id}`,
+    entityType: "PRODUCTION_ORDER",
+    entityId: order.id,
+    entityCode: order.code,
+    userId,
+    createdAt: at,
+    changes: [{
+      field: "inventoryIssue",
+      label: "Phiếu xuất kho NVL",
+      oldValue: null,
+      newValue: document.code || String(document.id),
+    }],
   });
 }
 
@@ -255,14 +297,20 @@ export async function syncOrderMaterialsFromIssue(
     where: { id: order.id },
     data: { version: { increment: 1 }, updatedAt: at },
   });
-  await tx.audit_logs.create({
-    data: {
-      action: "Đồng bộ NVL từ phiếu xuất kho",
-      details: `${order.code} <- ${document.code || document.id}`,
-      userId,
-      userName: String(userId),
-      createdAt: at,
-    },
+  await recordAudit(tx, {
+    action: "Đồng bộ NVL từ phiếu xuất kho",
+    details: `${order.code} <- ${document.code || document.id}`,
+    entityType: "PRODUCTION_ORDER",
+    entityId: order.id,
+    entityCode: order.code,
+    userId,
+    createdAt: at,
+    changes: [{
+      field: "materialsSyncSource",
+      label: "Nguồn đồng bộ NVL",
+      oldValue: null,
+      newValue: document.code || String(document.id),
+    }],
   });
   return { orderId: Number(order.id) };
 }
@@ -311,14 +359,28 @@ export const productionService = {
       });
       await saveMaterials(tx, r.id, i.outputs, i.materials);
       await syncLinkedIssueMaterials(tx, r.id, u, t);
-      await tx.audit_logs.create({ data: { action: "Tạo lệnh sản xuất v1", details: r.code, userId: u, userName: String(u), createdAt: t } });
-      return mapOneProductionWithDocuments(tx, await tx.productionorders.findUnique({ where: { id: r.id }, include: productionInclude }));
+      const after = await tx.productionorders.findUnique({ where: { id: r.id }, include: productionInclude });
+      await recordAudit(tx, {
+        action: "Tạo lệnh sản xuất v1",
+        details: r.code,
+        entityType: "PRODUCTION_ORDER",
+        entityId: r.id,
+        entityCode: r.code,
+        userId: u,
+        createdAt: t,
+        changes: [
+          ...snapshotFields(after, HEADER_AUDIT_FIELDS),
+          ...diffLines([], after?.productiondetails, OUTPUT_AUDIT_FIELDS, "outputs"),
+        ],
+      });
+      return mapOneProductionWithDocuments(tx, after);
     });
   },
   async update(id: number, i: ProductionUpdateInput, u: number) {
     return prisma.$transaction(async tx => {
       const r = await lock(tx, id); ver(r, i.version);
       if (!["DRAFT", "IN_PROGRESS"].includes(r.status)) throw new HttpError(409, "INVALID_STATUS", "Chỉ sửa lệnh nháp hoặc đang sản xuất");
+      const before = await tx.productionorders.findUnique({ where: { id }, include: productionInclude });
       const t = now();
       if (r.status === "DRAFT") {
         await tx.productiondetails.deleteMany({ where: { orderId: id } });
@@ -352,8 +414,21 @@ export const productionService = {
           }
         });
       }
-      await tx.audit_logs.create({ data: { action: "Cập nhật lệnh sản xuất v1", details: String(id), userId: u, userName: String(u), createdAt: t } });
-      return mapOneProductionWithDocuments(tx, await tx.productionorders.findUnique({ where: { id }, include: productionInclude }));
+      const after = await tx.productionorders.findUnique({ where: { id }, include: productionInclude });
+      await recordAudit(tx, {
+        action: "Cập nhật lệnh sản xuất v1",
+        details: after?.code || String(id),
+        entityType: "PRODUCTION_ORDER",
+        entityId: id,
+        entityCode: after?.code,
+        userId: u,
+        createdAt: t,
+        changes: [
+          ...diffFields(before, after, HEADER_AUDIT_FIELDS),
+          ...diffLines(before?.productiondetails, after?.productiondetails, OUTPUT_AUDIT_FIELDS, "outputs"),
+        ],
+      });
+      return mapOneProductionWithDocuments(tx, after);
     });
   },
   async linkInventory(id: number, input: { linkType: string; linkedId: number; linkedCode?: string }, u: number) {
@@ -371,8 +446,23 @@ export const productionService = {
         if (issue?.documentStatus === "DRAFT") await syncLinkedIssueMaterials(tx, id, u, t);
         await syncOrderMaterialsFromIssue(tx, value.linkedId, u, t, { markActual: issue?.documentStatus === "POSTED" });
       }
-      await tx.audit_logs.create({ data: { action: "Liên kết phiếu kho lệnh sản xuất", details: `${id} -> ${value.linkedCode || value.linkedId}`, userId: u, userName: String(u), createdAt: t } });
-      return mapOneProductionWithDocuments(tx, await tx.productionorders.findUnique({ where: { id }, include: productionInclude }));
+      const after = await tx.productionorders.findUnique({ where: { id }, include: productionInclude });
+      await recordAudit(tx, {
+        action: "Liên kết phiếu kho lệnh sản xuất",
+        details: `${id} -> ${value.linkedCode || value.linkedId}`,
+        entityType: "PRODUCTION_ORDER",
+        entityId: id,
+        entityCode: after?.code,
+        userId: u,
+        createdAt: t,
+        changes: [{
+          field: `link.${value.linkType}`,
+          label: value.linkType === "INVENTORY_ISSUE" ? "Phiếu xuất kho liên kết" : "Phiếu nhập kho liên kết",
+          oldValue: null,
+          newValue: value.linkedCode || String(value.linkedId),
+        }],
+      });
+      return mapOneProductionWithDocuments(tx, after);
     });
   },
   async confirm(id: number, i: ProductionConfirmInput, u: number) {
@@ -381,6 +471,7 @@ export const productionService = {
       if (r.status !== "DRAFT") throw new HttpError(409, "INVALID_STATUS", "Chỉ xác nhận lệnh nháp");
       const allocation = i.outputs.reduce((sum, o) => sum + o.allocationPercent, 0);
       if (allocation > 0 && Math.abs(allocation - 100) > 0.01) throw new HttpError(422, "ALLOCATION_INVALID", "Tổng % phân bổ phải bằng 100%");
+      const before = await tx.productionorders.findUnique({ where: { id }, include: productionInclude });
       const t = now();
       await tx.productiondetails.updateMany({ where: { orderId: id }, data: { allocation_percent: 0 } });
       for (const o of i.outputs) {
@@ -389,7 +480,19 @@ export const productionService = {
       const updated = await tx.productionorders.update({
         where: { id }, data: { status: "IN_PROGRESS", startedAt: new Date(), startedBy: u, version: { increment: 1 }, updatedAt: t }, include: productionInclude
       });
-      await tx.audit_logs.create({ data: { action: "Xác nhận sản xuất v1", details: updated.code, userId: u, userName: String(u), createdAt: t } });
+      await recordAudit(tx, {
+        action: "Xác nhận sản xuất v1",
+        details: updated.code,
+        entityType: "PRODUCTION_ORDER",
+        entityId: id,
+        entityCode: updated.code,
+        userId: u,
+        createdAt: t,
+        changes: [
+          ...diffFields(before, updated, HEADER_AUDIT_FIELDS),
+          ...diffLines(before?.productiondetails, updated.productiondetails, OUTPUT_AUDIT_FIELDS, "outputs"),
+        ],
+      });
       return mapOneProductionWithDocuments(tx, updated);
     });
   },
@@ -400,6 +503,7 @@ export const productionService = {
     return prisma.$transaction(async tx => {
       const r = await lock(tx, id); ver(r, i.version);
       if (!["IN_PROGRESS", "COMPLETED"].includes(r.status)) throw new HttpError(409, "INVALID_STATUS", "Lệnh chưa xác nhận sản xuất");
+      const before = await tx.productionorders.findUnique({ where: { id }, include: productionInclude });
       const t = now();
       // SKU phân bổ thêm (chỉ có packagingId) → tạo dòng thành phẩm rồi chốt chung
       const norm: Array<{ detailId: number; actualQuantity: number; note: string }> = [];
@@ -446,8 +550,21 @@ export const productionService = {
           updatedAt: t,
         },
       });
-      await tx.audit_logs.create({ data: { action: "Chốt hoàn thành sản xuất v1", details: bumped.code, userId: u, userName: String(u), createdAt: t } });
-      return mapOneProductionWithDocuments(tx, await tx.productionorders.findUnique({ where: { id }, include: productionInclude }));
+      const after = await tx.productionorders.findUnique({ where: { id }, include: productionInclude });
+      await recordAudit(tx, {
+        action: "Chốt hoàn thành sản xuất v1",
+        details: bumped.code,
+        entityType: "PRODUCTION_ORDER",
+        entityId: id,
+        entityCode: bumped.code,
+        userId: u,
+        createdAt: t,
+        changes: [
+          ...diffFields(before, after, HEADER_AUDIT_FIELDS),
+          ...diffLines(before?.productiondetails, after?.productiondetails, OUTPUT_AUDIT_FIELDS, "outputs"),
+        ],
+      });
+      return mapOneProductionWithDocuments(tx, after);
     });
   },
   async cancel(id: number, i: ProductionCancelInput, u: number) {
@@ -456,7 +573,19 @@ export const productionService = {
       if (r.status !== "DRAFT") throw new HttpError(409, "INVALID_STATUS", "Chỉ được hủy lệnh sản xuất nháp. Lệnh đang sản xuất hoặc đã hoàn thành không được hủy");
       const t = now(), at = new Date();
       const updated = await tx.productionorders.update({ where: { id }, data: { status: "CANCELLED", cancelledAt: at, cancelledBy: u, cancelReason: i.reason, version: { increment: 1 }, updatedAt: t }, include: productionInclude });
-      await tx.audit_logs.create({ data: { action: "Hủy lệnh sản xuất v1", details: `${updated.code}: ${i.reason}`, userId: u, userName: String(u), createdAt: t } });
+      await recordAudit(tx, {
+        action: "Hủy lệnh sản xuất v1",
+        details: `${updated.code}: ${i.reason}`,
+        entityType: "PRODUCTION_ORDER",
+        entityId: id,
+        entityCode: updated.code,
+        userId: u,
+        createdAt: t,
+        changes: [
+          { field: "status", label: FIELD_LABELS.status, oldValue: r.status, newValue: updated.status },
+          { field: "cancelReason", label: FIELD_LABELS.reason, oldValue: null, newValue: i.reason },
+        ],
+      });
       return mapOneProductionWithDocuments(tx, updated);
     }, { timeout: 30000 });
   },
@@ -469,7 +598,16 @@ export const productionService = {
         status: "DRAFT", startedAt: null, startedBy: null, completedAt: null, completedBy: null,
         cancelledAt: null, cancelledBy: null, cancelReason: null, version: { increment: 1 }, updatedAt: t,
       }, include: productionInclude });
-      await tx.audit_logs.create({ data: { action: "Hủy lưu lệnh sản xuất v1", details: updated.code, userId: u, userName: String(u), createdAt: t } });
+      await recordAudit(tx, {
+        action: "Hủy lưu lệnh sản xuất v1",
+        details: updated.code,
+        entityType: "PRODUCTION_ORDER",
+        entityId: id,
+        entityCode: updated.code,
+        userId: u,
+        createdAt: t,
+        changes: [{ field: "status", label: FIELD_LABELS.status, oldValue: r.status, newValue: "DRAFT" }],
+      });
       return mapOneProductionWithDocuments(tx, updated);
     }, { timeout: 30000 });
   },
@@ -481,7 +619,16 @@ export const productionService = {
       await tx.production_order_materials_v1.deleteMany({ where: { orderId: id } });
       await tx.production_order_document_links_v1.deleteMany({ where: { orderId: id } });
       const row = await tx.productionorders.delete({ where: { id } });
-      await tx.audit_logs.create({ data: { action: "Xóa lệnh sản xuất v1", details: `${row.code}`, userId: u, userName: String(u), createdAt: now() } });
+      await recordAudit(tx, {
+        action: "Xóa lệnh sản xuất v1",
+        details: `${row.code}`,
+        entityType: "PRODUCTION_ORDER",
+        entityId: id,
+        entityCode: row.code,
+        userId: u,
+        createdAt: now(),
+        changes: [{ field: "status", label: FIELD_LABELS.status, oldValue: r.status, newValue: "DELETED" }],
+      });
       return { success: true, message: "Đã xóa lệnh sản xuất" };
     });
   },

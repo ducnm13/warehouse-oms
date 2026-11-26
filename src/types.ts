@@ -1142,3 +1142,192 @@ export interface PurchaseDocument {
 		linkedCode?: string;
 	}>;
 }
+
+export type TechnicalIncidentCategory =
+	| "REPAIR"
+	| "MAINTENANCE"
+	| "INSPECTION"
+	| "OTHER";
+export type TechnicalIncidentSeverity =
+	| "LOW"
+	| "MEDIUM"
+	| "HIGH"
+	| "CRITICAL";
+export type TechnicalIncidentStatus =
+	| "OPEN"
+	| "IN_PROGRESS"
+	| "RESOLVED"
+	| "CANCELLED";
+
+export interface TechnicalIncidentImageV1 {
+	id?: number;
+	fileName: string;
+	mimeType: string;
+	size: number;
+	createdAt?: string;
+	dataUrl?: string;
+}
+
+export interface TechnicalIncidentV1 {
+	id: number;
+	code: string;
+	title: string;
+	equipmentName: string | null;
+	location: string | null;
+	category: TechnicalIncidentCategory;
+	severity: TechnicalIncidentSeverity;
+	status: TechnicalIncidentStatus;
+	occurredAt: string;
+	assigneeId: number | null;
+	assigneeName: string | null;
+	assigneeCode: string | null;
+	assigneeJobTitle: string | null;
+	assigneeWorkUnit: string | null;
+	cause: string | null;
+	solution: string | null;
+	cost: number;
+	note: string | null;
+	resolvedAt: string | null;
+	createdBy: number;
+	creatorName: string | null;
+	createdAt: string;
+	updatedAt: string;
+	version: number;
+	imageCount: number;
+	images: TechnicalIncidentImageV1[];
+}
+
+export interface TechnicalIncidentAssigneeV1 {
+	id: number;
+	code: string;
+	fullName: string;
+	jobTitle: string | null;
+	workUnit: string | null;
+}
+
+export interface TechnicalIncidentSummaryV1 {
+	total: number;
+	open: number;
+	inProgress: number;
+	resolved: number;
+	cancelled: number;
+	critical: number;
+	high: number;
+}
+
+export type CostCenterCategory =
+	| "ELECTRIC_WATER"
+	| "LABOR"
+	| "PACKAGING"
+	| "EQUIPMENT"
+	| "MAINTENANCE"
+	| "OTHER";
+
+export type CostAllocationMethod =
+	| "BY_ACTUAL_QTY"
+	| "BY_POWDER_KG"
+	| "BY_MATERIAL_VALUE"
+	| "MANUAL";
+
+export type CostEntryStatus = "DRAFT" | "POSTED" | "CANCELLED";
+export type CostSheetStatus = "DRAFT" | "POSTED";
+export type CostTier = "PACK" | "ASSEMBLY";
+
+export interface CostCenterV1 {
+	id: number;
+	code: string;
+	name: string;
+	category: CostCenterCategory;
+	defaultAllocationMethod: CostAllocationMethod;
+	description: string | null;
+	isActive: boolean;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CostEntryV1 {
+	id: number;
+	code: string;
+	costDate: string;
+	periodMonth: string | null;
+	costCenterId: number;
+	costCenterCode: string | null;
+	costCenterName: string | null;
+	costCenterCategory: CostCenterCategory | null;
+	warehouseId: number | null;
+	warehouseName: string | null;
+	productionOrderId: number | null;
+	productionOrderCode: string | null;
+	assemblyOrderId: number | null;
+	assemblyOrderCode: string | null;
+	costTier: CostTier;
+	incidentId: number | null;
+	incidentCode: string | null;
+	incidentTitle: string | null;
+	amount: number;
+	allocationMethod: CostAllocationMethod | null;
+	note: string | null;
+	status: CostEntryStatus;
+	createdBy: number;
+	creatorName: string | null;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CostBreakdownItemV1 {
+	costCenterId: number;
+	code: string;
+	name: string;
+	category: CostCenterCategory;
+	amount: number;
+}
+
+export interface CostSheetLineV1 {
+	id: number;
+	packagingId: number;
+	packagingSku: string | null;
+	packagingName: string | null;
+	productName: string | null;
+	unit: string | null;
+	costCenterId: number | null;
+	costCenterCode: string | null;
+	costCenterName: string | null;
+	costComponent: string;
+	tier: CostTier;
+	actualQty: number;
+	allocatedAmount: number;
+	unitCost: number;
+}
+
+export interface CostSheetV1 {
+	id: number;
+	code: string;
+	fromDate: string;
+	toDate: string;
+	warehouseId: number | null;
+	warehouseName: string | null;
+	status: CostSheetStatus;
+	note: string | null;
+	createdBy: number;
+	creatorName: string | null;
+	createdAt: string;
+	postedAt: string | null;
+	lineCount: number;
+	totalCost: number;
+	totalPackCost: number;
+	totalAssemblyCost: number;
+	lines?: CostSheetLineV1[];
+}
+
+export interface UnbilledIncidentV1 {
+	id: number;
+	code: string;
+	title: string;
+	equipmentName: string | null;
+	location: string | null;
+	status: TechnicalIncidentStatus;
+	occurredAt: string | null;
+	resolvedAt: string | null;
+	cost: number;
+	assigneeName: string | null;
+}

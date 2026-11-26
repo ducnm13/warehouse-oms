@@ -71,6 +71,7 @@ export const salesByProductReportQuerySchema = dateRange.safeExtend({
 export const productionOverviewReportQuerySchema = dateRange.safeExtend({
   warehouseId: z.coerce.number().int().positive().optional(),
   search: z.string().trim().max(255).optional(),
+  tier: z.enum(["ALL", "PACK", "ASSEMBLY"]).default("ALL"),
 });
 
 export const transferReportQuerySchema = dateRange.safeExtend({

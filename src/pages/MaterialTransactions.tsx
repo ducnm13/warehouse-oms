@@ -1159,8 +1159,8 @@ const MaterialTransactions = () => {
 
             {/* Preview Content */}
             <div className="flex-1 overflow-auto p-8 flex justify-center bg-gray-200/50">
-              <div className="shadow-2xl bg-white">
-                <InventoryDocument ref={componentRef} transaction={previewTx} company={companyQuery.data} />
+              <div ref={componentRef} className="sales-print-view shadow-2xl bg-white">
+                <InventoryDocument transaction={previewTx} company={companyQuery.data} />
               </div>
             </div>
           </div>

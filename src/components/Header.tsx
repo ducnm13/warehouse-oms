@@ -151,10 +151,10 @@ const Header = ({
 				</div>
 
 				<div className="hidden sm:block">
-					<p className="text-sm font-bold text-[#1b2559]">
+					<p className="text-sm font-bold">
 						CÔNG TY TNHH SẢN XUẤT THƯƠNG MẠI DỊCH VỤ CHALLENGE
 					</p>
-					<p className="text-[11px] text-[#a3aed0]">
+					<p className="text-[11px]">
 						Phần mềm quản trị và vận hành doanh nghiệp nội bộ
 					</p>
 				</div>
