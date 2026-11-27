@@ -6,6 +6,7 @@ import {
 	Ban,
 	CheckCircle2,
 	Clock3,
+	Download,
 	Edit,
 	Eye,
 	ImagePlus,
@@ -147,6 +148,25 @@ const FILTER_FIELDS: FilterField[] = [
 	},
 ];
 
+const buildIncidentListParams = (
+	pageNumber: number,
+	limit: number,
+	search: string,
+	filters: FilterValues,
+) => {
+	const params = new URLSearchParams({
+		page: String(pageNumber),
+		limit: String(limit),
+	});
+	if (search.trim()) params.set("search", search.trim());
+	if (filters.status) params.set("status", filters.status);
+	if (filters.severity) params.set("severity", filters.severity);
+	if (filters.category) params.set("category", filters.category);
+	if (filters.occurredFrom) params.set("from", filters.occurredFrom);
+	if (filters.occurredTo) params.set("to", filters.occurredTo);
+	return params.toString();
+};
+
 const compressImage = (file: File) =>
 	new Promise<string>((resolve, reject) => {
 		const reader = new FileReader();
@@ -188,6 +208,7 @@ export default function TechnicalIncidents() {
 	const [images, setImages] = useState<TechnicalIncidentImageV1[]>([]);
 	const [originalImageIds, setOriginalImageIds] = useState<number[]>([]);
 	const [detailLoading, setDetailLoading] = useState(false);
+	const [exporting, setExporting] = useState(false);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const printRef = useRef<HTMLDivElement>(null);
 
@@ -233,16 +254,10 @@ export default function TechnicalIncidents() {
 			apiV1<TechnicalIncidentSummaryV1>("/api/v1/technical-incidents/summary"),
 	});
 
-	const queryString = useMemo(() => {
-		const params = new URLSearchParams({ page: String(page), limit: "20" });
-		if (search.trim()) params.set("search", search.trim());
-		if (filters.status) params.set("status", filters.status);
-		if (filters.severity) params.set("severity", filters.severity);
-		if (filters.category) params.set("category", filters.category);
-		if (filters.occurredFrom) params.set("from", filters.occurredFrom);
-		if (filters.occurredTo) params.set("to", filters.occurredTo);
-		return params.toString();
-	}, [page, search, filters]);
+	const queryString = useMemo(
+		() => buildIncidentListParams(page, 20, search, filters),
+		[page, search, filters],
+	);
 
 	const documents = useQuery({
 		queryKey: ["technical-incidents", queryString],
@@ -505,65 +520,124 @@ export default function TechnicalIncidents() {
 	const meta = documents.data?.meta || {};
 	const stats = summary.data?.data;
 
-	const exportList = () =>
-		exportExcelFile(
-			"su-co-ky-thuat.xlsx",
-			"Su co ky thuat",
-			[
-				{ header: "Mã sự cố", value: (row: TechnicalIncidentV1) => row.code },
-				{
-					header: "Thời gian xảy ra",
-					value: (row: TechnicalIncidentV1) => formatIncidentTime(row.occurredAt),
-					width: 22,
-				},
-				{ header: "Tên sự cố", value: (row: TechnicalIncidentV1) => row.title, width: 40 },
-				{
-					header: "Máy móc / thiết bị",
-					value: (row: TechnicalIncidentV1) => row.equipmentName || "",
-					width: 30,
-				},
-				{ header: "Vị trí", value: (row: TechnicalIncidentV1) => row.location || "" },
-				{
-					header: "Loại sự cố",
-					value: (row: TechnicalIncidentV1) =>
-						TECHNICAL_CATEGORY_META[row.category]?.label || row.category,
-				},
-				{
-					header: "Mức độ",
-					value: (row: TechnicalIncidentV1) =>
-						TECHNICAL_SEVERITY_META[row.severity]?.label || row.severity,
-				},
-				{
-					header: "Trạng thái",
-					value: (row: TechnicalIncidentV1) =>
-						TECHNICAL_STATUS_META[row.status]?.label || row.status,
-				},
-				{
-					header: "Người chịu trách nhiệm",
-					value: (row: TechnicalIncidentV1) => row.assigneeName || "",
-				},
-				{
-					header: "Nguyên nhân",
-					value: (row: TechnicalIncidentV1) => row.cause || "",
-					width: 40,
-				},
-				{
-					header: "Hướng xử lý",
-					value: (row: TechnicalIncidentV1) => row.solution || "",
-					width: 40,
-				},
-				...(canViewMoney
-					? [
-							{
-								header: "Chi phí",
-								value: (row: TechnicalIncidentV1) => Number(row.cost || 0),
-							},
-						]
-					: []),
-				{ header: "Ghi chú", value: (row: TechnicalIncidentV1) => row.note || "", width: 32 },
-			],
-			rows,
-		);
+	const exportList = async () => {
+		if (exporting) return;
+		setExporting(true);
+		try {
+			const all: TechnicalIncidentV1[] = [];
+			let pageNumber = 1;
+			let totalPages = 1;
+			do {
+				const response = await apiV1<TechnicalIncidentV1[]>(
+					`/api/v1/technical-incidents?${buildIncidentListParams(pageNumber, 100, search, filters)}`,
+				);
+				all.push(...(response.data || []));
+				totalPages = Number(response.meta?.totalPages || 1);
+				pageNumber += 1;
+			} while (pageNumber <= totalPages);
+
+			if (!all.length) {
+				toast.error("Không có dữ liệu để xuất");
+				return;
+			}
+
+			const stamp =
+				filters.occurredFrom || filters.occurredTo
+					? `${filters.occurredFrom || "dau-ky"}_${filters.occurredTo || "cuoi-ky"}`
+					: new Date().toISOString().slice(0, 10);
+
+			await exportExcelFile(
+				`su-co-ky-thuat_${stamp}.xlsx`,
+				"Su co ky thuat",
+				[
+					{ header: "Mã sự cố", value: (row: TechnicalIncidentV1) => row.code },
+					{
+						header: "Thời gian xảy ra",
+						value: (row: TechnicalIncidentV1) =>
+							formatIncidentTime(row.occurredAt),
+						width: 22,
+					},
+					{
+						header: "Thời gian hoàn tất",
+						value: (row: TechnicalIncidentV1) =>
+							row.resolvedAt ? formatIncidentTime(row.resolvedAt) : "",
+						width: 22,
+					},
+					{
+						header: "Tên sự cố",
+						value: (row: TechnicalIncidentV1) => row.title,
+						width: 40,
+					},
+					{
+						header: "Máy móc / thiết bị",
+						value: (row: TechnicalIncidentV1) => row.equipmentName || "",
+						width: 30,
+					},
+					{
+						header: "Vị trí",
+						value: (row: TechnicalIncidentV1) => row.location || "",
+					},
+					{
+						header: "Loại sự cố",
+						value: (row: TechnicalIncidentV1) =>
+							TECHNICAL_CATEGORY_META[row.category]?.label || row.category,
+					},
+					{
+						header: "Mức độ",
+						value: (row: TechnicalIncidentV1) =>
+							TECHNICAL_SEVERITY_META[row.severity]?.label || row.severity,
+					},
+					{
+						header: "Trạng thái",
+						value: (row: TechnicalIncidentV1) =>
+							TECHNICAL_STATUS_META[row.status]?.label || row.status,
+					},
+					{
+						header: "Người chịu trách nhiệm",
+						value: (row: TechnicalIncidentV1) => row.assigneeName || "",
+					},
+					{
+						header: "Nguyên nhân",
+						value: (row: TechnicalIncidentV1) => row.cause || "",
+						width: 40,
+					},
+					{
+						header: "Hướng xử lý",
+						value: (row: TechnicalIncidentV1) => row.solution || "",
+						width: 40,
+					},
+					...(canViewMoney
+						? [
+								{
+									header: "Chi phí (đ)",
+									value: (row: TechnicalIncidentV1) => Number(row.cost || 0),
+									width: 16,
+								},
+							]
+						: []),
+					{
+						header: "Ghi chú",
+						value: (row: TechnicalIncidentV1) => row.note || "",
+						width: 32,
+					},
+					{
+						header: "Người tạo",
+						value: (row: TechnicalIncidentV1) => row.creatorName || "",
+					},
+					{
+						header: "Số ảnh",
+						value: (row: TechnicalIncidentV1) => row.imageCount || 0,
+						width: 10,
+					},
+				],
+				all,
+			);
+		} catch (error) {
+			toast.error((error as Error).message);
+		} finally {
+			setExporting(false);
+		}
+	};
 
 	return (
 		<div className="erp-page">
@@ -575,9 +649,19 @@ export default function TechnicalIncidents() {
 						bằng chứng và in phiếu sự cố.
 					</p>
 				</div>
-				<button className="erp-btn erp-btn-primary" onClick={create}>
-					<Plus size={16} /> Báo sự cố
-				</button>
+				<div className="flex items-center gap-2">
+					<button
+						className="erp-btn"
+						onClick={() => void exportList()}
+						disabled={exporting}
+						title="Xuất toàn bộ sự cố (theo bộ lọc hiện tại) ra Excel"
+					>
+						<Download size={16} /> {exporting ? "Đang xuất..." : "Xuất Excel"}
+					</button>
+					<button className="erp-btn erp-btn-primary" onClick={create}>
+						<Plus size={16} /> Báo sự cố
+					</button>
+				</div>
 			</div>
 
 			<div className="grid gap-4 md:grid-cols-4">
@@ -635,7 +719,10 @@ export default function TechnicalIncidents() {
 						setPage(1);
 					}}
 					onExport={exportList}
-					exportDisabled={rows.length === 0}
+					exportDisabled={exporting || rows.length === 0}
+					exportTitle={
+						exporting ? "Đang xuất Excel..." : "Xuất toàn bộ sự cố ra Excel"
+					}
 				/>
 				<div className="overflow-x-auto">
 					<table className="erp-table">
